@@ -102,6 +102,21 @@ test('detecta el professor que queda dins la mateixa aula amb el mateix grup', (
   assert.equal(classroomPartnerForAbsence({ sessions, absence, absences }), 'P2');
 });
 
+test('detecta la codocència encara que el company tingui una altra sessió a la franja', () => {
+  const sessions = [
+    { placa: 'P1', dia: '1', hora: '8:00', grup: '4ESO-B', aula: 'AULA 16', teClasse: true },
+    { placa: 'P2', dia: '1', hora: '8:00', grup: '4ESO-B', aula: 'AULA16', teClasse: true },
+    { placa: 'P2', dia: '1', hora: '8:00', grup: '4ESO-A', aula: 'AULA 15', teClasse: true },
+  ];
+  const absence = { id: 'P1|1|8:00', placa: 'P1', dia: '1', hora: '8:00' };
+
+  assert.equal(classroomPartnerForAbsence({
+    sessions,
+    absence,
+    absences: new Map([[absence.id, absence]]),
+  }), 'P2');
+});
+
 test('no considera docència compartida els blocs flexibles ni dues absències', () => {
   const flexibleSessions = [
     { placa: 'P1', dia: '1', hora: '8:00', grup: '1A', aula: 'A12', teClasse: true },

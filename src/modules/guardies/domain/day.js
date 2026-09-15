@@ -35,6 +35,26 @@ function singleValue(values) {
   return unique.length === 1 ? unique[0] : '';
 }
 
+function normalisedValue(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toUpperCase();
+}
+
+function sameGroup(left, right) {
+  const leftValues = [left.grup, left.grupVisible].map(normalisedValue).filter(Boolean);
+  const rightValues = [right.grup, right.grupVisible].map(normalisedValue).filter(Boolean);
+  return leftValues.some((value) => rightValues.includes(value));
+}
+
+function sameRoom(left, right) {
+  const leftValues = [left.aula, left.aulaNom].map(normalisedValue).filter(Boolean);
+  const rightValues = [right.aula, right.aulaNom].map(normalisedValue).filter(Boolean);
+  return leftValues.some((value) => rightValues.includes(value));
+}
+
 function sharedClassroomContext(sessions, absence) {
   if (!absence?.placa || !absence?.dia || !absence?.hora) return null;
   const targetSessions = sessions.filter((session) => (
@@ -55,11 +75,11 @@ function sharedClassroomContext(sessions, absence) {
     teachersAtSlot.get(session.placa).push(session);
   });
 
+  const targetClassroom = { grup: groupId, aula: roomId };
   const teacherIds = Array.from(teachersAtSlot.entries())
-    .filter(([, teacherSessions]) => (
-      singleValue(teacherSessions.map((session) => session.grup)) === groupId
-      && singleValue(teacherSessions.map((session) => session.aula)) === roomId
-    ))
+    .filter(([, teacherSessions]) => teacherSessions.some((session) => (
+      sameGroup(session, targetClassroom) && sameRoom(session, targetClassroom)
+    )))
     .map(([teacherId]) => teacherId)
     .sort((a, b) => String(a).localeCompare(String(b), 'ca', { numeric: true }));
   if (teacherIds.length < 2 || !teacherIds.includes(absence.placa)) return null;
