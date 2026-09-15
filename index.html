@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ca">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111827" />
+    <link rel="icon" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>Guàrdies | IES Josep Sureda i Blanes</title>
+    <script>
+      try {
+        document.documentElement.classList.toggle(
+          'dark',
+          localStorage.getItem('quota_theme') === 'dark' || localStorage.getItem('darkMode') === 'true'
+        );
+      } catch (_) {}
+    </script>
+    <link rel="stylesheet" href="/labs/guardies/styles.css" />
+    <script type="module" src="/labs/guardies/entry.js"></script>
+  </head>
+  <body class="guardies-app">
+    <div id="guardies-chrome-root"></div>
+
+    <main class="page">
+      <div id="guardies-work-header-root"></div>
+      <section id="error-box" class="alert hidden" role="alert"></section>
+      <div id="guardies-setup-root"></div>
+      <div id="guardies-pati-root"></div>
+      <div id="guardies-convivencia-root"></div>
+      <div id="guardies-release-notes-root"></div>
+      <div id="guardies-workspace-root"></div>
+    </main>
+  </body>
+</html>
