@@ -49,12 +49,6 @@ function sameGroup(left, right) {
   return leftValues.some((value) => rightValues.includes(value));
 }
 
-function sameRoom(left, right) {
-  const leftValues = [left.aula, left.aulaNom].map(normalisedValue).filter(Boolean);
-  const rightValues = [right.aula, right.aulaNom].map(normalisedValue).filter(Boolean);
-  return leftValues.some((value) => rightValues.includes(value));
-}
-
 function sharedClassroomContext(sessions, absence) {
   if (!absence?.placa || !absence?.dia || !absence?.hora) return null;
   const targetSessions = sessions.filter((session) => (
@@ -64,8 +58,7 @@ function sharedClassroomContext(sessions, absence) {
     && session.hora === absence.hora
   ));
   const groupId = singleValue(targetSessions.map((session) => session.grup));
-  const roomId = singleValue(targetSessions.map((session) => session.aula));
-  if (!groupId || !roomId) return null;
+  if (!groupId) return null;
 
   const teachersAtSlot = new Map();
   sessions.filter((session) => (
@@ -75,16 +68,14 @@ function sharedClassroomContext(sessions, absence) {
     teachersAtSlot.get(session.placa).push(session);
   });
 
-  const targetClassroom = { grup: groupId, aula: roomId };
+  const targetClassroom = { grup: groupId };
   const teacherIds = Array.from(teachersAtSlot.entries())
-    .filter(([, teacherSessions]) => teacherSessions.some((session) => (
-      sameGroup(session, targetClassroom) && sameRoom(session, targetClassroom)
-    )))
+    .filter(([, teacherSessions]) => teacherSessions.some((session) => sameGroup(session, targetClassroom)))
     .map(([teacherId]) => teacherId)
     .sort((a, b) => String(a).localeCompare(String(b), 'ca', { numeric: true }));
   if (teacherIds.length < 2 || !teacherIds.includes(absence.placa)) return null;
   return {
-    key: [absence.dia, absence.hora, groupId, roomId].join('|'),
+    key: [absence.dia, absence.hora, groupId].join('|'),
     teacherIds,
   };
 }
