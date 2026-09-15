@@ -362,7 +362,7 @@ test.describe('Guàrdies: comportament existent', () => {
     await page.locator('#professor-results [data-professor]').first().click();
     await page.locator('#add-all-hours').click();
 
-    await expect(otherPage.locator('#coverage-list [data-assignacio]')).toHaveCount(3);
+    await expect(otherPage.locator('#coverage-list [data-assignacio]')).toHaveCount(2);
     await otherPage.close();
   });
 
@@ -442,10 +442,11 @@ test.describe('Guàrdies: comportament existent', () => {
 
     await expect(page.locator('#schedule-grid [data-absence]:not(:disabled)')).toHaveCount(3);
     await page.locator('#add-all-hours').click();
-    await expect(page.locator('#coverage-list [data-assignacio]')).toHaveCount(3);
+    await expect(page.locator('#coverage-list [data-assignacio]')).toHaveCount(2);
     await expect(page.locator('#print-coverage')).toBeEnabled();
-    const guardDutyDetail = page.locator('.coverage-detail-cell').filter({ hasText: 'Guàrdia' }).first();
-    await expect(guardDutyDetail).not.toContainText('Torn sense cobrir');
+    const guardDutyRow = page.locator('#coverage-list .coverage-row').filter({ has: page.locator('.coverage-detail-cell', { hasText: 'Guàrdia' }) }).first();
+    await expect(guardDutyRow.locator('.info-only-label')).toHaveText('Informatiu · no se substitueix');
+    await expect(guardDutyRow.locator('[data-assignacio]')).toHaveCount(0);
     await expect(page.locator('.coverage-professor-cell .cell-kicker').first()).toHaveText('Absència');
 
     const firstAssignment = page.locator('#coverage-list [data-assignacio]').first();
@@ -464,7 +465,7 @@ test.describe('Guàrdies: comportament existent', () => {
     await page.reload();
     await page.locator('#date-input').fill('2026-09-07');
     await page.locator('#date-input').press('Tab');
-    await expect(page.locator('#coverage-list [data-assignacio]')).toHaveCount(3);
+    await expect(page.locator('#coverage-list [data-assignacio]')).toHaveCount(2);
     await expect(page.locator('.print-session-detail').first()).toBeHidden();
     await expect(page.locator('.coverage-group-label').first()).toHaveCSS('font-weight', '900');
     await expect(page.locator('.coverage-room-label').first()).toHaveCSS('font-weight', '900');

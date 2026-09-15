@@ -62,7 +62,7 @@ function sharedClassroomContext(sessions, absence) {
     ))
     .map(([teacherId]) => teacherId)
     .sort((a, b) => String(a).localeCompare(String(b), 'ca', { numeric: true }));
-  if (teacherIds.length !== 2 || !teacherIds.includes(absence.placa)) return null;
+  if (teacherIds.length < 2 || !teacherIds.includes(absence.placa)) return null;
   return {
     key: [absence.dia, absence.hora, groupId, roomId].join('|'),
     teacherIds,
@@ -75,9 +75,7 @@ export function classroomPartnerForAbsence({ sessions = [], absence, absences } 
   const presentTeachers = context.teacherIds.filter((teacherId) => (
     !isTeacherAbsentAtSlot(absences, absence.dia, absence.hora, teacherId)
   ));
-  return presentTeachers.length === 1 && presentTeachers[0] !== absence.placa
-    ? presentTeachers[0]
-    : '';
+  return presentTeachers.find((teacherId) => teacherId !== absence.placa) || '';
 }
 
 function mergedValues(items, field) {
@@ -102,7 +100,11 @@ export function mergeSharedClassroomAbsences({ sessions = [], absences = [] } = 
     const absentTeacherIds = Array.from(new Set(members.map((member) => member.placa))).sort((a, b) => (
       String(a).localeCompare(String(b), 'ca', { numeric: true })
     ));
-    if (absentTeacherIds.length !== 2 || !context.teacherIds.every((teacherId) => absentTeacherIds.includes(teacherId))) {
+    if (
+      absentTeacherIds.length < 2
+      || !absentTeacherIds.every((teacherId) => context.teacherIds.includes(teacherId))
+      || context.teacherIds.some((teacherId) => !absentTeacherIds.includes(teacherId))
+    ) {
       result.push(item);
       return;
     }

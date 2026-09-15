@@ -1851,11 +1851,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   function renderCoverage() {
     const selected = selectedAbsenceItems();
     selected.forEach((item) => {
-      const classroomPartner = classroomPartnerForAbsence({
-        sessions: state.sessions,
-        absence: item,
-        absences: state.absencies,
-      });
+      const classroomPartner = isGuardiaItem(item)
+        ? ''
+        : classroomPartnerForAbsence({
+            sessions: state.sessions,
+            absence: item,
+            absences: state.absencies,
+          });
       if (classroomPartner) {
         state.assignacions.set(item.id, classroomPartner);
         state.assignmentSources.set(item.id, 'co-teacher');
@@ -2029,7 +2031,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     }
 
     const pending = mergeSharedClassroomAbsences({ sessions: state.sessions, absences: selectedAbsenceItems() }).filter((item) => (
-      !item.sessions?.some(isPatiGuardiaSession) && !state.assignacions.has(item.id)
+      !item.sessions?.some(isPatiGuardiaSession) && !isGuardiaItem(item) && !state.assignacions.has(item.id)
     ));
     if (!pending.length) {
       reportResult(false, 'No hi ha guàrdies pendents.');
@@ -2751,7 +2753,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           room ? `<strong class="print-detail-highlight">${escapeHtml(room)}</strong>` : '',
         ].filter(Boolean).join(' · ');
     const locked = state.dayStatus === 'closed' || !state.canWrite;
-    const assignmentControl = isPati
+    const assignmentControl = isPati || isGuardiaItem(item)
       ? '<span class="info-only-label">Informatiu · no se substitueix</span>'
       : coTeacher
         ? `<strong class="readonly-assignment assigned no-print">${escapeHtml(labelProfessor(coTeacher))}</strong><span class="co-teacher-badge no-print">Queda amb el grup</span>`

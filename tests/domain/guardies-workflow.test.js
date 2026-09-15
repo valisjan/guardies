@@ -9,6 +9,10 @@ import {
   teachingDatesBetween,
   updateGuardCounts,
 } from '../../src/modules/guardies/domain/workflow.js';
+import {
+  classroomPartnerForAbsence,
+  mergeSharedClassroomAbsences,
+} from '../../src/modules/guardies/domain/day.js';
 
 test('genera només dies lectius dins un interval', () => {
   assert.deepEqual(teachingDatesBetween('2026-09-04', '2026-09-08'), [
@@ -82,4 +86,53 @@ test('no compta el professor que ja queda dins l’aula', () => {
   assert.deepEqual(updateGuardCounts({}, [], [
     { teacherId: 'P2', source: 'co-teacher' },
   ]), {});
+});
+
+test('manté el grup cobert quan queda professorat dins la mateixa aula', () => {
+  const sessions = ['ANG1', 'P2', 'P3'].map((teacherId) => ({
+    placa: teacherId,
+    dia: '3',
+    hora: '8:55',
+    grup: '1A',
+    aula: '101',
+    teClasse: true,
+  }));
+  const absence = { id: 'ANG1|3|8:55|ANG|101|', placa: 'ANG1', dia: '3', hora: '8:55' };
+
+  assert.equal(classroomPartnerForAbsence({
+    sessions,
+    absence,
+    absences: new Map([[absence.id, absence]]),
+  }), 'P2');
+});
+
+test('fusiona una codocència només quan no queda cap docent present al grup', () => {
+  const sessions = ['ANG1', 'P2', 'P3'].map((teacherId) => ({
+    placa: teacherId,
+    dia: '3',
+    hora: '8:55',
+    grup: '1A',
+    aula: '101',
+    teClasse: true,
+  }));
+  const absences = new Map(sessions.map((session) => [
+    `${session.placa}|3|8:55|ANG|101|`,
+    {
+      id: `${session.placa}|3|8:55|ANG|101|`,
+      placa: session.placa,
+      dia: session.dia,
+      hora: session.hora,
+      sessions: [session],
+      cursos: [],
+      cursosVisibles: [],
+      grups: [session.grup],
+      grupsVisibles: ['1A'],
+      materiaCurta: 'ANG',
+      aulaNom: 'Aula 101',
+    },
+  ]));
+
+  assert.deepEqual(mergeSharedClassroomAbsences({ sessions, absences }).map((item) => item.absentTeacherIds), [
+    ['ANG1', 'P2', 'P3'],
+  ]);
 });
