@@ -13,11 +13,13 @@ import {
   where,
 } from 'firebase/firestore';
 import {
+  browserLocalPersistence,
   GoogleAuthProvider,
   onAuthStateChanged,
+  setPersistence,
   signInWithPopup,
 } from 'firebase/auth';
-import { auth, db, isIOSWebKit } from '../firebase';
+import { auth, authPersistenceReady, db, isIOSWebKit } from '../firebase';
 import { BatchSplit } from '../utils/firestoreBatch';
 import { getRestCollection, getRestDocument } from './firestoreRest';
 import { E2E_AUTH_BYPASS, E2E_CURS_ID, getE2ECollection } from './e2e';
@@ -221,6 +223,8 @@ function waitForUser() {
 }
 
 export async function signInGuardies() {
+  await authPersistenceReady;
+  await setPersistence(auth, browserLocalPersistence).catch(() => {});
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ hd: STAFF_DOMAIN, prompt: 'select_account' });
   try {

@@ -5,7 +5,7 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { browserLocalPersistence, getAuth, setPersistence } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCLbyUgGUcgBalU6pHTewkqtFgUyZrprrs',
@@ -33,5 +33,6 @@ const db = initializeFirestore(app, isIOSWebKit
       }),
     });
 const auth = getAuth(app);
+const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch(() => {});
 
-export { db, auth, isIOSWebKit };
+export { db, auth, isIOSWebKit, authPersistenceReady };
