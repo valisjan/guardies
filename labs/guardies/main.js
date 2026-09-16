@@ -55,6 +55,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let pendingRemoteDay = null;
   let teacherAliasesById = new Map();
   let professorResultIndex = -1;
+  let bootstrapInFlight = null;
 
   const el = {
     error: document.getElementById('error-box'),
@@ -175,7 +176,15 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   });
   bootstrap();
 
-  async function bootstrap() {
+  function bootstrap() {
+    if (bootstrapInFlight) return bootstrapInFlight;
+    bootstrapInFlight = bootstrapInternal().finally(() => {
+      bootstrapInFlight = null;
+    });
+    return bootstrapInFlight;
+  }
+
+  async function bootstrapInternal() {
     unsubscribeGuardiesData();
     unsubscribeGuardiesDay();
     state.contextReady = false;
