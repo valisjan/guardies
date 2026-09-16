@@ -212,12 +212,14 @@ function validateFile(kind, text, name) {
 
 function waitForUser() {
   if (E2E_AUTH_BYPASS) return Promise.resolve({ uid: 'e2e-admin' });
-  if (auth.currentUser) return Promise.resolve(auth.currentUser);
-  return new Promise((resolve) => {
-    let unsubscribe = () => {};
-    unsubscribe = onAuthStateChanged(auth, (user) => {
-      unsubscribe();
-      resolve(user);
+  return authPersistenceReady.then(() => {
+    if (auth.currentUser) return auth.currentUser;
+    return new Promise((resolve) => {
+      let unsubscribe = () => {};
+      unsubscribe = onAuthStateChanged(auth, (user) => {
+        unsubscribe();
+        resolve(user);
+      });
     });
   });
 }
