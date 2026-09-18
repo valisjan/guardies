@@ -284,7 +284,9 @@ test.describe('Guàrdies: comportament existent', () => {
     const coverage = page.locator('#coverage-list .coverage-item').first();
     await expect(coverage).toContainText('Fuentes Serra, Gabriel');
     await expect(coverage.locator('.co-teacher-badge')).toHaveText('Queda amb el grup');
-    await expect(coverage.locator('[data-assignacio]')).toHaveCount(0);
+    const sharedAssignment = coverage.locator('[data-assignacio]');
+    await expect(sharedAssignment).toHaveCount(1);
+    await expect(sharedAssignment).toHaveValue('2');
 
     await page.waitForTimeout(500);
     const assignment = await page.evaluate(() => {
@@ -292,6 +294,21 @@ test.describe('Guàrdies: comportament existent', () => {
       return Object.values(day.assignments)[0];
     });
     expect(assignment).toEqual({ teacherId: '2', source: 'co-teacher' });
+
+    await sharedAssignment.selectOption('3');
+    await expect(sharedAssignment).toHaveValue('3');
+    await page.waitForTimeout(500);
+    const reassignment = await page.evaluate(() => {
+      const day = JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days['2026-09-07'];
+      return Object.values(day.assignments)[0];
+    });
+    expect(reassignment).toEqual({ teacherId: '3', source: 'guard' });
+
+    await sharedAssignment.selectOption('');
+    await expect(sharedAssignment).toHaveValue('');
+    await page.waitForTimeout(500);
+    await page.reload();
+    await expect(page.locator('#coverage-list [data-assignacio]')).toHaveValue('');
 
     await page.locator('#professor-search').fill('FUEN');
     await expect(page.locator('#professor-results [data-professor]').first()).toHaveClass(/suggested/);

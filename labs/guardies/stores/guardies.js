@@ -70,6 +70,7 @@ export const useGuardiesStore = defineStore('guardies', {
     updatedAt: '',
     closedAt: '',
     cancelledAssignments: new Set(),
+    overriddenCoTeacherAssignments: new Set(),
     guardCounts: new Map(),
     countedAssignments: [],
     unclosedDays: [],
@@ -81,6 +82,7 @@ export const useGuardiesStore = defineStore('guardies', {
       this.assignmentSources.clear();
       this.comentaris.clear();
       this.cancelledAssignments.clear();
+      this.overriddenCoTeacherAssignments.clear();
       this.outingAbsenceIds.clear();
     },
     clearGroupsOut() {

@@ -747,6 +747,7 @@ export async function saveGuardiesDay(cursId, date, payload, expectedRevision = 
     partialGroups: Array.from(new Set(payload.partialGroups || [])).filter(Boolean),
     outingAbsenceIds: Array.from(new Set(payload.outingAbsenceIds || [])).filter(Boolean),
     cancelledAssignments: Array.from(new Set(payload.cancelledAssignments || [])).filter(Boolean),
+    overriddenCoTeacherAssignments: Array.from(new Set(payload.overriddenCoTeacherAssignments || [])).filter(Boolean),
     publishedAt: String(payload.publishedAt || ''),
     closedAt: String(payload.closedAt || ''),
     countedAssignments: Array.isArray(payload.countedAssignments) ? payload.countedAssignments.filter(Boolean) : [],
