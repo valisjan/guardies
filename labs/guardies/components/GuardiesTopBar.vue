@@ -5,6 +5,13 @@ import { useGuardiesStore } from '../stores/guardies.js';
 
 const dark = ref(document.documentElement.classList.contains('dark'));
 const { courseId, date, isAdmin, teacherView } = storeToRefs(useGuardiesStore());
+const netlifyMode = window.location.hostname.endsWith('.netlify.app');
+const appLinks = {
+  quota: netlifyMode ? 'https://chic-tartufo-68ee9c.netlify.app/' : 'https://quota.iessureda.com/',
+  guardies: netlifyMode ? 'https://guardies.netlify.app/' : 'https://guardies.iessureda.com/',
+  pantalles: netlifyMode ? 'https://pantalles.netlify.app/?gestio=1&pantalla=sala-professorat' : 'https://pantalles.iessureda.com/?gestio=1&pantalla=sala-professorat',
+  retards: netlifyMode ? 'https://spontaneous-gecko-a2703a.netlify.app/' : 'https://retards.iessureda.com/',
+};
 const guardiesHref = computed(() => {
   const query = new URLSearchParams();
   if (courseId.value) query.set('curs', courseId.value);
@@ -39,10 +46,11 @@ function toggleTheme() {
         </span>
       </a>
       <div class="nav-tabs" aria-label="Seccions">
-        <a href="https://quota.iessureda.com/">Quota</a>
+        <a :href="appLinks.quota">Quota</a>
         <a v-if="isAdmin" :class="{ active: !teacherView }" :href="guardiesHref" :aria-current="!teacherView ? 'page' : undefined">Guàrdies</a>
         <a :class="{ active: teacherView }" :href="professoratHref" :aria-current="teacherView ? 'page' : undefined">Professorat</a>
-        <a v-if="isAdmin" href="https://pantalles.iessureda.com/?gestio=1&pantalla=sala-professorat">Pantalles</a>
+        <a :href="appLinks.pantalles">Pantalles</a>
+        <a :href="appLinks.retards">Retards</a>
       </div>
       <button id="theme-toggle" type="button" class="theme-toggle" aria-label="Canvia el tema" @click="toggleTheme">
         <span class="theme-icon" aria-hidden="true">◐</span>
