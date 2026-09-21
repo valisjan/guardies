@@ -56,6 +56,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let teacherAliasesById = new Map();
   let professorResultIndex = -1;
   let bootstrapInFlight = null;
+  let visibilityResumeInFlight = null;
 
   const el = {
     error: document.getElementById('error-box'),
@@ -92,6 +93,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   });
   window.addEventListener('guardies:clear-files', clearPersistentFiles);
   window.addEventListener('guardies:auth-changed', bootstrap);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('guardies:pati-updated', () => renderCoverage());
   window.addEventListener('guardies:exclusions-updated', async () => {
     parseStoredData({ resetSelection: false });
@@ -171,6 +173,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     render();
   });
   window.addEventListener('beforeunload', () => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
     unsubscribeGuardiesData();
     unsubscribeGuardiesDay();
   });
@@ -227,7 +230,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       if (adminPanel) adminPanel.open = false;
       parseStoredData({ resetSelection: true });
       await activateGuardiesDay(state.date);
-      subscribeToRemoteData();
+      if (!document.hidden) subscribeToRemoteData();
       state.contextReady = true;
       render();
       window.dispatchEvent(new CustomEvent('guardies:auth-ready'));
@@ -239,6 +242,23 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       render();
       window.dispatchEvent(new CustomEvent('guardies:auth-ready'));
     }
+  }
+
+  function handleVisibilityChange() {
+    if (document.hidden) {
+      unsubscribeGuardiesData();
+      unsubscribeGuardiesDay();
+      unsubscribeGuardiesData = () => {};
+      unsubscribeGuardiesDay = () => {};
+      return;
+    }
+    if (!state.contextReady || !state.courseId || visibilityResumeInFlight) return;
+    visibilityResumeInFlight = (async () => {
+      subscribeToRemoteData();
+      await activateGuardiesDay(state.date);
+    })().catch(() => {}).finally(() => {
+      visibilityResumeInFlight = null;
+    });
   }
 
   function loadJson(key, fallback) {
