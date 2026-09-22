@@ -62,6 +62,10 @@ function removeFile(kind) {
 function clearFiles() {
   window.dispatchEvent(new CustomEvent('guardies:clear-files'));
 }
+
+function reloadDirectory() {
+  window.dispatchEvent(new CustomEvent('guardies:reload-directory'));
+}
 </script>
 
 <template>
@@ -81,6 +85,7 @@ function clearFiles() {
             <h2>Fitxers necessaris</h2>
           </div>
           <button id="clear-cache" type="button" class="ghost" :disabled="!canWrite || persistenceStatus === 'saving'" @click="clearFiles">Neteja fitxers</button>
+          <button v-if="canWrite" type="button" class="ghost" :disabled="persistenceStatus === 'saving'" @click="reloadDirectory">Actualitza directori</button>
         </div>
         <ol class="setup-list">
           <li v-for="(upload, index) in uploads" :key="upload.kind" class="setup-step" :class="{ complete: upload.loaded, locked: upload.locked }" :data-upload-step="upload.kind">

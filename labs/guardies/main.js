@@ -30,6 +30,8 @@ import {
   saveGuardiesPati,
   subscribeGuardiesData,
   subscribeGuardiesDay,
+  subscribeDirectoryVersion,
+  bumpDirectoryVersion,
   transitionGuardiesDay,
 } from '../../src/services/guardiesStorage';
 import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
@@ -54,6 +56,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let lastRemoteDataSignature = '';
   let unsubscribeGuardiesData = () => {};
   let unsubscribeGuardiesDay = () => {};
+  let unsubscribeDirectoryVersion = () => {};
+  let directoryReloadPending = false;
+  let directoryReloadInFlight = null;
   let watchedDate = '';
   let pendingRemoteDay = null;
   let teacherAliasesById = new Map();
@@ -181,11 +186,23 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (event.detail?.reloadDay) await activateGuardiesDay(state.date);
     render();
   });
+  window.addEventListener('guardies:reload-directory', async () => {
+    if (!state.canWrite || !state.courseId) return;
+    try {
+      await bumpDirectoryVersion(state.courseId, state.viewerEmail);
+      await reloadTeacherDirectory();
+      showError('');
+    } catch (error) {
+      showError(`No s'ha pogut actualitzar el directori. ${error.message || error}`);
+    }
+  });
+
   window.addEventListener('beforeunload', () => {
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.removeEventListener('online', handleOnline);
     unsubscribeGuardiesData();
     unsubscribeGuardiesDay();
+    unsubscribeDirectoryVersion();
   });
   window.addEventListener('online', handleOnline);
   bootstrap();
@@ -205,6 +222,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   async function bootstrapInternal() {
     unsubscribeGuardiesData();
     unsubscribeGuardiesDay();
+    unsubscribeDirectoryVersion();
+    unsubscribeDirectoryVersion = () => {};
+    directoryReloadPending = false;
     state.contextReady = false;
     state.authRequired = false;
     state.persistenceStatus = 'loading';
@@ -285,12 +305,18 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (document.hidden) {
       unsubscribeGuardiesData();
       unsubscribeGuardiesDay();
+      unsubscribeDirectoryVersion();
       unsubscribeGuardiesData = () => {};
       unsubscribeGuardiesDay = () => {};
+      unsubscribeDirectoryVersion = () => {};
       return;
     }
     if (!state.contextReady || !state.courseId || visibilityResumeInFlight) return;
     visibilityResumeInFlight = (async () => {
+      if (directoryReloadPending) {
+        directoryReloadPending = false;
+        await reloadTeacherDirectory();
+      }
       subscribeToRemoteData();
       await activateGuardiesDay(state.date, { preserveCurrent: true });
     })().catch(() => {}).finally(() => {
@@ -418,8 +444,32 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     });
   }
 
+  async function reloadTeacherDirectory() {
+    if (!state.courseId) return;
+    if (directoryReloadInFlight) return directoryReloadInFlight;
+    directoryReloadInFlight = loadGuardiesTeacherDirectory(state.courseId)
+      .then((directory) => {
+        state.teacherDirectory = directory;
+      })
+      .catch(() => {
+        // Keep the previous directory if the reload fails.
+      })
+      .finally(() => {
+        directoryReloadInFlight = null;
+      });
+    return directoryReloadInFlight;
+  }
+
   function subscribeToRemoteData() {
     unsubscribeGuardiesData();
+    unsubscribeDirectoryVersion();
+    unsubscribeDirectoryVersion = subscribeDirectoryVersion(state.courseId, () => {
+      if (document.hidden) {
+        directoryReloadPending = true;
+      } else {
+        reloadTeacherDirectory();
+      }
+    });
     unsubscribeGuardiesData = subscribeGuardiesData(state.courseId, async (remoteData) => {
       const signature = remoteDataSignature(remoteData);
       if (signature === lastRemoteDataSignature) {

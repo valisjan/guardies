@@ -37,6 +37,8 @@ const DELETABLE_FILE_KINDS = new Set([...FILE_KINDS, 'schedule']);
 const MAX_FILE_BYTES = 850 * 1024;
 const E2E_PREFIX = 'quota-e2e-guardies:';
 const STAFF_DOMAIN = 'iesjosepsuredaiblanes.com';
+const DIR_CACHE_PREFIX = 'quota_guardies_teacher_dir:';
+const DIR_CACHE_TTL = 60 * 60 * 1000;
 
 function getE2EData(cursId) {
   const raw = localStorage.getItem(`${E2E_PREFIX}${cursId}`);
@@ -74,6 +76,39 @@ function guardiesDayRef(cursId, date) {
 
 function guardiesStatsRef(cursId) {
   return guardiesRef(cursId, 'stats');
+}
+
+function directoryVersionRef(cursId) {
+  return guardiesRef(cursId, 'directoriVersion');
+}
+
+function loadCachedTeacherDirectory(cursId) {
+  try {
+    const raw = localStorage.getItem(`${DIR_CACHE_PREFIX}${cursId}`);
+    if (!raw) return null;
+    const entry = JSON.parse(raw);
+    if (!Array.isArray(entry?.data)) return null;
+    if (Date.now() - (entry.savedAt || 0) > DIR_CACHE_TTL) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedTeacherDirectory(cursId, data, version) {
+  try {
+    localStorage.setItem(`${DIR_CACHE_PREFIX}${cursId}`, JSON.stringify({
+      data,
+      version: Number(version) || 0,
+      savedAt: Date.now(),
+    }));
+  } catch {}
+}
+
+function clearCachedTeacherDirectory(cursId) {
+  try {
+    localStorage.removeItem(`${DIR_CACHE_PREFIX}${cursId}`);
+  } catch {}
 }
 
 function guardiesExclusionsRef(cursId) {
@@ -439,22 +474,33 @@ export async function loadGuardiesTeacherDirectory(cursId) {
     ];
   }
 
-  const courseSnapshot = await withNetworkRetry(() => (
-    readCollection(collection(db, 'cursos', cursId, 'professors'))
-  ));
-  const profileSnapshots = await Promise.all([
-    collection(db, 'usuaris'),
-    collection(db, 'preautoritzats'),
-  ].map((reference) => withNetworkRetry(() => readCollection(reference)).catch(() => null)));
+  // Safari/iOS uses the REST fallback instead of Firestore listeners. Until it
+  // has an equivalent version check, prefer freshness over a one-hour stale
+  // directory on those devices.
+  const cached = isIOSWebKit ? null : loadCachedTeacherDirectory(cursId);
+  if (cached) {
+    trackReads('directoryLoad', 0, 'cache');
+    return cached.data;
+  }
+
+  const [courseSnapshot, profileSnapshots, versionSnapshot] = await Promise.all([
+    withNetworkRetry(() => readCollection(collection(db, 'cursos', cursId, 'professors'))),
+    Promise.all([
+      collection(db, 'usuaris'),
+      collection(db, 'preautoritzats'),
+    ].map((reference) => withNetworkRetry(() => readCollection(reference)).catch(() => null))),
+    readDoc(directoryVersionRef(cursId)).catch(() => null),
+  ]);
   const directoryReadCount = courseSnapshot.docs.length
-    + profileSnapshots.reduce((sum, s) => sum + (s?.docs?.length || 0), 0);
+    + profileSnapshots.reduce((sum, s) => sum + (s?.docs?.length || 0), 0)
+    + 1;
   trackReads('directoryLoad', directoryReadCount, `professors:${courseSnapshot.docs.length}`);
   const profiles = profileSnapshots
     .flatMap((snapshot) => snapshot?.docs || [])
     .map((item) => ({
-    ...item.data(),
-    id: item.id,
-  }));
+      ...item.data(),
+      id: item.id,
+    }));
   const emailByCode = new Map();
   const emailByName = new Map();
   profiles.forEach((profile) => {
@@ -465,7 +511,7 @@ export async function loadGuardiesTeacherDirectory(cursId) {
     if (code) emailByCode.set(code.toLowerCase(), email);
     if (nameKey) emailByName.set(nameKey, email);
   });
-  return courseSnapshot.docs.map((item) => {
+  const directory = courseSnapshot.docs.map((item) => {
     const data = item.data();
     const codiUntis = String(data.codiUntis || item.id).trim();
     const name = String(data.nom || '').trim();
@@ -476,6 +522,36 @@ export async function loadGuardiesTeacherDirectory(cursId) {
       email: String(data.email || emailByCode.get(codiUntis.toLowerCase()) || emailByName.get(personNameKey(name)) || '').trim(),
     };
   });
+  const currentVersion = versionSnapshot?.exists() ? Number(versionSnapshot.data()?.version) || 0 : 0;
+  if (!isIOSWebKit) saveCachedTeacherDirectory(cursId, directory, currentVersion);
+  return directory;
+}
+
+export function subscribeDirectoryVersion(cursId, onOutdated, onError = () => {}) {
+  if (E2E_AUTH_BYPASS || isIOSWebKit) return () => {};
+  return onSnapshot(directoryVersionRef(cursId), (snapshot) => {
+    if (!snapshot.exists() || snapshot.metadata.fromCache) return;
+    trackReads('directoryVersionSnapshot', 1, 'server', false);
+    const remoteVersion = Number(snapshot.data()?.version) || 0;
+    if (!remoteVersion) return;
+    const cached = loadCachedTeacherDirectory(cursId);
+    const cachedVersion = Number(cached?.version) || 0;
+    if (remoteVersion > cachedVersion) {
+      clearCachedTeacherDirectory(cursId);
+      onOutdated();
+    }
+  }, onError);
+}
+
+export async function bumpDirectoryVersion(cursId, userId = '') {
+  await setDoc(directoryVersionRef(cursId), {
+    version: Date.now(),
+    updatedAt: serverTimestamp(),
+    updatedBy: userId || '',
+  });
+  // The administrator who requested the refresh must not read their own old
+  // cache while their snapshot notification is still arriving.
+  clearCachedTeacherDirectory(cursId);
 }
 
 export async function saveGuardiesExcludedTeachers(cursId, teacherIds) {
