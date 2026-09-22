@@ -273,7 +273,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (!state.contextReady || !state.courseId || visibilityResumeInFlight) return;
     visibilityResumeInFlight = (async () => {
       subscribeToRemoteData();
-      await activateGuardiesDay(state.date);
+      await activateGuardiesDay(state.date, { preserveCurrent: true });
     })().catch(() => {}).finally(() => {
       visibilityResumeInFlight = null;
     });
@@ -611,11 +611,15 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.dayLoaded = true;
   }
 
-  async function hydrateGuardiesDay(date) {
+  async function hydrateGuardiesDay(date, { preserveCurrent = false } = {}) {
     if (!state.courseId || !date) return;
-    state.dayLoaded = false;
-    state.dayPersistenceStatus = 'loading';
-    state.clearDayContext();
+    if (!preserveCurrent) {
+      state.dayLoaded = false;
+      state.dayPersistenceStatus = 'loading';
+      state.clearDayContext();
+    } else {
+      state.dayPersistenceStatus = 'refreshing';
+    }
     render();
     try {
       const saved = await loadGuardiesDay(state.courseId, date, {
@@ -627,7 +631,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     } catch (error) {
       const cached = loadCachedGuardiesDay(date);
       if (cached) {
-        applyGuardiesDay(cached, date);
+        if (!preserveCurrent) applyGuardiesDay(cached, date);
         state.dayPersistenceStatus = 'stale';
         showError('No s\'ha pogut connectar per carregar aquesta jornada. Es mostren les últimes dades guardades i es reintentarà la connexió.');
       } else {
@@ -639,11 +643,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     }
   }
 
-  async function activateGuardiesDay(date) {
+  async function activateGuardiesDay(date, { preserveCurrent = false } = {}) {
     unsubscribeGuardiesDay();
     watchedDate = date;
     pendingRemoteDay = null;
-    await hydrateGuardiesDay(date);
+    await hydrateGuardiesDay(date, { preserveCurrent });
     if (date !== state.date || date !== watchedDate) return;
     if (state.isAdmin && ['published', 'closed'].includes(state.dayStatus)) {
       syncPublicGuardiesDay().catch(() => {});
