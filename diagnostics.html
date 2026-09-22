@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ca">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Guàrdies · Diagnòstic de lectures</title>
+    <script>
+      try {
+        document.documentElement.classList.toggle(
+          'dark',
+          localStorage.getItem('quota_theme') === 'dark' || localStorage.getItem('darkMode') === 'true'
+        );
+        const diagnosticsUrl = new URL(window.location.href);
+        if (diagnosticsUrl.searchParams.get('diagnostic') !== 'reads') {
+          diagnosticsUrl.searchParams.set('diagnostic', 'reads');
+          window.location.replace(diagnosticsUrl.toString());
+        }
+      } catch (_) {}
+    </script>
+    <link rel="stylesheet" href="/labs/guardies/styles.css" />
+    <link rel="stylesheet" href="/labs/guardies/diagnostics.css" />
+    <script type="module" src="/labs/guardies/diagnostics.js"></script>
+  </head>
+  <body class="guardies-app diagnostics-app">
+    <header class="diagnostics-header">
+      <div class="diagnostics-header-inner">
+        <a class="diagnostics-brand" href="/">
+          <img src="/logo_IESJSB_nav.png" alt="IES Josep Sureda i Blanes" />
+          <span><strong>GUÀRDIES</strong><small>Diagnòstic de lectures Firebase</small></span>
+        </a>
+        <a class="diagnostics-back" id="open-guardies" href="/?diagnostic=reads">Obre Guàrdies amb diagnòstic</a>
+      </div>
+      <div class="diagnostics-strip" aria-hidden="true"><span></span><span></span><span></span></div>
+    </header>
+
+    <main class="diagnostics-page">
+      <section class="diagnostics-intro">
+        <div>
+          <p class="eyebrow">Eina interna · sense escriptures</p>
+          <h1>Mesura de lectures</h1>
+          <p>Executa una acció cada vegada, reinicia el comptador i compara el resultat. Les dades només viuen en aquesta pestanya.</p>
+        </div>
+        <div class="diagnostics-state" id="diagnostic-state">Preparant…</div>
+      </section>
+
+      <section class="diagnostics-context card">
+        <div class="diagnostics-section-heading">
+          <div>
+            <p class="eyebrow">Context de prova</p>
+            <h2 id="course-name">Sense curs carregat</h2>
+          </div>
+          <button type="button" class="secondary" id="sign-in">Inicia sessió</button>
+        </div>
+        <div class="diagnostics-fields">
+          <label>Data de la jornada
+            <input type="date" id="diagnostic-date" />
+          </label>
+          <p id="context-detail">Connecta't per carregar el curs actiu i fer proves de lectura.</p>
+        </div>
+      </section>
+
+      <section class="diagnostics-actions card">
+        <div class="diagnostics-section-heading">
+          <div>
+            <p class="eyebrow">Accions controlades</p>
+            <h2>Proves de lectura</h2>
+          </div>
+          <button type="button" class="secondary" id="reset-diagnostics">Reinicia comptador</button>
+        </div>
+        <div class="diagnostics-action-grid">
+          <button type="button" data-action="config"><strong>Configuració</strong><span>7 documents de Guàrdies</span></button>
+          <button type="button" data-action="day"><strong>Jornada seleccionada</strong><span>Un document del dia</span></button>
+          <button type="button" data-action="directory"><strong>Directori</strong><span>Professorat, usuaris i autoritzacions</span></button>
+          <button type="button" data-action="unclosed"><strong>Jornades pendents</strong><span>Dades anteriors encara obertes</span></button>
+        </div>
+        <p class="diagnostics-help">Les accions son només de lectura. Per mesurar listeners, obre Guàrdies amb diagnòstic, fes una acció real i torna aquí per consultar el resum.</p>
+      </section>
+
+      <section class="diagnostics-summary">
+        <article class="diagnostics-total card">
+          <span>Lectures de xarxa estimades</span>
+          <strong id="total-network">0</strong>
+          <small>Pot no coincidir al 100% amb la facturació de Firestore.</small>
+        </article>
+        <article class="diagnostics-total card">
+          <span>Emissions des de memòria cau</span>
+          <strong id="total-cache">0</strong>
+          <small>No les comptem com a lectura de xarxa.</small>
+        </article>
+        <article class="diagnostics-total card">
+          <span>Crides mesurades</span>
+          <strong id="total-calls">0</strong>
+          <small>Nombre d'operacions instrumentades.</small>
+        </article>
+      </section>
+
+      <section class="diagnostics-results card">
+        <div class="diagnostics-section-heading">
+          <div>
+            <p class="eyebrow">Resultat de la sessió</p>
+            <h2>Desglossament</h2>
+          </div>
+          <span class="diagnostics-updated" id="last-updated">Encara sense lectures</span>
+        </div>
+        <div class="diagnostics-table-wrap">
+          <table>
+            <thead><tr><th>Categoria</th><th>Xarxa</th><th>Memòria cau</th><th>Crides</th></tr></thead>
+            <tbody id="diagnostics-rows"><tr><td colspan="4">Encara no hi ha dades.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="diagnostics-log card">
+        <div class="diagnostics-section-heading"><div><p class="eyebrow">Traça recent</p><h2>Últimes operacions</h2></div></div>
+        <ol id="diagnostics-log"><li>Encara no hi ha cap operació registrada.</li></ol>
+      </section>
+    </main>
+  </body>
+</html>

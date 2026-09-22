@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import { resolve } from 'node:path';
 import pkg from './package.json' with { type: 'json' };
 
 export default defineConfig({
@@ -10,6 +11,10 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      input: {
+        main: resolve(import.meta.dirname, 'index.html'),
+        diagnostics: resolve(import.meta.dirname, 'diagnostics.html'),
+      },
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
