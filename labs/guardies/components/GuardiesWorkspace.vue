@@ -17,6 +17,8 @@ const selectedDayIsWeekend = computed(() => {
 });
 const emptyTitle = computed(() => {
   if (isLoading.value) return 'Carregant dades…';
+  if (persistenceStatus.value === 'stale') return 'Dades locals carregades · connexió pendent';
+  if (persistenceStatus.value === 'error') return 'No s\'ha pogut connectar amb Quota';
   if (selectedDayIsWeekend.value) return 'Dia no lectiu';
   if (sessions.value.length && !canWrite.value && !['published', 'closed'].includes(dayStatus.value)) return 'Jornada encara no publicada';
   return canWrite.value ? "Carrega l'horari per començar" : 'Encara no hi ha cap full de guàrdies disponible';

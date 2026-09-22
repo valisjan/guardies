@@ -41,6 +41,7 @@ const uploads = computed(() => {
 
 const cacheLabel = computed(() => {
   if (persistenceStatus.value === 'loading') return 'Connectant amb Firebase...';
+  if (persistenceStatus.value === 'stale') return 'Dades locals · reintentant connexió...';
   if (persistenceStatus.value === 'saving') return 'Guardant a Firebase...';
   const count = uploads.value.filter((upload) => upload.loaded).length;
   const course = courseName.value || courseId.value || 'curs actiu';

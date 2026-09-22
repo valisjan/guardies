@@ -46,6 +46,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     scheduleName: 'quota_guardies_lab_schedule_name',
     convivencia: 'quota_guardies_lab_convivencia',
   };
+  const REMOTE_CACHE_PREFIX = 'quota_guardies_remote_cache:';
   const state = useGuardiesStore();
   let daySaveTimer = null;
   let lastDaySignature = '';
@@ -58,6 +59,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let professorResultIndex = -1;
   let bootstrapInFlight = null;
   let visibilityResumeInFlight = null;
+
+  function handleOnline() {
+    if (state.persistenceStatus === 'error') bootstrap();
+  }
 
   const el = {
     error: document.getElementById('error-box'),
@@ -175,9 +180,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   });
   window.addEventListener('beforeunload', () => {
     document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('online', handleOnline);
     unsubscribeGuardiesData();
     unsubscribeGuardiesDay();
   });
+  window.addEventListener('online', handleOnline);
   bootstrap();
 
   function bootstrap() {
@@ -212,12 +219,21 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.viewerName = context.user?.displayName || '';
       state.viewerEmail = context.user?.email || '';
       state.authRequired = false;
-      let remoteData = await loadGuardiesData(state.courseId);
-      remoteData = await migrateLegacyData(remoteData);
+      let remoteData;
+      let usingCachedData = false;
+      try {
+        remoteData = await loadGuardiesData(state.courseId);
+      } catch (error) {
+        remoteData = loadCachedRemoteData(state.courseId);
+        if (!remoteData) throw error;
+        usingCachedData = true;
+        showError('No s\'ha pogut connectar amb Quota. Es mostren les últimes dades guardades; es reintentarà la connexió automàticament.');
+      }
+      if (!usingCachedData) remoteData = await migrateLegacyData(remoteData);
       applyRemoteData(remoteData);
       const [teacherDirectory, stats, unclosedDays] = await Promise.all([
         loadGuardiesTeacherDirectory(state.courseId).catch(() => []),
-        loadGuardiesStats(state.courseId),
+        loadGuardiesStats(state.courseId).catch(() => ({ counts: {} })),
         state.canWrite
           ? loadUnclosedGuardiesDays(state.courseId, localDateString(new Date())).catch(() => [])
           : Promise.resolve([]),
@@ -226,7 +242,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.unclosedDays = unclosedDays;
       state.guardCounts = new Map(Object.entries(stats.counts || {}));
       lastRemoteDataSignature = remoteDataSignature({ ...remoteData, stats });
-      state.persistenceStatus = 'ready';
+      state.persistenceStatus = usingCachedData ? 'stale' : 'ready';
       const adminPanel = document.getElementById('admin-panel');
       if (adminPanel) adminPanel.open = false;
       parseStoredData({ resetSelection: true });
@@ -352,6 +368,23 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.patiConfig = remoteData.pati || null;
     state.observationPresets = remoteData.observationPresets || [];
     state.excludedTeacherIds = new Set(remoteData.excludedTeacherIds || []);
+    const hasFiles = Object.values(remoteData.files || {}).some((file) => file?.text);
+    if (hasFiles && state.courseId) storageSet(
+      `${REMOTE_CACHE_PREFIX}${state.courseId}`,
+      JSON.stringify({ ...remoteData, cachedAt: new Date().toISOString() }),
+    );
+  }
+
+  function loadCachedRemoteData(courseId) {
+    if (!courseId) return null;
+    try {
+      const raw = localStorage.getItem(`${REMOTE_CACHE_PREFIX}${courseId}`);
+      if (!raw) return null;
+      const cached = JSON.parse(raw);
+      return cached?.files ? cached : null;
+    } catch {
+      return null;
+    }
   }
 
   function remoteDataSignature(remoteData) {
@@ -369,7 +402,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     unsubscribeGuardiesData();
     unsubscribeGuardiesData = subscribeGuardiesData(state.courseId, async (remoteData) => {
       const signature = remoteDataSignature(remoteData);
-      if (signature === lastRemoteDataSignature) return;
+      if (signature === lastRemoteDataSignature) {
+        if (state.persistenceStatus === 'stale') {
+          state.persistenceStatus = 'ready';
+          showError('');
+          render();
+        }
+        return;
+      }
       const previousFiles = JSON.stringify({
         reference: state.referenceText,
         untis: state.untisText,
