@@ -47,6 +47,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     convivencia: 'quota_guardies_lab_convivencia',
   };
   const REMOTE_CACHE_PREFIX = 'quota_guardies_remote_cache:';
+  const DAY_CACHE_PREFIX = 'quota_guardies_day_cache:';
   const state = useGuardiesStore();
   let daySaveTimer = null;
   let lastDaySignature = '';
@@ -621,10 +622,18 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         publishedOnly: state.teacherView || !state.isAdmin,
       });
       if (date !== state.date) return;
+      if (saved) cacheGuardiesDay(date, saved);
       applyGuardiesDay(saved, date);
     } catch (error) {
-      state.dayPersistenceStatus = 'error';
-      showError(`No s'ha pogut carregar la jornada. ${error.message || error}`);
+      const cached = loadCachedGuardiesDay(date);
+      if (cached) {
+        applyGuardiesDay(cached, date);
+        state.dayPersistenceStatus = 'stale';
+        showError('No s\'ha pogut connectar per carregar aquesta jornada. Es mostren les últimes dades guardades i es reintentarà la connexió.');
+      } else {
+        state.dayPersistenceStatus = 'error';
+        showError(`No s'ha pogut carregar la jornada. ${error.message || error}`);
+      }
     } finally {
       if (date === state.date) state.dayLoaded = true;
     }
@@ -639,8 +648,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (state.isAdmin && ['published', 'closed'].includes(state.dayStatus)) {
       syncPublicGuardiesDay().catch(() => {});
     }
-    unsubscribeGuardiesDay = subscribeGuardiesDay(state.courseId, date, (saved) => {
+    unsubscribeGuardiesDay = subscribeGuardiesDay(state.courseId, date, (saved, metadata) => {
       if (date !== state.date || date !== watchedDate || !state.dayLoaded) return;
+      if (state.dayPersistenceStatus === 'stale' && !metadata?.fromCache) {
+        state.dayPersistenceStatus = 'ready';
+        showError('');
+      }
       const remoteRevision = Number(saved?.revision) || 0;
       const isDeletion = !saved;
       if ((!isDeletion && remoteRevision <= state.dayRevision) || (isDeletion && state.dayRevision === 0)) return;
@@ -649,12 +662,28 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         return;
       }
       applyGuardiesDay(saved, date);
+      if (saved) cacheGuardiesDay(date, saved);
       showError('');
       render();
     }, (error) => {
       if (error?.code === 'permission-denied') return;
       showError(`No s'ha pogut sincronitzar la jornada. ${error.message || error}`);
     }, { publishedOnly: state.teacherView || !state.isAdmin });
+  }
+
+  function cacheGuardiesDay(date, saved) {
+    if (!state.courseId || !saved) return;
+    storageSet(`${DAY_CACHE_PREFIX}${state.courseId}:${date}`, JSON.stringify(saved));
+  }
+
+  function loadCachedGuardiesDay(date) {
+    if (!state.courseId || !date) return null;
+    try {
+      const raw = localStorage.getItem(`${DAY_CACHE_PREFIX}${state.courseId}:${date}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
   }
 
   function flushPendingRemoteDay() {
