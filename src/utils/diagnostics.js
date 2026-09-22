@@ -27,6 +27,7 @@ function publish() {
     ...Object.keys(state.cache),
   ]);
   window.__guardiesDiagnostics = {
+    active,
     network: { ...state.network },
     cache: { ...state.cache },
     calls: { ...state.calls },
@@ -34,6 +35,11 @@ function publish() {
     totalCache,
     log: state.log.slice(),
     summary() {
+      if (!active) {
+        // eslint-disable-next-line no-console
+        console.warn('[guardies:reads] Diagnòstic inactiu. Recarrega amb ?diagnostic=reads a l’URL.');
+        return;
+      }
       const rows = Array.from(categories).map((cat) => ({
         category: cat,
         network: state.network[cat] || 0,
@@ -56,8 +62,9 @@ function publish() {
   };
 }
 
+publish();
+
 if (active) {
-  publish();
   // eslint-disable-next-line no-console
   console.info(
     '[guardies:reads] Diagnòstic activat. '
