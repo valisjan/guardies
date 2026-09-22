@@ -88,6 +88,9 @@ function loadCachedTeacherDirectory(cursId) {
     if (!raw) return null;
     const entry = JSON.parse(raw);
     if (!Array.isArray(entry?.data)) return null;
+    // A cache without a server-side version cannot be invalidated reliably.
+    // Ignore entries created before directory versioning was enabled.
+    if (!(Number(entry?.version) > 0)) return null;
     if (Date.now() - (entry.savedAt || 0) > DIR_CACHE_TTL) return null;
     return entry;
   } catch {
@@ -523,7 +526,11 @@ export async function loadGuardiesTeacherDirectory(cursId) {
     };
   });
   const currentVersion = versionSnapshot?.exists() ? Number(versionSnapshot.data()?.version) || 0 : 0;
-  if (!isIOSWebKit) saveCachedTeacherDirectory(cursId, directory, currentVersion);
+  // Do not enable caching until Quota has created the version document. This
+  // preserves the previous fresh-read behaviour during a staged deployment.
+  if (!isIOSWebKit && currentVersion > 0) {
+    saveCachedTeacherDirectory(cursId, directory, currentVersion);
+  }
   return directory;
 }
 
