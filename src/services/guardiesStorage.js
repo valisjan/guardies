@@ -24,6 +24,7 @@ import { BatchSplit } from '../utils/firestoreBatch';
 import { getRestCollection, getRestDocument } from './firestoreRest';
 import { E2E_AUTH_BYPASS, E2E_CURS_ID, getE2ECollection } from './e2e';
 import { selectDefaultAcademicCourse } from '../utils/academicCourse';
+import { trackReads } from '../utils/diagnostics';
 import { normalizePatioConfig } from '../modules/guardies/domain/patio';
 import {
   normalizeGuardCount,
@@ -320,6 +321,7 @@ export async function loadGuardiesData(cursId) {
     readDoc(guardiesObservationsRef(cursId)),
     readDoc(guardiesExclusionsRef(cursId)),
   ]));
+  trackReads('configLoad', 7);
   return {
     files: {
       reference: reference.exists() ? await loadStoredFile(reference.data()) : null,
@@ -352,7 +354,10 @@ export function subscribeGuardiesData(cursId, onChange, onError = () => {}) {
   }
 
   if (isIOSWebKit) {
+    let pollCycle = 0;
     return subscribeWithPolling(async () => {
+      pollCycle += 1;
+      trackReads('iosPollCycle', 0, `config-poll-#${pollCycle}`);
       const [data, stats] = await Promise.all([
         loadGuardiesData(cursId),
         loadGuardiesStats(cursId),
@@ -386,12 +391,17 @@ export function subscribeGuardiesData(cursId, onChange, onError = () => {}) {
       onError(error);
     }
   };
+  let configSnapshotCount = 0;
   const unsubscribeGuardies = onSnapshot(collection(db, 'cursos', cursId, 'guardies'), (snapshot) => {
+    configSnapshotCount += 1;
+    const reads = configSnapshotCount === 1 ? snapshot.docs.length : snapshot.docChanges().length;
+    trackReads('configSnapshot', reads, configSnapshotCount === 1 ? 'initial' : 'update', snapshot.metadata.fromCache);
     documents = new Map(snapshot.docs.map((item) => [item.id, item.data()]));
     guardiesReady = true;
     emit();
   }, onError);
   const unsubscribeExclusions = onSnapshot(guardiesExclusionsRef(cursId), (snapshot) => {
+    trackReads('configSnapshot', 1, 'exclusions', snapshot.metadata.fromCache);
     excludedTeacherIds = snapshot.exists()
       ? normalizeExcludedTeacherIds({ teacherIds: snapshot.data().excludedTeacherIds })
       : [];
@@ -399,6 +409,7 @@ export function subscribeGuardiesData(cursId, onChange, onError = () => {}) {
     emit();
   }, onError);
   const unsubscribeObservations = onSnapshot(guardiesObservationsRef(cursId), (snapshot) => {
+    trackReads('configSnapshot', 1, 'observations', snapshot.metadata.fromCache);
     observationPresets = snapshot.exists()
       ? normalizeGuardiesObservationPresets(snapshot.data())
       : [];
@@ -435,6 +446,9 @@ export async function loadGuardiesTeacherDirectory(cursId) {
     collection(db, 'usuaris'),
     collection(db, 'preautoritzats'),
   ].map((reference) => withNetworkRetry(() => readCollection(reference)).catch(() => null)));
+  const directoryReadCount = courseSnapshot.docs.length
+    + profileSnapshots.reduce((sum, s) => sum + (s?.docs?.length || 0), 0);
+  trackReads('directoryLoad', directoryReadCount, `professors:${courseSnapshot.docs.length}`);
   const profiles = profileSnapshots
     .flatMap((snapshot) => snapshot?.docs || [])
     .map((item) => ({
@@ -484,6 +498,7 @@ export async function loadGuardiesStats(cursId) {
     return getE2EData(cursId).stats || { counts: {} };
   }
   const snapshot = await withNetworkRetry(() => readDoc(guardiesStatsRef(cursId)));
+  trackReads('statsLoad', 1);
   return snapshot.exists() ? snapshot.data() : { counts: {} };
 }
 
@@ -657,6 +672,7 @@ export async function loadGuardiesDay(cursId, date, { publishedOnly = false } = 
   }
   try {
     const snapshot = await withNetworkRetry(() => readDoc(guardiesDayRef(cursId, date)));
+    trackReads('dayLoad', 1, date);
     const day = snapshot.exists() ? snapshot.data() : null;
     return publishedOnly && !['published', 'closed'].includes(day?.status) ? null : day;
   } catch (error) {
@@ -686,6 +702,7 @@ export async function loadUnclosedGuardiesDays(cursId, beforeDate) {
       .sort();
   }
   const snapshot = await getDocs(collection(db, 'cursos', cursId, 'guardiesDays'));
+  trackReads('unclosedDaysLoad', snapshot.docs.length, `total:${snapshot.docs.length}`);
   return snapshot.docs
     .filter((item) => item.id < beforeDate && guardiesDayNeedsClosing(item.data()))
     .map((item) => item.id)
@@ -704,8 +721,13 @@ export function subscribeGuardiesDay(cursId, date, onChange, onError = () => {},
   }
 
   if (isIOSWebKit) {
+    let dayPollCycle = 0;
     return subscribeWithPolling(
-      () => loadGuardiesDay(cursId, date, { publishedOnly }),
+      () => {
+        dayPollCycle += 1;
+        trackReads('iosPollCycle', 0, `day-poll-#${dayPollCycle}`);
+        return loadGuardiesDay(cursId, date, { publishedOnly });
+      },
       (day) => onChange(day, { fromCache: false, hasPendingWrites: false }),
       onError,
     );
@@ -716,7 +738,11 @@ export function subscribeGuardiesDay(cursId, date, onChange, onError = () => {},
       collection(db, 'cursos', cursId, 'guardiesDays'),
       where('status', 'in', ['published', 'closed']),
     );
+    let daySnapshotCount = 0;
     return onSnapshot(publishedDays, (snapshot) => {
+      daySnapshotCount += 1;
+      const reads = daySnapshotCount === 1 ? snapshot.docs.length : snapshot.docChanges().length;
+      trackReads('daySnapshot', reads, daySnapshotCount === 1 ? `initial-publishedOnly:${snapshot.docs.length}` : 'update', snapshot.metadata.fromCache);
       const selected = snapshot.docs.find((item) => item.id === date);
       onChange(selected?.data() || null, {
         fromCache: snapshot.metadata.fromCache,
@@ -726,6 +752,7 @@ export function subscribeGuardiesDay(cursId, date, onChange, onError = () => {},
   }
 
   return onSnapshot(guardiesDayRef(cursId, date), (snapshot) => {
+    trackReads('daySnapshot', 1, '', snapshot.metadata.fromCache);
     onChange(snapshot.exists() ? snapshot.data() : null, {
       fromCache: snapshot.metadata.fromCache,
       hasPendingWrites: snapshot.metadata.hasPendingWrites,
