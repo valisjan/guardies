@@ -483,7 +483,7 @@ export async function loadGuardiesTeacherDirectory(cursId) {
   // directory on those devices.
   const cached = isIOSWebKit ? null : loadCachedTeacherDirectory(cursId);
   if (cached) {
-    trackReads('directoryLoad', 0, 'cache');
+    trackReads('directoryLoad', 0, 'cache', true);
     return cached.data;
   }
 
