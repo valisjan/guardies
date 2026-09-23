@@ -1,11 +1,30 @@
 const active = typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).get('diagnostic') === 'reads';
 
+// Keep a diagnostic session when moving between Guardies and diagnostics.html.
+// This is deliberately opt-in: regular users never read or write this key.
+const storageKey = 'guardies.readDiagnostics.v1';
+
+function readStoredState() {
+  if (!active) return null;
+  try {
+    const stored = window.sessionStorage.getItem(storageKey);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+const storedState = readStoredState();
+
 const state = {
-  network: {},
-  cache: {},
-  calls: {},
-  log: [],
+  network: storedState?.network && typeof storedState.network === 'object' ? storedState.network : {},
+  cache: storedState?.cache && typeof storedState.cache === 'object' ? storedState.cache : {},
+  calls: storedState?.calls && typeof storedState.calls === 'object' ? storedState.calls : {},
+  log: Array.isArray(storedState?.log) ? storedState.log.slice(-200) : [],
 };
 
 function record(category, reads, note = '', fromCache = false) {
@@ -60,6 +79,19 @@ function publish() {
       publish();
     },
   };
+
+  if (active) {
+    try {
+      window.sessionStorage.setItem(storageKey, JSON.stringify({
+        network: state.network,
+        cache: state.cache,
+        calls: state.calls,
+        log: state.log.slice(-200),
+      }));
+    } catch {
+      // Diagnostics must never interfere with the application if storage is unavailable.
+    }
+  }
 }
 
 publish();
