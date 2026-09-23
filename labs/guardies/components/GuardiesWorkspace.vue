@@ -5,11 +5,37 @@ import GuardiesCoveragePanel from './GuardiesCoveragePanel.vue';
 import GuardiesIncidentPanel from './GuardiesIncidentPanel.vue';
 import { useGuardiesStore } from '../stores/guardies.js';
 
-const { canWrite, authRequired, adminSection, teacherSection, contextReady, persistenceStatus, dayPersistenceStatus, sessions, dayStatus, date } = storeToRefs(useGuardiesStore());
+const {
+  canWrite,
+  authRequired,
+  adminSection,
+  teacherSection,
+  contextReady,
+  persistenceStatus,
+  dayPersistenceStatus,
+  dayLoaded,
+  sessions,
+  dayStatus,
+  isAdmin,
+  teacherView,
+  date,
+} = storeToRefs(useGuardiesStore());
 const visible = computed(() => !contextReady.value
   || (canWrite.value && adminSection.value === 'daily')
   || (!canWrite.value && !authRequired.value && teacherSection.value === 'daily'));
 const isLoading = computed(() => !contextReady.value || persistenceStatus.value === 'loading' || dayPersistenceStatus.value === 'loading');
+const hasVisibleDay = computed(() => (
+  (isAdmin.value && !teacherView.value)
+  || ['published', 'closed'].includes(dayStatus.value)
+));
+const hasData = computed(() => (
+  contextReady.value
+  && persistenceStatus.value !== 'loading'
+  && dayPersistenceStatus.value !== 'loading'
+  && dayLoaded.value
+  && sessions.value.length > 0
+  && hasVisibleDay.value
+));
 const selectedDayIsWeekend = computed(() => {
   if (!date.value) return false;
   const parsed = new Date(`${date.value}T12:00:00`);
@@ -28,12 +54,12 @@ const emptyTitle = computed(() => {
 </script>
 
 <template>
-  <section v-show="visible" id="empty-state" class="empty" :class="{ 'is-loading': isLoading }" role="status" aria-live="polite">
+  <section v-show="visible && !hasData" id="empty-state" class="empty" :class="{ 'is-loading': isLoading }" role="status" aria-live="polite">
     <span v-if="isLoading" class="loading-spinner" aria-hidden="true"></span>
     <h2>{{ emptyTitle }}</h2>
   </section>
 
-  <section v-show="visible && !isLoading" id="workspace" class="workspace hidden">
+  <section v-show="visible && !isLoading && hasData" id="workspace" class="workspace hidden">
     <section class="stats hidden" aria-label="Resum de la configuració">
       <strong id="stat-sessions">0</strong>
       <strong id="stat-professors">0</strong>
