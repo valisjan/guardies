@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import GuardiesTopBar from './GuardiesTopBar.vue';
 import GuardiesWorkHeader from './GuardiesWorkHeader.vue';
@@ -17,9 +17,15 @@ import { signInGuardies } from '../../../src/services/guardiesStorage.js';
 import { useGuardiesStore } from '../stores/guardies.js';
 
 const store = useGuardiesStore();
-const { canWrite, contextReady, authRequired, adminSection, teacherSection } = storeToRefs(store);
+const { canWrite, contextReady, authRequired, adminSection, teacherSection, courseId, date } = storeToRefs(store);
 const signingIn = ref(false);
 const signInError = ref('');
+const diagnosticsHref = computed(() => {
+  const query = new URLSearchParams({ diagnostic: 'reads' });
+  if (courseId.value) query.set('curs', courseId.value);
+  if (date.value) query.set('data', date.value);
+  return `/diagnostics.html?${query.toString()}`;
+});
 
 async function signIn() {
   signingIn.value = true;
@@ -46,6 +52,7 @@ window.addEventListener('guardies:auth-ready', () => {
       <button type="button" role="tab" :aria-selected="adminSection === 'daily'" :class="{ active: adminSection === 'daily' }" @click="store.adminSection = 'daily'">Gestió diària</button>
       <button type="button" role="tab" :aria-selected="adminSection === 'config'" :class="{ active: adminSection === 'config' }" @click="store.adminSection = 'config'">Configuració</button>
       <button type="button" role="tab" :aria-selected="adminSection === 'statistics'" :class="{ active: adminSection === 'statistics' }" @click="store.adminSection = 'statistics'">Estadístiques</button>
+      <a class="diagnostics-tab" :href="diagnosticsHref">Diagnòstic</a>
     </nav>
     <GuardiesWorkHeader v-show="contextReady && ((canWrite && adminSection === 'daily') || (!canWrite && teacherSection === 'daily'))" />
   </Teleport>

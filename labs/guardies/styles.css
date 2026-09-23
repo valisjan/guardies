@@ -1243,12 +1243,31 @@ h3 {
 }
 
 .teacher-view-tabs button,
-.admin-view-tabs button {
+.admin-view-tabs button,
+.admin-view-tabs .diagnostics-tab {
   min-height: 34px;
   border-color: transparent;
   background: transparent;
   color: var(--muted);
   box-shadow: none;
+}
+
+.admin-view-tabs .diagnostics-tab {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: .35rem .7rem;
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.admin-view-tabs .diagnostics-tab:hover,
+.admin-view-tabs .diagnostics-tab:focus-visible {
+  border-color: var(--border-strong);
+  color: var(--text);
 }
 
 .teacher-view-tabs button.active,
@@ -3372,10 +3391,11 @@ h3 {
     width: 100%;
   }
 
-  .teacher-view-tabs button,
-  .admin-view-tabs button {
-    flex: 1;
-  }
+.teacher-view-tabs button,
+.admin-view-tabs button,
+.admin-view-tabs .diagnostics-tab {
+  flex: 1;
+}
 
   .guard-statistics-grid {
     grid-template-columns: 1fr;
