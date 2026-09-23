@@ -432,10 +432,18 @@ export function subscribeGuardiesData(cursId, onChange, onError = () => {}, { io
   };
   let configSnapshotCount = 0;
   const unsubscribeGuardies = onSnapshot(collection(db, 'cursos', cursId, 'guardies'), (snapshot) => {
+    const relevantDocs = snapshot.docs.filter((item) => item.id !== 'directoriVersion');
+    const relevantChanges = snapshot.docChanges().filter((change) => change.doc.id !== 'directoriVersion');
+    const versionChanges = snapshot.docChanges().filter((change) => change.doc.id === 'directoriVersion');
+    if (versionChanges.length > 0 || (configSnapshotCount === 0 && snapshot.docs.some((d) => d.id === 'directoriVersion'))) {
+      const versionReads = configSnapshotCount === 0 ? 1 : versionChanges.length;
+      trackReads('directoryVersionCollectionSnapshot', versionReads, '', snapshot.metadata.fromCache);
+    }
+    if (configSnapshotCount > 0 && relevantChanges.length === 0) return;
     configSnapshotCount += 1;
-    const reads = configSnapshotCount === 1 ? snapshot.docs.length : snapshot.docChanges().length;
+    const reads = configSnapshotCount === 1 ? relevantDocs.length : relevantChanges.length;
     trackReads('configSnapshot', reads, configSnapshotCount === 1 ? 'initial' : 'update', snapshot.metadata.fromCache);
-    documents = new Map(snapshot.docs.map((item) => [item.id, item.data()]));
+    documents = new Map(relevantDocs.map((item) => [item.id, item.data()]));
     guardiesReady = true;
     emit();
   }, onError);
