@@ -23,6 +23,7 @@ import { auth, authPersistenceReady, db, isIOSWebKit } from '../firebase';
 import { BatchSplit } from '../utils/firestoreBatch';
 import { getRestCollection, getRestDocument } from './firestoreRest';
 import { E2E_AUTH_BYPASS, E2E_CURS_ID, getE2ECollection } from './e2e';
+import { subscribePublicGuardiesDay } from './pantallesStorage';
 import { selectDefaultAcademicCourse } from '../utils/academicCourse';
 import { trackReads } from '../utils/diagnostics';
 import { normalizePatioConfig } from '../modules/guardies/domain/patio';
@@ -373,7 +374,7 @@ export async function loadGuardiesData(cursId) {
   };
 }
 
-export function subscribeGuardiesData(cursId, onChange, onError = () => {}) {
+export function subscribeGuardiesData(cursId, onChange, onError = () => {}, { iosPollInterval = 5 * 60 * 1000 } = {}) {
   if (E2E_AUTH_BYPASS) {
     return subscribeE2E(cursId, (data) => {
       Promise.resolve(onChange({
@@ -401,7 +402,7 @@ export function subscribeGuardiesData(cursId, onChange, onError = () => {}) {
         loadGuardiesStats(cursId),
       ]);
       return { ...data, stats };
-    }, onChange, onError, 8000);
+    }, onChange, onError, iosPollInterval);
   }
 
   let guardiesReady = false;
@@ -784,7 +785,10 @@ export async function loadUnclosedGuardiesDays(cursId, beforeDate) {
       .map(([date]) => date)
       .sort();
   }
-  const snapshot = await getDocs(collection(db, 'cursos', cursId, 'guardiesDays'));
+  const snapshot = await getDocs(query(
+    collection(db, 'cursos', cursId, 'guardiesDays'),
+    where('status', 'in', ['draft', 'published']),
+  ));
   trackReads('unclosedDaysLoad', snapshot.docs.length, `total:${snapshot.docs.length}`);
   return snapshot.docs
     .filter((item) => item.id < beforeDate && guardiesDayNeedsClosing(item.data()))
@@ -792,7 +796,13 @@ export async function loadUnclosedGuardiesDays(cursId, beforeDate) {
     .sort();
 }
 
-export function subscribeGuardiesDay(cursId, date, onChange, onError = () => {}, { publishedOnly = false } = {}) {
+export function subscribeGuardiesDay(
+  cursId,
+  date,
+  onChange,
+  onError = () => {},
+  { publishedOnly = false, iosPollInterval = 60 * 1000 } = {},
+) {
   if (E2E_AUTH_BYPASS) {
     return subscribeE2E(cursId, (data) => {
       const day = data.days?.[date] || null;
@@ -813,25 +823,46 @@ export function subscribeGuardiesDay(cursId, date, onChange, onError = () => {},
       },
       (day) => onChange(day, { fromCache: false, hasPendingWrites: false }),
       onError,
+      iosPollInterval,
     );
   }
 
   if (publishedOnly) {
-    const publishedDays = query(
-      collection(db, 'cursos', cursId, 'guardiesDays'),
-      where('status', 'in', ['published', 'closed']),
-    );
-    let daySnapshotCount = 0;
-    return onSnapshot(publishedDays, (snapshot) => {
-      daySnapshotCount += 1;
-      const reads = daySnapshotCount === 1 ? snapshot.docs.length : snapshot.docChanges().length;
-      trackReads('daySnapshot', reads, daySnapshotCount === 1 ? `initial-publishedOnly:${snapshot.docs.length}` : 'update', snapshot.metadata.fromCache);
-      const selected = snapshot.docs.find((item) => item.id === date);
-      onChange(selected?.data() || null, {
-        fromCache: snapshot.metadata.fromCache,
-        hasPendingWrites: snapshot.metadata.hasPendingWrites,
+    let unsubscribePrivate = () => {};
+    let privateActive = false;
+    const stopPrivate = () => {
+      unsubscribePrivate();
+      unsubscribePrivate = () => {};
+      privateActive = false;
+    };
+    const unsubscribePublic = subscribePublicGuardiesDay(cursId, date, (publicDay, metadata = {}) => {
+      trackReads('dayPublicSignalSnapshot', 1, publicDay ? 'published' : 'not-published', metadata.fromCache);
+      if (!publicDay) {
+        // Despublication: stop the private subscription before reporting null.
+        stopPrivate();
+        onChange(null, metadata);
+        return;
+      }
+      if (privateActive) return;
+      privateActive = true;
+      unsubscribePrivate = onSnapshot(guardiesDayRef(cursId, date), (snapshot) => {
+        trackReads('daySnapshot', 1, 'published-document', snapshot.metadata.fromCache);
+        const day = snapshot.exists() && ['published', 'closed'].includes(snapshot.data()?.status)
+          ? snapshot.data()
+          : null;
+        onChange(day, {
+          fromCache: snapshot.metadata.fromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        });
+      }, (error) => {
+        stopPrivate();
+        onError(error);
       });
     }, onError);
+    return () => {
+      stopPrivate();
+      unsubscribePublic();
+    };
   }
 
   return onSnapshot(guardiesDayRef(cursId, date), (snapshot) => {

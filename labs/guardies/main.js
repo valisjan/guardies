@@ -502,7 +502,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     }, (error) => {
       if (error?.code === 'permission-denied') return;
       showError(`No s'han pogut sincronitzar les dades. ${error.message || error}`);
-    });
+    }, { iosPollInterval: 5 * 60 * 1000 });
   }
 
   function serializableDay() {
@@ -741,7 +741,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     }, (error) => {
       if (error?.code === 'permission-denied') return;
       showError(`No s'ha pogut sincronitzar la jornada. ${error.message || error}`);
-    }, { publishedOnly: state.teacherView || !state.isAdmin });
+    }, {
+      publishedOnly: state.teacherView || !state.isAdmin,
+      iosPollInterval: state.canWrite ? 30 * 1000 : 60 * 1000,
+    });
   }
 
   function cacheGuardiesDay(date, saved) {

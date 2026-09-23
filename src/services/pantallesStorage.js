@@ -140,7 +140,10 @@ export function subscribePublicGuardiesDay(courseId, date, onChange, onError = (
   }
   return onSnapshot(publicDayRef(courseId, date), (snapshot) => {
     const data = snapshot.exists() ? snapshot.data() : null;
-    onChange(data && ['published', 'closed'].includes(data.status) ? data : null);
+    onChange(data && ['published', 'closed'].includes(data.status) ? data : null, {
+      fromCache: snapshot.metadata.fromCache,
+      hasPendingWrites: snapshot.metadata.hasPendingWrites,
+    });
   }, onError);
 }
 
