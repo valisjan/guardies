@@ -540,6 +540,7 @@ h3 {
   appearance: none;
   border-color: var(--border);
   background: var(--surface-subtle);
+  color: var(--text);
   cursor: pointer;
   font: inherit;
   margin: 0;
