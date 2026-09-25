@@ -50,6 +50,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   };
   const REMOTE_CACHE_PREFIX = 'quota_guardies_remote_cache:';
   const DAY_CACHE_PREFIX = 'quota_guardies_day_cache:';
+  const UNCLOSED_CACHE_PREFIX = 'quota_guardies_unclosed_days:';
+  const UNCLOSED_CACHE_TTL = 2 * 60 * 1000;
   const state = useGuardiesStore();
   let daySaveTimer = null;
   let lastDaySignature = '';
@@ -286,13 +288,16 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   async function loadBootstrapAuxiliaryData(courseId) {
+    const cachedUnclosedDays = state.canWrite ? loadCachedUnclosedDays(courseId) : null;
     const [teacherDirectory, stats, unclosedDays] = await Promise.all([
       state.canWrite
         ? loadGuardiesTeacherDirectory(courseId).catch(() => [])
         : Promise.resolve([]),
       loadGuardiesStats(courseId).catch(() => ({ counts: {} })),
       state.canWrite
-        ? loadUnclosedGuardiesDays(courseId, localDateString(new Date())).catch(() => [])
+        ? cachedUnclosedDays
+          ? Promise.resolve(cachedUnclosedDays)
+          : loadGuardiesUnclosedDaysAndCache(courseId)
         : Promise.resolve([]),
     ]);
     if (courseId !== state.courseId) return;
@@ -300,6 +305,30 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.unclosedDays = unclosedDays;
     state.guardCounts = new Map(Object.entries(stats.counts || {}));
     render();
+  }
+
+  function loadCachedUnclosedDays(courseId) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(`${UNCLOSED_CACHE_PREFIX}${courseId}`) || 'null');
+      if (!cached || !Array.isArray(cached.days) || Date.now() - Number(cached.cachedAt) > UNCLOSED_CACHE_TTL) return null;
+      return cached.days;
+    } catch {
+      return null;
+    }
+  }
+
+  async function loadGuardiesUnclosedDaysAndCache(courseId) {
+    const days = await loadUnclosedGuardiesDays(courseId, localDateString(new Date())).catch(() => []);
+    saveCachedUnclosedDays(courseId, days);
+    return days;
+  }
+
+  function saveCachedUnclosedDays(courseId, days) {
+    try {
+      localStorage.setItem(`${UNCLOSED_CACHE_PREFIX}${courseId}`, JSON.stringify({ days, cachedAt: Date.now() }));
+    } catch {
+      // Local cache is optional and must never block the bootstrap.
+    }
   }
 
   function scheduleBootstrapRetry() {
@@ -854,6 +883,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         state.courseId,
         localDateString(new Date()),
       ).catch(() => state.unclosedDays);
+      saveCachedUnclosedDays(state.courseId, state.unclosedDays);
       lastDaySignature = daySignature();
       state.dayPersistenceStatus = 'ready';
       flushPendingRemoteDay();

@@ -1,18 +1,18 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, defineAsyncComponent, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import GuardiesTopBar from './GuardiesTopBar.vue';
 import GuardiesWorkHeader from './GuardiesWorkHeader.vue';
-import GuardiesSetupPanel from './GuardiesSetupPanel.vue';
-import GuardiesPatiPanel from './GuardiesPatiPanel.vue';
-import GuardiesConvivenciaPanel from './GuardiesConvivenciaPanel.vue';
+const GuardiesSetupPanel = defineAsyncComponent(() => import('./GuardiesSetupPanel.vue'));
+const GuardiesPatiPanel = defineAsyncComponent(() => import('./GuardiesPatiPanel.vue'));
+const GuardiesConvivenciaPanel = defineAsyncComponent(() => import('./GuardiesConvivenciaPanel.vue'));
 import GuardiesWorkspace from './GuardiesWorkspace.vue';
-import GuardiesTeacherStats from './GuardiesTeacherStats.vue';
-import GuardiesGuardCountPanel from './GuardiesGuardCountPanel.vue';
-import GuardiesTeacherExclusionsPanel from './GuardiesTeacherExclusionsPanel.vue';
-import GuardiesObservationPresetsPanel from './GuardiesObservationPresetsPanel.vue';
-import GuardiesAdminStatistics from './GuardiesAdminStatistics.vue';
-import GuardiesReleaseNotes from './GuardiesReleaseNotes.vue';
+const GuardiesTeacherStats = defineAsyncComponent(() => import('./GuardiesTeacherStats.vue'));
+const GuardiesGuardCountPanel = defineAsyncComponent(() => import('./GuardiesGuardCountPanel.vue'));
+const GuardiesTeacherExclusionsPanel = defineAsyncComponent(() => import('./GuardiesTeacherExclusionsPanel.vue'));
+const GuardiesObservationPresetsPanel = defineAsyncComponent(() => import('./GuardiesObservationPresetsPanel.vue'));
+const GuardiesAdminStatistics = defineAsyncComponent(() => import('./GuardiesAdminStatistics.vue'));
+const GuardiesReleaseNotes = defineAsyncComponent(() => import('./GuardiesReleaseNotes.vue'));
 import { signInGuardies } from '../../../src/services/guardiesStorage.js';
 import { useGuardiesStore } from '../stores/guardies.js';
 
@@ -57,20 +57,20 @@ window.addEventListener('guardies:auth-ready', () => {
     <GuardiesWorkHeader v-show="contextReady && ((canWrite && adminSection === 'daily') || (!canWrite && teacherSection === 'daily'))" />
   </Teleport>
   <Teleport to="#guardies-setup-root">
-    <GuardiesAdminStatistics v-show="contextReady && canWrite && adminSection === 'statistics'" />
+    <GuardiesAdminStatistics v-if="contextReady && canWrite && adminSection === 'statistics'" />
     <GuardiesSetupPanel v-show="contextReady && canWrite && adminSection === 'config'" />
-    <GuardiesTeacherExclusionsPanel v-show="contextReady && canWrite && adminSection === 'config'" />
-    <GuardiesGuardCountPanel v-show="contextReady && canWrite && adminSection === 'config'" />
-    <GuardiesObservationPresetsPanel v-show="contextReady && canWrite && adminSection === 'config'" />
+    <GuardiesTeacherExclusionsPanel v-if="contextReady && canWrite && adminSection === 'config'" />
+    <GuardiesGuardCountPanel v-if="contextReady && canWrite && adminSection === 'config'" />
+    <GuardiesObservationPresetsPanel v-if="contextReady && canWrite && adminSection === 'config'" />
   </Teleport>
   <Teleport to="#guardies-convivencia-root">
-    <GuardiesConvivenciaPanel v-show="contextReady && canWrite && adminSection === 'config'" />
+    <GuardiesConvivenciaPanel v-if="contextReady && canWrite && adminSection === 'config'" />
   </Teleport>
   <Teleport to="#guardies-pati-root">
-    <GuardiesPatiPanel v-show="contextReady && canWrite && adminSection === 'config'" />
+    <GuardiesPatiPanel v-if="contextReady && canWrite && adminSection === 'config'" />
   </Teleport>
   <Teleport to="#guardies-release-notes-root">
-    <GuardiesReleaseNotes v-show="contextReady && canWrite && adminSection === 'config'" />
+    <GuardiesReleaseNotes v-if="contextReady && canWrite && adminSection === 'config'" />
   </Teleport>
   <Teleport v-if="contextReady && !canWrite" to="#guardies-setup-root">
     <section v-if="authRequired" class="guardies-auth-gate no-print">
@@ -81,7 +81,7 @@ window.addEventListener('guardies:auth-ready', () => {
       <button type="button" role="tab" :aria-selected="teacherSection === 'daily'" :class="{ active: teacherSection === 'daily' }" @click="store.teacherSection = 'daily'">Guàrdies del dia</button>
       <button type="button" role="tab" :aria-selected="teacherSection === 'stats'" :class="{ active: teacherSection === 'stats' }" @click="store.teacherSection = 'stats'">Recompte de guàrdies</button>
     </nav>
-    <GuardiesTeacherStats v-show="!authRequired && teacherSection === 'stats'" />
+    <GuardiesTeacherStats v-if="!authRequired && teacherSection === 'stats'" />
   </Teleport>
   <Teleport to="#guardies-workspace-root">
     <GuardiesWorkspace />
