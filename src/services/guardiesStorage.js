@@ -79,6 +79,16 @@ function guardiesStatsRef(cursId) {
   return guardiesRef(cursId, 'stats');
 }
 
+function cleanGuardHistory(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).map(([teacherId, dates]) => [
+    String(teacherId),
+    Object.fromEntries(Object.entries(dates && typeof dates === 'object' ? dates : {})
+      .filter(([date, groups]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && Array.isArray(groups))
+      .map(([date, groups]) => [date, Array.from(new Set(groups.map((group) => String(group || '').trim()).filter(Boolean)))])),
+  ]));
+}
+
 function directoryVersionRef(cursId) {
   return guardiesRef(cursId, 'directoriVersion');
 }
@@ -594,6 +604,107 @@ export async function loadGuardiesStats(cursId) {
   return snapshot.exists() ? snapshot.data() : { counts: {} };
 }
 
+export async function saveGuardiesGuardHistory(cursId, history) {
+  const cleanHistory = cleanGuardHistory(history);
+  if (E2E_AUTH_BYPASS) {
+    const data = getE2EData(cursId);
+    data.stats ||= { counts: {} };
+    data.stats.guardHistory = cleanHistory;
+    data.stats.guardHistoryVersion = 1;
+    setE2EData(cursId, data);
+    return data.stats;
+  }
+  return runTransaction(db, async (transaction) => {
+    const reference = guardiesStatsRef(cursId);
+    const snapshot = await transaction.get(reference);
+    const stats = snapshot.exists() ? snapshot.data() : { counts: {} };
+    const next = {
+      counts: stats.counts || {},
+      guardHistory: cleanHistory,
+      guardHistoryVersion: 1,
+      updatedAt: serverTimestamp(),
+    };
+    transaction.set(reference, next);
+    return next;
+  });
+}
+
+export async function updateGuardiesGuardHistory(cursId, date, entries, remove = false) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return;
+  if (E2E_AUTH_BYPASS) {
+    const data = getE2EData(cursId);
+    data.stats ||= { counts: {} };
+    const history = cleanGuardHistory(data.stats.guardHistory);
+    Object.keys(history).forEach((teacherId) => {
+      if (remove) delete history[teacherId][date];
+      if (!Object.keys(history[teacherId]).length) delete history[teacherId];
+    });
+    if (!remove) (entries || []).forEach(({ teacherId, groups }) => {
+      if (!teacherId) return;
+      history[teacherId] ||= {};
+      history[teacherId][date] = Array.from(new Set((groups || []).filter(Boolean)));
+    });
+    data.stats.guardHistory = history;
+    data.stats.guardHistoryVersion = 1;
+    setE2EData(cursId, data);
+    return data.stats;
+  }
+  return runTransaction(db, async (transaction) => {
+    const reference = guardiesStatsRef(cursId);
+    const snapshot = await transaction.get(reference);
+    const stats = snapshot.exists() ? snapshot.data() : { counts: {} };
+    const history = cleanGuardHistory(stats.guardHistory);
+    Object.keys(history).forEach((teacherId) => {
+      if (remove) delete history[teacherId][date];
+      if (!Object.keys(history[teacherId]).length) delete history[teacherId];
+    });
+    if (!remove) (entries || []).forEach(({ teacherId, groups }) => {
+      if (!teacherId) return;
+      history[teacherId] ||= {};
+      history[teacherId][date] = Array.from(new Set((groups || []).filter(Boolean)));
+    });
+    const next = {
+      counts: stats.counts || {},
+      guardHistory: history,
+      guardHistoryVersion: 1,
+      updatedAt: serverTimestamp(),
+    };
+    transaction.set(reference, next);
+    return next;
+  });
+}
+
+export async function rebuildGuardiesGuardHistory(cursId, absenceDetails = {}) {
+  if (E2E_AUTH_BYPASS) {
+    const data = getE2EData(cursId);
+    const history = {};
+    Object.entries(data.days || {}).forEach(([date, day]) => {
+      if (day?.status !== 'closed') return;
+      Object.entries(day.assignments || {}).forEach(([absenceId, assignment]) => {
+        const raw = typeof assignment === 'string' ? { teacherId: assignment } : assignment;
+        if (raw?.source !== 'guard' || !raw.teacherId) return;
+        history[raw.teacherId] ||= {};
+        history[raw.teacherId][date] = Array.from(new Set(absenceDetails[absenceId]?.groups || []));
+      });
+    });
+    return saveGuardiesGuardHistory(cursId, history);
+  }
+  const snapshot = await getDocs(collection(db, 'cursos', cursId, 'guardiesDays'));
+  trackReads('guardHistoryMigration', snapshot.docs.length, `total:${snapshot.docs.length}`);
+  const history = {};
+  snapshot.docs.forEach((item) => {
+    const day = item.data();
+    if (day?.status !== 'closed') return;
+    Object.entries(day.assignments || {}).forEach(([absenceId, assignment]) => {
+      const raw = typeof assignment === 'string' ? { teacherId: assignment } : assignment;
+      if (raw?.source !== 'guard' || !raw.teacherId) return;
+      history[raw.teacherId] ||= {};
+      history[raw.teacherId][item.id] = Array.from(new Set(absenceDetails[absenceId]?.groups || []));
+    });
+  });
+  return saveGuardiesGuardHistory(cursId, history);
+}
+
 export async function setGuardiesTeacherCount(cursId, teacherId, source, value, slot = '') {
   const cleanTeacherId = String(teacherId || '').trim();
   if (!['released', 'guard'].includes(source)) throw new Error('Tipus de recompte no vàlid.');
@@ -629,7 +740,12 @@ export async function setGuardiesTeacherCount(cursId, teacherId, source, value, 
     const stats = snapshot.exists() ? snapshot.data() : { counts: {} };
     const counts = { ...(stats.counts || {}) };
     counts[cleanTeacherId] = withManualCount(counts[cleanTeacherId]);
-    transaction.set(reference, { counts, updatedAt: serverTimestamp() });
+    transaction.set(reference, {
+      counts,
+      guardHistory: stats.guardHistory || {},
+      guardHistoryVersion: Number(stats.guardHistoryVersion) || 0,
+      updatedAt: serverTimestamp(),
+    });
     return { counts };
   });
 }
@@ -677,7 +793,7 @@ export async function resetGuardiesCourseData(cursId) {
     updatedAt: serverTimestamp(),
   }));
   publicDays.docs.forEach((snapshot) => batch.delete(snapshot.ref));
-  batch.set(guardiesStatsRef(cursId), { counts: {}, updatedAt: serverTimestamp() });
+  batch.set(guardiesStatsRef(cursId), { counts: {}, guardHistory: {}, guardHistoryVersion: 1, updatedAt: serverTimestamp() });
   await batch.commit();
   return { deletedDays: days.size };
 }
@@ -995,20 +1111,20 @@ export async function transitionGuardiesDay(cursId, date, action) {
     if (action === 'unpublish') {
       const counts = updateGuardCounts(stats.counts, day.countedAssignments || [], []);
       Object.assign(update, { status: 'draft', publishedAt: '', closedAt: '', countedAssignments: [] });
-      stats = { counts, updatedAt: serverTimestamp() };
+      stats = { counts, guardHistory: stats.guardHistory || {}, guardHistoryVersion: Number(stats.guardHistoryVersion) || 0, updatedAt: serverTimestamp() };
       transaction.set(statsReference, stats);
     }
     if (action === 'reopen') {
       const counts = updateGuardCounts(stats.counts, day.countedAssignments || [], []);
       Object.assign(update, { status: 'published', closedAt: '', countedAssignments: [] });
-      stats = { counts, updatedAt: serverTimestamp() };
+      stats = { counts, guardHistory: stats.guardHistory || {}, guardHistoryVersion: Number(stats.guardHistoryVersion) || 0, updatedAt: serverTimestamp() };
       transaction.set(statsReference, stats);
     }
     if (action === 'close') {
       const countedAssignments = countedAssignmentsForDay(day);
       const counts = updateGuardCounts(stats.counts, day.countedAssignments || [], countedAssignments);
       Object.assign(update, { status: 'closed', closedAt: now, countedAssignments });
-      stats = { counts, updatedAt: serverTimestamp() };
+      stats = { counts, guardHistory: stats.guardHistory || {}, guardHistoryVersion: Number(stats.guardHistoryVersion) || 0, updatedAt: serverTimestamp() };
       transaction.set(statsReference, stats);
     }
     transaction.update(dayReference, update);

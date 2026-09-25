@@ -21,6 +21,8 @@ import {
   loadGuardiesData,
   loadGuardiesDay,
   loadGuardiesStats,
+  rebuildGuardiesGuardHistory,
+  updateGuardiesGuardHistory,
   loadGuardiesTeacherDirectory,
   loadUnclosedGuardiesDays,
   mergeGuardiesDayPlan,
@@ -304,6 +306,27 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.teacherDirectory = teacherDirectory;
     state.unclosedDays = unclosedDays;
     state.guardCounts = new Map(Object.entries(stats.counts || {}));
+    state.guardHistory = stats.guardHistory || {};
+    if (state.canWrite && Number(stats.guardHistoryVersion) !== 1) {
+      const absenceDetails = Object.fromEntries(
+        parser.agruparSessionsCobertura(state.sessions.filter(isMeaningfulSession))
+          .map((item) => [item.id, {
+            groups: Array.from(new Set([
+              ...(item.grupsVisibles || []),
+              ...(item.cursosVisibles || []),
+              ...(item.grups || []),
+              ...(item.cursos || []),
+            ].filter(Boolean))),
+          }]),
+      );
+      rebuildGuardiesGuardHistory(courseId, absenceDetails)
+        .then((result) => {
+          if (courseId !== state.courseId) return;
+          state.guardHistory = result.guardHistory || {};
+          render();
+        })
+        .catch(() => {});
+    }
     render();
   }
 
@@ -531,6 +554,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       lastRemoteDataSignature = signature;
       applyRemoteData(remoteData);
       state.guardCounts = new Map(Object.entries(remoteData.stats?.counts || {}));
+      state.guardHistory = remoteData.stats?.guardHistory || state.guardHistory || {};
       const nextFiles = JSON.stringify({
         reference: state.referenceText,
         untis: state.untisText,
@@ -878,6 +902,30 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         ? result.day.countedAssignments
         : state.countedAssignments;
       state.guardCounts = new Map(Object.entries(result.stats?.counts || Object.fromEntries(state.guardCounts)));
+      if (['close', 'reopen', 'unpublish'].includes(action)) {
+        if (action === 'close') {
+          const entries = [];
+          state.assignacions.forEach((teacherId, absenceId) => {
+            if (state.assignmentSources.get(absenceId) !== 'guard') return;
+            const item = state.absencies.get(absenceId);
+            if (!item || item.dia !== xmlDayForDate(state.date)) return;
+            const groups = Array.from(new Set([
+              ...(item.grupsVisibles || []), ...(item.cursosVisibles || []),
+              ...(item.grups || []), ...(item.cursos || []),
+            ].filter(Boolean)));
+            entries.push({ teacherId, groups });
+            state.guardHistory[teacherId] ||= {};
+            state.guardHistory[teacherId][state.date] = groups;
+          });
+          await updateGuardiesGuardHistory(state.courseId, state.date, entries);
+        } else {
+          await updateGuardiesGuardHistory(state.courseId, state.date, [], true);
+          Object.keys(state.guardHistory).forEach((teacherId) => {
+            delete state.guardHistory[teacherId][state.date];
+            if (!Object.keys(state.guardHistory[teacherId]).length) delete state.guardHistory[teacherId];
+          });
+        }
+      }
       await syncPublicGuardiesDay();
       state.unclosedDays = await loadUnclosedGuardiesDays(
         state.courseId,

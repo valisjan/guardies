@@ -1,11 +1,12 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { guardCountForSlot, guardSlotKey } from '../../../src/modules/guardies/domain/workflow.js';
 import { useGuardiesStore } from '../stores/guardies.js';
 
 const store = useGuardiesStore();
-const { guardCounts, professorOptions, courseName, viewerName, sessions, guardiaCodes } = storeToRefs(store);
+const { guardCounts, guardHistory, professorOptions, courseName, viewerName, sessions, guardiaCodes } = storeToRefs(store);
+const selectedTeacherId = ref('');
 
 function normalize(value) {
   return String(value || '')
@@ -99,6 +100,22 @@ const guardMatrix = computed(() => {
     })),
   }));
 });
+
+const selectedTeacher = computed(() => {
+  if (!selectedTeacherId.value) return null;
+  return professorOptions.value.find((teacher) => teacher.placa === selectedTeacherId.value) || null;
+});
+
+const selectedHistory = computed(() => {
+  const history = guardHistory.value?.[selectedTeacherId.value] || {};
+  return Object.entries(history)
+    .sort(([left], [right]) => right.localeCompare(left))
+    .map(([date, groups]) => ({ date, groups: Array.isArray(groups) ? groups : [] }));
+});
+
+function selectTeacher(teacherId) {
+  selectedTeacherId.value = selectedTeacherId.value === teacherId ? '' : teacherId;
+}
 </script>
 
 <template>
@@ -135,6 +152,11 @@ const guardMatrix = computed(() => {
               class="guard-roster-teacher"
               :class="[`heat-${teacher.heat}`, { 'is-mine': teacher.mine }]"
               :data-roster-teacher="teacher.teacherId"
+              role="button"
+              tabindex="0"
+              @click="selectTeacher(teacher.teacherId)"
+              @keydown.enter="selectTeacher(teacher.teacherId)"
+              @keydown.space.prevent="selectTeacher(teacher.teacherId)"
             >
               <span>{{ teacher.label }}</span>
               <b data-roster-count :aria-label="`${teacher.count} guàrdies realitzades en aquesta hora`">{{ teacher.count }}</b>
@@ -144,6 +166,19 @@ const guardMatrix = computed(() => {
         </div>
       </div>
     </div>
-    <div v-else class="empty-small">No hi ha hores de guàrdia configurades.</div>
+    <section v-if="selectedTeacher" class="guard-history" aria-live="polite">
+      <header>
+        <strong>{{ selectedTeacher.label }}</strong>
+        <button type="button" class="ghost" @click="selectedTeacherId = ''">Tanca</button>
+      </header>
+      <p v-if="!selectedHistory.length" class="empty-small">No hi ha guardies G tancades per aquest professor.</p>
+      <ul v-else>
+        <li v-for="entry in selectedHistory" :key="entry.date">
+          <time :datetime="entry.date">{{ new Intl.DateTimeFormat('ca-ES').format(new Date(`${entry.date}T12:00:00`)) }}</time>
+          <span>{{ entry.groups.length ? entry.groups.join(' · ') : 'Grup no disponible' }}</span>
+        </li>
+      </ul>
+    </section>
+    <div v-if="!guardMatrix.length" class="empty-small">No hi ha hores de guàrdia configurades.</div>
   </section>
 </template>

@@ -1922,6 +1922,12 @@ h3 {
   border-radius: 4px;
   background: var(--surface);
   padding: 4px 5px 4px 7px;
+  cursor: pointer;
+}
+
+.guard-roster-teacher:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
 .guard-roster-teacher.is-mine {
@@ -1982,6 +1988,57 @@ h3 {
   border-color: color-mix(in srgb, var(--coral) 68%, var(--border));
   background: color-mix(in srgb, var(--coral) 42%, var(--surface));
   color: var(--text);
+}
+
+.guard-history {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  padding: 9px;
+}
+
+.guard-history > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.guard-history > header strong {
+  font-size: 0.78rem;
+}
+
+.guard-history > header button {
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 0.68rem;
+}
+
+.guard-history ul {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guard-history li {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+  font-size: 0.7rem;
+}
+
+.guard-history time {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.guard-history li span {
+  font-weight: 800;
 }
 
 .entry-panel {
