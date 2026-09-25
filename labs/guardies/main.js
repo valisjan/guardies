@@ -260,7 +260,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       if (!usingCachedData) remoteData = await migrateLegacyData(remoteData);
       applyRemoteData(remoteData);
       const [teacherDirectory, stats, unclosedDays] = await Promise.all([
-        loadGuardiesTeacherDirectory(state.courseId).catch(() => []),
+        state.canWrite
+          ? loadGuardiesTeacherDirectory(state.courseId).catch(() => [])
+          : Promise.resolve([]),
         loadGuardiesStats(state.courseId).catch(() => ({ counts: {} })),
         state.canWrite
           ? loadUnclosedGuardiesDays(state.courseId, localDateString(new Date())).catch(() => [])
