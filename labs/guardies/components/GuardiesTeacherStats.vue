@@ -144,6 +144,25 @@ function selectTeacher(teacherId) {
       </div>
     </header>
 
+    <section v-if="selectedTeacher" class="guard-history guard-history-popover" aria-live="polite" aria-label="Historial de guàrdies del professor seleccionat">
+      <header>
+        <div>
+          <span class="guard-history-kicker">Historial de guàrdies G</span>
+          <strong>{{ selectedTeacher.label }}</strong>
+        </div>
+        <button type="button" class="ghost" @click="selectedTeacherId = ''">Tanca</button>
+      </header>
+      <p v-if="!selectedHistory.length" class="empty-small">No hi ha guardies G tancades per aquest professor.</p>
+      <template v-else>
+        <p class="guard-history-summary">{{ selectedHistory.length }} {{ selectedHistory.length === 1 ? 'jornada' : 'jornades' }} tancades</p>
+        <ul>
+          <li v-for="entry in selectedHistory" :key="entry.date">
+            <time :datetime="entry.date">{{ new Intl.DateTimeFormat('ca-ES').format(new Date(`${entry.date}T12:00:00`)) }}</time>
+            <span>{{ entry.groups.length ? entry.groups.join(' · ') : 'Grup no disponible' }}</span>
+          </li>
+        </ul>
+      </template>
+    </section>
     <div v-if="guardMatrix.length" class="guard-matrix-frame">
       <div class="guard-matrix" role="table" aria-label="Professorat de G i cobertures realitzades per dia i hora">
         <div class="guard-matrix-row guard-matrix-columns" role="row">
@@ -184,19 +203,6 @@ function selectTeacher(teacherId) {
         </div>
       </div>
     </div>
-    <section v-if="selectedTeacher" class="guard-history" aria-live="polite">
-      <header>
-        <strong>{{ selectedTeacher.label }}</strong>
-        <button type="button" class="ghost" @click="selectedTeacherId = ''">Tanca</button>
-      </header>
-      <p v-if="!selectedHistory.length" class="empty-small">No hi ha guardies G tancades per aquest professor.</p>
-      <ul v-else>
-        <li v-for="entry in selectedHistory" :key="entry.date">
-          <time :datetime="entry.date">{{ new Intl.DateTimeFormat('ca-ES').format(new Date(`${entry.date}T12:00:00`)) }}</time>
-          <span>{{ entry.groups.length ? entry.groups.join(' · ') : 'Grup no disponible' }}</span>
-        </li>
-      </ul>
-    </section>
     <div v-if="!guardMatrix.length" class="empty-small">No hi ha hores de guàrdia configurades.</div>
   </section>
 </template>

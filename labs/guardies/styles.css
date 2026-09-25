@@ -2003,6 +2003,32 @@ h3 {
   padding: 9px;
 }
 
+.guard-history-popover {
+  position: sticky;
+  top: 8px;
+  z-index: 3;
+  border-color: var(--primary);
+  background: var(--surface);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.guard-history-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--primary-strong);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.guard-history-summary {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
 .guard-history > header {
   display: flex;
   align-items: center;
