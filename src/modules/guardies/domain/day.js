@@ -49,8 +49,45 @@ function sameGroup(left, right) {
   return leftValues.some((value) => rightValues.includes(value));
 }
 
+function sessionLabel(session, fields) {
+  return fields
+    .map((field) => normalisedValue(session?.[field]))
+    .find(Boolean) || '';
+}
+
+function isBatGroup(value) {
+  const normalised = normalisedValue(value);
+  return /^(?:[12])?BAT(?:[A-Z0-9]*)$/.test(normalised);
+}
+
+function isBatAbsence(absence) {
+  return [
+    absence?.grup,
+    absence?.grupVisible,
+    ...(Array.isArray(absence?.grups) ? absence.grups : []),
+    ...(Array.isArray(absence?.grupsVisibles) ? absence.grupsVisibles : []),
+  ].some(isBatGroup);
+}
+
+function isSplitOptativeContext(sessions, groupId) {
+  const groupSessions = sessions.filter((session) => (
+    session.teClasse
+    && sameGroup(session, { grup: groupId })
+  ));
+  if (groupSessions.length < 2) return false;
+
+  const subjects = new Set(groupSessions
+    .map((session) => sessionLabel(session, ['materia', 'materiaCurta', 'materiaNom']))
+    .filter(Boolean));
+  const classrooms = new Set(groupSessions
+    .map((session) => sessionLabel(session, ['aula', 'aulaNom']))
+    .filter(Boolean));
+  return subjects.size >= 2 && classrooms.size >= 2;
+}
+
 function sharedClassroomContext(sessions, absence) {
   if (!absence?.placa || !absence?.dia || !absence?.hora) return null;
+  if (isBatAbsence(absence)) return null;
   const targetSessions = sessions.filter((session) => (
     session.teClasse
     && session.placa === absence.placa
@@ -59,6 +96,10 @@ function sharedClassroomContext(sessions, absence) {
   ));
   const groupId = singleValue(targetSessions.map((session) => session.grup));
   if (!groupId) return null;
+  if (isSplitOptativeContext(
+    sessions.filter((session) => session.teClasse && session.dia === absence.dia && session.hora === absence.hora),
+    groupId,
+  )) return null;
 
   const teachersAtSlot = new Map();
   sessions.filter((session) => (

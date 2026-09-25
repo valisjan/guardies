@@ -117,6 +117,48 @@ test('detecta la codocència encara que el company tingui una altra sessió o un
   }), 'P2');
 });
 
+test('no preassigna optatives del mateix grup en aules i matèries diferents', () => {
+  const sessions = [
+    { placa: 'LLOR', dia: '1', hora: '8:00', grup: '2BATA', materia: 'QUI-A', aula: 'LAB1', teClasse: true },
+    { placa: 'VALLS', dia: '1', hora: '8:00', grup: '2BATA', materia: 'TE2-A', aula: 'AULA 12', teClasse: true },
+  ];
+  const absence = { id: 'LLOR|1|8:00', placa: 'LLOR', dia: '1', hora: '8:00', grups: ['2BATA'] };
+
+  assert.equal(classroomPartnerForAbsence({
+    sessions,
+    absence,
+    absences: new Map([[absence.id, absence]]),
+  }), '');
+});
+
+test('manté separades les absències de tres optatives del mateix grup', () => {
+  const sessions = [
+    { placa: 'LLOR', dia: '1', hora: '8:00', grup: '2BATA', materia: 'QUI-A', aula: 'LAB1', teClasse: true },
+    { placa: 'VALLS', dia: '1', hora: '8:00', grup: '2BATA', materia: 'TE2-A', aula: 'AULA 12', teClasse: true },
+    { placa: 'SERRA', dia: '1', hora: '8:00', grup: '2BATA', materia: 'BIO-A', aula: 'AULA 14', teClasse: true },
+  ];
+  const absences = sessions.map((session) => ({
+    id: `${session.placa}|1|8:00`, placa: session.placa, dia: '1', hora: '8:00',
+    grups: ['2BATA'], grupsVisibles: ['2BAT-A'], sessions: [session],
+  }));
+
+  assert.equal(mergeSharedClassroomAbsences({ sessions, absences }).length, 3);
+});
+
+test('no preassigna cap grup BAT encara que comparteixi aula', () => {
+  const sessions = [
+    { placa: 'P1', dia: '1', hora: '8:00', grup: '1BAT', materia: 'MAT', aula: 'AULA 1', teClasse: true },
+    { placa: 'P2', dia: '1', hora: '8:00', grup: '1BAT', materia: 'MAT', aula: 'AULA 1', teClasse: true },
+  ];
+  const absence = { id: 'P1|1|8:00', placa: 'P1', dia: '1', hora: '8:00', grups: ['1BAT'] };
+
+  assert.equal(classroomPartnerForAbsence({
+    sessions,
+    absence,
+    absences: new Map([[absence.id, absence]]),
+  }), '');
+});
+
 test('no considera docència compartida els blocs flexibles ni dues absències', () => {
   const flexibleSessions = [
     { placa: 'P1', dia: '1', hora: '8:00', grup: '1A', aula: 'A12', teClasse: true },
