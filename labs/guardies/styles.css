@@ -3346,9 +3346,9 @@ h3 {
   display: none !important;
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 1450px) {
   .work-header {
-    grid-template-columns: auto minmax(420px, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .day-command-bar {
