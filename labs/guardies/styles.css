@@ -537,15 +537,24 @@ h3 {
 }
 
 .today-info {
+  appearance: none;
   border-color: var(--border);
   background: var(--surface-subtle);
   cursor: pointer;
+  font: inherit;
+  margin: 0;
   text-align: left;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+  width: 100%;
 }
 
 .today-info:hover {
   border-color: var(--primary-border);
   background: var(--primary-soft);
+}
+
+.today-info:active {
+  transform: translateY(1px);
 }
 
 .day-command-bar {
@@ -561,9 +570,25 @@ h3 {
   gap: 7px;
   margin-right: auto;
   min-width: 0;
+  min-height: 29px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  padding: 3px 7px;
   color: var(--muted);
   font-size: 0.68rem;
   font-weight: 750;
+}
+
+.day-count {
+  color: var(--text);
+  font-weight: 850;
+}
+
+.last-sync {
+  border-left: 1px solid var(--border);
+  padding-left: 7px;
+  white-space: nowrap;
 }
 
 .sync-pill.sync-saving {
@@ -580,6 +605,19 @@ h3 {
 .day-count,
 .last-sync {
   white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .day-summary {
+    flex-wrap: wrap;
+    flex: 1 1 100%;
+    margin-right: 0;
+  }
+
+  .last-sync {
+    border-left: 0;
+    padding-left: 0;
+  }
 }
 
 .pill {

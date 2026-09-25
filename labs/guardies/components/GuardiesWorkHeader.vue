@@ -39,7 +39,7 @@ const lastSyncLabel = computed(() => {
   if (!updatedAt.value) return 'Sense canvis guardats';
   const parsed = new Date(updatedAt.value);
   if (Number.isNaN(parsed.getTime())) return 'Última sincronització desconeguda';
-  return `Última sincronització: ${new Intl.DateTimeFormat('ca-ES', { hour: '2-digit', minute: '2-digit' }).format(parsed)}`;
+  return `Actualitzat ${new Intl.DateTimeFormat('ca-ES', { hour: '2-digit', minute: '2-digit' }).format(parsed)}`;
 });
 
 function formatDate(value) {
