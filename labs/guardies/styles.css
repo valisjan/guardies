@@ -474,6 +474,7 @@ h3 {
   align-content: stretch;
   gap: 5px;
   min-height: 64px;
+  padding-top: 8px;
 }
 
 .date-field > label,
@@ -521,13 +522,13 @@ h3 {
 .date-summary-card {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   min-width: 0;
   min-height: 64px;
   border: 1px solid var(--primary-border);
   border-radius: 7px;
   background: var(--primary-soft);
-  padding: 9px 12px;
+  padding: 8px 12px 7px;
 }
 
 .date-summary-card strong {
