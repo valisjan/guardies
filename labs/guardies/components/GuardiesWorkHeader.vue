@@ -136,7 +136,7 @@ function changeStatus(action) {
     </div>
 
     <div v-if="!teacherView" class="day-command-bar">
-      <button id="print-coverage" type="button" class="ghost" :disabled="!selectedAbsences.length" @click="printCoverage">Imprimeix A3</button>
+      <button id="print-coverage" type="button" class="ghost" :disabled="dayPersistenceStatus === 'loading'" @click="printCoverage">Imprimeix A3</button>
       <button
         v-if="canWrite"
         id="day-status-action"

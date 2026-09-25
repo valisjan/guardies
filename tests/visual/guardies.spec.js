@@ -88,6 +88,7 @@ async function uploadConfiguration(page) {
   await expect(page.locator('[data-upload-status="duties"]')).toHaveText('OK');
   await page.getByRole('tab', { name: 'Gestió diària' }).click();
   await expect(page.locator('#workspace')).toBeVisible();
+  await expect(page.locator('#print-coverage')).toBeEnabled();
 }
 
 test.describe('Guàrdies: comportament existent', () => {
