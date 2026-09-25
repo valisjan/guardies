@@ -18,6 +18,7 @@ const {
   dayStatus,
   isAdmin,
   teacherView,
+  publicDay,
   date,
 } = storeToRefs(useGuardiesStore());
 const visible = computed(() => !contextReady.value
@@ -33,7 +34,7 @@ const hasData = computed(() => (
   && persistenceStatus.value !== 'loading'
   && dayPersistenceStatus.value !== 'loading'
   && dayLoaded.value
-  && sessions.value.length > 0
+  && (canWrite.value ? sessions.value.length > 0 : Boolean(publicDay.value))
   && hasVisibleDay.value
 ));
 const selectedDayIsWeekend = computed(() => {
@@ -48,7 +49,7 @@ const emptyTitle = computed(() => {
   if (dayPersistenceStatus.value === 'stale') return 'Jornada local carregada · connexió pendent';
   if (dayPersistenceStatus.value === 'error') return 'No s\'ha pogut carregar aquesta jornada';
   if (selectedDayIsWeekend.value) return 'Dia no lectiu';
-  if (sessions.value.length && !canWrite.value && !['published', 'closed'].includes(dayStatus.value)) return 'Jornada encara no publicada';
+  if (!canWrite.value && !['published', 'closed'].includes(dayStatus.value)) return 'Jornada encara no publicada';
   return canWrite.value ? "Carrega l'horari per començar" : 'Encara no hi ha cap full de guàrdies disponible';
 });
 </script>

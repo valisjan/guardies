@@ -7,6 +7,7 @@ const store = useGuardiesStore();
 const {
   date, absencies, assignacions, dayStatus, dayPersistenceStatus,
   persistenceStatus, updatedAt, canWrite, teacherView, unclosedDays,
+  dayConflict, conflictRemoteClosed,
 } = storeToRefs(store);
 
 const xmlDay = computed(() => {
@@ -27,6 +28,7 @@ const syncLabel = computed(() => {
   if (persistenceStatus.value === 'saving' || dayPersistenceStatus.value === 'saving') return 'Guardant…';
   if (persistenceStatus.value === 'stale' || dayPersistenceStatus.value === 'stale') return 'Dades locals';
   if (persistenceStatus.value === 'error' || dayPersistenceStatus.value === 'error') return 'Error de connexió';
+  if (dayPersistenceStatus.value === 'refreshing') return 'Actualitzant…';
   return 'Sincronitzat';
 });
 
@@ -35,7 +37,7 @@ const syncClass = computed(() => {
   const dayPersistence = dayPersistenceStatus.value;
   if (persistence === 'error' || dayPersistence === 'error') return { 'sync-error': true };
   if (persistence === 'stale' || dayPersistence === 'stale') return { 'sync-stale': true };
-  if (['loading', 'saving'].includes(persistence) || ['loading', 'saving'].includes(dayPersistence)) {
+  if (['loading', 'saving', 'refreshing'].includes(persistence) || ['loading', 'saving', 'refreshing'].includes(dayPersistence)) {
     return { 'sync-saving': true };
   }
   return { 'sync-ready': true };
@@ -73,8 +75,12 @@ function localDateString(value) {
 }
 
 function onDateChange(event) {
-  store.changeDate(event.target.value);
-  window.dispatchEvent(new CustomEvent('guardies:legacy-render', { detail: { reloadDay: true } }));
+  requestDate(event.target.value);
+  event.target.value = date.value;
+}
+
+function requestDate(value) {
+  window.dispatchEvent(new CustomEvent('guardies:change-date', { detail: { date: value } }));
 }
 
 function shiftDate(days) {
@@ -84,24 +90,25 @@ function shiftDate(days) {
   parsed.setDate(parsed.getDate() + days);
   if (parsed.getDay() === 6) parsed.setDate(parsed.getDate() + (days > 0 ? 2 : -1));
   if (parsed.getDay() === 0) parsed.setDate(parsed.getDate() + (days > 0 ? 1 : -2));
-  store.changeDate(localDateString(parsed));
-  window.dispatchEvent(new CustomEvent('guardies:legacy-render', { detail: { reloadDay: true } }));
+  requestDate(localDateString(parsed));
 }
 
 function goToday() {
   const today = localDateString(new Date());
   if (today === date.value) return;
-  store.changeDate(today);
-  window.dispatchEvent(new CustomEvent('guardies:legacy-render', { detail: { reloadDay: true } }));
+  requestDate(today);
 }
 
 function retryConnection() {
   window.dispatchEvent(new CustomEvent('guardies:retry-connection'));
 }
 
+function resolveConflict(choice) {
+  window.dispatchEvent(new CustomEvent('guardies:resolve-conflict', { detail: { choice } }));
+}
+
 function openUnclosedDay(unclosedDate) {
-  store.changeDate(unclosedDate);
-  window.dispatchEvent(new CustomEvent('guardies:legacy-render', { detail: { reloadDay: true } }));
+  requestDate(unclosedDate);
 }
 
 function preparePrintDensity() {
@@ -156,6 +163,11 @@ function changeStatus(action) {
 
 <template>
   <div class="work-header-stack no-print">
+    <div v-if="canWrite && dayConflict" class="day-conflict" role="alert">
+      <span>Canvis pendents de resoldre</span>
+      <button type="button" :disabled="conflictRemoteClosed" @click="resolveConflict('local')">Conserva la meva versió</button>
+      <button type="button" class="ghost" @click="resolveConflict('remote')">Carrega la compartida</button>
+    </div>
     <p v-if="!teacherView && canWrite && unclosedDays.length" class="unclosed-days-warning" role="status">
       <strong>Dies no tancats:</strong>
       <button

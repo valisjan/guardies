@@ -27,6 +27,11 @@ const diagnosticsHref = computed(() => {
   return `/diagnostics.html?${query.toString()}`;
 });
 
+function openTeacherStats() {
+  store.teacherSection = 'stats';
+  window.dispatchEvent(new CustomEvent('guardies:load-teacher-stats'));
+}
+
 async function signIn() {
   signingIn.value = true;
   signInError.value = '';
@@ -79,7 +84,7 @@ window.addEventListener('guardies:auth-ready', () => {
     </section>
     <nav v-if="!authRequired" class="teacher-view-tabs no-print" aria-label="Vista del professorat" role="tablist">
       <button type="button" role="tab" :aria-selected="teacherSection === 'daily'" :class="{ active: teacherSection === 'daily' }" @click="store.teacherSection = 'daily'">Guàrdies del dia</button>
-      <button type="button" role="tab" :aria-selected="teacherSection === 'stats'" :class="{ active: teacherSection === 'stats' }" @click="store.teacherSection = 'stats'">Recompte de guàrdies</button>
+      <button type="button" role="tab" :aria-selected="teacherSection === 'stats'" :class="{ active: teacherSection === 'stats' }" @click="openTeacherStats">Recompte de guàrdies</button>
     </nav>
     <GuardiesTeacherStats v-if="!authRequired && teacherSection === 'stats'" />
   </Teleport>

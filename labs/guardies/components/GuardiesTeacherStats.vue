@@ -1,12 +1,15 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { guardCountForSlot, guardSlotKey } from '../../../src/modules/guardies/domain/workflow.js';
 import { useGuardiesStore } from '../stores/guardies.js';
 
 const store = useGuardiesStore();
-const { guardCounts, guardHistory, professorOptions, courseName, viewerName, sessions, guardiaCodes } = storeToRefs(store);
-const selectedTeacherId = ref('');
+const { guardCounts, guardHistory, professorOptions, courseName, viewerName, sessions, guardiaCodes, teacherStatsStatus } = storeToRefs(store);
+
+function retryStats() {
+  window.dispatchEvent(new CustomEvent('guardies:load-teacher-stats'));
+}
 
 function normalize(value) {
   return String(value || '')
@@ -101,13 +104,7 @@ const guardMatrix = computed(() => {
   }));
 });
 
-const selectedTeacher = computed(() => {
-  if (!selectedTeacherId.value) return null;
-  return professorOptions.value.find((teacher) => teacher.placa === selectedTeacherId.value) || null;
-});
-
-const selectedHistory = computed(() => {
-  const teacher = selectedTeacher.value;
+function historyForTeacher(teacher) {
   if (!teacher) return [];
   const aliases = new Set([
     teacher.placa,
@@ -119,7 +116,7 @@ const selectedHistory = computed(() => {
   ].map(normalize).filter(Boolean));
   const merged = new Map();
   Object.entries(guardHistory.value || {}).forEach(([teacherId, dates]) => {
-    if (teacherId !== selectedTeacherId.value && !aliases.has(normalize(teacherId))) return;
+    if (!aliases.has(normalize(teacherId))) return;
     Object.entries(dates && typeof dates === 'object' ? dates : {}).forEach(([date, groups]) => {
       const current = merged.get(date) || [];
       merged.set(date, Array.from(new Set([...current, ...(Array.isArray(groups) ? groups : [])])));
@@ -128,15 +125,27 @@ const selectedHistory = computed(() => {
   return Array.from(merged.entries())
     .sort(([left], [right]) => right.localeCompare(left))
     .map(([date, groups]) => ({ date, groups: Array.isArray(groups) ? groups : [] }));
-});
-
-function selectTeacher(teacherId) {
-  selectedTeacherId.value = selectedTeacherId.value === teacherId ? '' : teacherId;
 }
+
+function historyText(teacher) {
+  const entries = historyForTeacher(teacher);
+  if (!entries.length) return '';
+  const lines = entries.map(({ date, groups }) => {
+    const formatted = new Intl.DateTimeFormat('ca-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${date}T12:00:00`));
+    return `${formatted} · ${groups.length ? groups.join(' · ') : '—'}`;
+  });
+  return [`${entries.length} ${entries.length === 1 ? 'guàrdia' : 'guàrdies'}`, ...lines].join('\n');
+}
+
+const historyTextByTeacher = computed(() => new Map(
+  professorOptions.value.map((teacher) => [teacher.placa, historyText(teacher)]),
+));
 </script>
 
 <template>
   <section class="teacher-stats-panel no-print" aria-labelledby="teacher-stats-title">
+    <p v-if="teacherStatsStatus === 'loading'" role="status">Carregant recompte…</p>
+    <button v-if="teacherStatsStatus === 'error'" type="button" @click="retryStats">Reintenta</button>
     <header class="teacher-stats-head">
       <div>
         <p class="kicker">Curs {{ courseName }}</p>
@@ -144,25 +153,6 @@ function selectTeacher(teacherId) {
       </div>
     </header>
 
-    <section v-if="selectedTeacher" class="guard-history guard-history-popover" aria-live="polite" aria-label="Historial de guàrdies del professor seleccionat">
-      <header>
-        <div>
-          <span class="guard-history-kicker">Historial de guàrdies G</span>
-          <strong>{{ selectedTeacher.label }}</strong>
-        </div>
-        <button type="button" class="ghost" @click="selectedTeacherId = ''">Tanca</button>
-      </header>
-      <p v-if="!selectedHistory.length" class="empty-small">No hi ha guardies G tancades per aquest professor.</p>
-      <template v-else>
-        <p class="guard-history-summary">{{ selectedHistory.length }} {{ selectedHistory.length === 1 ? 'jornada' : 'jornades' }} tancades</p>
-        <ul>
-          <li v-for="entry in selectedHistory" :key="entry.date">
-            <time :datetime="entry.date">{{ new Intl.DateTimeFormat('ca-ES').format(new Date(`${entry.date}T12:00:00`)) }}</time>
-            <span>{{ entry.groups.length ? entry.groups.join(' · ') : 'Grup no disponible' }}</span>
-          </li>
-        </ul>
-      </template>
-    </section>
     <div v-if="guardMatrix.length" class="guard-matrix-frame">
       <div class="guard-matrix" role="table" aria-label="Professorat de G i cobertures realitzades per dia i hora">
         <div class="guard-matrix-row guard-matrix-columns" role="row">
@@ -186,17 +176,16 @@ function selectTeacher(teacherId) {
               v-for="teacher in cell.teachers"
               :key="teacher.teacherId"
               class="guard-roster-teacher"
-              :class="[`heat-${teacher.heat}`, { 'is-mine': teacher.mine, selected: selectedTeacherId === teacher.teacherId }]"
+              :class="[`heat-${teacher.heat}`, { 'is-mine': teacher.mine }]"
               :data-roster-teacher="teacher.teacherId"
-              :aria-pressed="selectedTeacherId === teacher.teacherId"
+              :title="historyTextByTeacher.get(teacher.teacherId) || ''"
+              :aria-label="`${teacher.label}${historyTextByTeacher.get(teacher.teacherId) ? ` · ${historyTextByTeacher.get(teacher.teacherId)}` : ''}`"
               role="button"
               tabindex="0"
-              @click="selectTeacher(teacher.teacherId)"
-              @keydown.enter="selectTeacher(teacher.teacherId)"
-              @keydown.space.prevent="selectTeacher(teacher.teacherId)"
             >
               <span>{{ teacher.label }}</span>
               <b data-roster-count :aria-label="`${teacher.count} guàrdies realitzades en aquesta hora`">{{ teacher.count }}</b>
+              <span v-if="historyTextByTeacher.get(teacher.teacherId)" class="guard-history-tooltip" role="tooltip">{{ historyTextByTeacher.get(teacher.teacherId) }}</span>
             </article>
             <span v-if="!cell.teachers.length" class="guard-matrix-empty">—</span>
           </div>

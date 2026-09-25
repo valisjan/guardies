@@ -92,7 +92,178 @@ async function uploadConfiguration(page) {
 }
 
 test.describe('Guàrdies: comportament existent', () => {
-  test('mostra l’historial G del professor en clicar-lo', async ({ page }) => {
+  test('mostra la jornada pública sense carregar horaris ni recompte', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('quota-e2e-guardies:e2e-2026', JSON.stringify({ publicDays: {
+        '2026-09-07': { date: '2026-09-07', status: 'published', hours: [{
+          label: '1a hora', rows: [{ absent: 'Anna', group: '1ESO-A', assigned: 'Joan', comment: 'Biblioteca' }],
+        }], groupsOut: [] },
+      } }));
+    });
+    await page.goto('/?vista=professor&data=2026-09-07');
+    await expect(page.locator('#workspace')).toBeVisible();
+    await expect(page.locator('.readonly-assignment')).toHaveText('Joan');
+    await expect(page.locator('#coverage-list')).toContainText('Biblioteca');
+    expect(await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      const state = useGuardiesStore();
+      return { sessions: state.sessions.length, stats: state.teacherStatsStatus };
+    })).toEqual({ sessions: 0, stats: 'idle' });
+    await page.evaluate(() => {
+      const key = 'quota-e2e-guardies:e2e-2026';
+      localStorage.setItem(key, '{}');
+      window.dispatchEvent(new StorageEvent('storage', { key }));
+    });
+    await expect(page.locator('#workspace')).toBeHidden();
+    await expect(page.getByRole('heading', { name: 'Jornada encara no publicada' })).toBeVisible();
+  });
+
+  test('conserva la data i els canvis locals si el guardat entra en conflicte', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07']?.revision || 0)).toBeGreaterThan(0);
+    await page.locator('[data-comment]').first().evaluate((input) => {
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const data = JSON.parse(localStorage.getItem(key));
+      data.days['2026-09-07'].revision += 1;
+      localStorage.setItem(key, JSON.stringify(data));
+      input.value = 'Conserva aquest canvi';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      window.dispatchEvent(new CustomEvent('guardies:change-date', { detail: { date: '2026-09-08' } }));
+    });
+    await expect(page.locator('#error-box')).toContainText('No s’ha pogut guardar'.replace('’', "'"));
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-07');
+    await expect(page.locator('[data-comment]').first()).toHaveValue('Conserva aquest canvi');
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.reload();
+    await expect(page.locator('.day-conflict')).toBeVisible();
+    await expect(page.locator('[data-comment]').first()).toHaveValue('Conserva aquest canvi');
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: 'Carrega la compartida' }).click();
+    await expect(page.locator('.day-conflict')).toHaveCount(0);
+    await expect(page.locator('[data-comment]').first()).not.toHaveValue('Conserva aquest canvi');
+  });
+
+  test('conserva una edició feta mentre arriba la jornada del servidor', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.evaluate(async () => {
+      const { saveGuardiesDay } = await import('/src/services/guardiesStorage.js');
+      await saveGuardiesDay('e2e-2026', '2026-09-07', { status: 'draft', comments: { __pati_observation__: 'Servidor' } }, 0);
+    });
+    await page.reload();
+    await expect(page.locator('#workspace')).toBeVisible();
+    await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      window.dispatchEvent(new CustomEvent('guardies:legacy-render', { detail: { reloadDay: true } }));
+      const state = useGuardiesStore();
+      state.comentaris.set('__pati_observation__', 'Edició durant la càrrega');
+    });
+    await expect.poll(() => page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      return useGuardiesStore().comentaris.get('__pati_observation__');
+    })).toBe('Edició durant la càrrega');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07']?.comments?.__pati_observation__)).toBe('Edició durant la càrrega');
+  });
+
+  test('no descarta el canvi local quan arriba una versió remota pendent', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07']?.revision || 0)).toBeGreaterThan(0);
+    const absenceId = await page.locator('[data-comment]').first().evaluate((input) => {
+      input.value = 'Comentari local';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const data = JSON.parse(localStorage.getItem(key));
+      data.days['2026-09-07'].revision += 1;
+      data.days['2026-09-07'].comments[input.dataset.comment] = 'Comentari remot';
+      localStorage.setItem(key, JSON.stringify(data));
+      window.dispatchEvent(new StorageEvent('storage', { key }));
+      return input.dataset.comment;
+    });
+    await expect(page.locator('.day-conflict')).toBeVisible();
+    await page.waitForTimeout(350);
+    await expect(page.locator('[data-comment]').first()).toHaveValue('Comentari local');
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: 'Conserva la meva versió' }).click();
+    await expect.poll(() => page.evaluate((id) => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days['2026-09-07'].comments[id], absenceId)).toBe('Comentari local');
+    await expect(page.locator('.day-conflict')).toHaveCount(0);
+  });
+
+  test('reconstrueix G conservant tots els grups i ignorant assignacions cancel·lades', async ({ page }) => {
+    await openGuardies(page);
+    const history = await page.evaluate(async () => {
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const data = JSON.parse(localStorage.getItem(key)) || {};
+      data.stats = { counts: {}, guardHistoryVersion: 0 };
+      data.days = { '2026-09-07': {
+        status: 'closed', cancelledAssignments: ['c'],
+        assignments: {
+          a: { teacherId: '2', source: 'guard' },
+          b: { teacherId: '2', source: 'guard' },
+          c: { teacherId: '2', source: 'guard' },
+          d: { teacherId: '3', source: 'released' },
+        },
+      } };
+      localStorage.setItem(key, JSON.stringify(data));
+      const { rebuildGuardiesGuardHistory } = await import('/src/services/guardiesStorage.js');
+      const result = await rebuildGuardiesGuardHistory('e2e-2026', {
+        a: { groups: ['1ESO-A'] }, b: { groups: ['2ESO-B'] }, c: { groups: ['3ESO-C'] },
+      });
+      const repeated = await rebuildGuardiesGuardHistory('e2e-2026', {});
+      return { first: result.guardHistory, repeated: repeated.guardHistory };
+    });
+    expect(history.first).toEqual({ 2: { '2026-09-07': ['1ESO-A', '2ESO-B'] } });
+    expect(history.repeated).toEqual(history.first);
+  });
+
+  test('desa el comentari al dia original en canviar immediatament de data', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await page.locator('[data-comment]').first().evaluate((input) => {
+      input.value = 'Feina pendent';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      window.dispatchEvent(new CustomEvent('guardies:change-date', { detail: { date: '2026-09-08' } }));
+    });
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-08');
+    const days = await page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days);
+    expect(Object.values(days['2026-09-07'].comments)).toContain('Feina pendent');
+    expect(Object.values(days['2026-09-08']?.comments || {})).not.toContain('Feina pendent');
+  });
+
+  test('actualitza recomptes sense reconstruir les sessions del horari', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      const store = useGuardiesStore();
+      window.sessionsBeforeStats = store.sessions;
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const data = JSON.parse(localStorage.getItem(key));
+      data.stats = { counts: { 2: { guard: 3 } }, guardHistoryVersion: 1 };
+      localStorage.setItem(key, JSON.stringify(data));
+      window.dispatchEvent(new StorageEvent('storage', { key }));
+    });
+    await expect.poll(() => page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      return useGuardiesStore().guardCounts.get('2')?.guard;
+    })).toBe(3);
+    expect(await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      return useGuardiesStore().sessions === window.sessionsBeforeStats;
+    })).toBe(true);
+  });
+
+  test('mostra les dates G del professor en passar-hi per damunt', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
     await page.evaluate(() => {
@@ -106,10 +277,14 @@ test.describe('Guàrdies: comportament existent', () => {
       localStorage.setItem(key, JSON.stringify(data));
     });
     await page.reload();
+    await page.goto('/?data=2026-09-07&vista=professor');
     await page.getByRole('tab', { name: 'Recompte de guàrdies' }).click();
-    await page.locator('[data-roster-teacher="2"]').first().click();
-    await expect(page.locator('.guard-history')).toContainText('18/09/2026');
-    await expect(page.locator('.guard-history')).toContainText('1ESO-A');
+    const teacher = page.locator('[data-roster-teacher="2"]').first();
+    await teacher.hover();
+    await expect(teacher.locator('.guard-history-tooltip')).toBeVisible();
+    await expect(teacher.locator('.guard-history-tooltip')).toContainText('1 guàrdia');
+    await expect(teacher.locator('.guard-history-tooltip')).toContainText('18/09/2026');
+    await expect(teacher.locator('.guard-history-tooltip')).toContainText('1ESO-A');
   });
 
   test('arrenca buit i obliga a carregar els fitxers en ordre', async ({ page }) => {
@@ -182,6 +357,11 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.getByRole('heading', { name: 'Jornada encara no publicada' })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Guàrdies del dia' })).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('.teacher-stats-panel')).toBeHidden();
+    expect(await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      const state = useGuardiesStore();
+      return { sessions: state.sessions.length, stats: state.teacherStatsStatus };
+    })).toEqual({ sessions: 0, stats: 'idle' });
     await page.getByRole('tab', { name: 'Recompte de guàrdies' }).click();
     await expect(page.locator('.teacher-stats-panel')).toBeVisible();
     await page.getByRole('tab', { name: 'Guàrdies del dia' }).click();
@@ -474,6 +654,8 @@ test.describe('Guàrdies: comportament existent', () => {
     await page.locator('#professor-search').fill('ADELL');
     await page.locator('#professor-results [data-professor]').first().click();
     await page.locator('#schedule-grid [data-absence]:not(:disabled)').first().check();
+    // Override the classroom partner before requesting a normal G assignment.
+    await page.locator('#coverage-list [data-assignacio]').first().selectOption('');
     await page.locator('#auto-assign-guards').click();
     await expect(page.locator('#coverage-list [data-assignacio]')).toHaveValue('3');
   });
@@ -492,12 +674,12 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('#coverage-list [data-assignacio]')).toHaveCount(2);
     await expect(page.locator('#print-coverage')).toBeEnabled();
     const guardDutyRow = page.locator('#coverage-list .coverage-row').filter({ has: page.locator('.coverage-detail-cell', { hasText: 'Guàrdia' }) }).first();
-    await expect(guardDutyRow.locator('.info-only-label')).toHaveText('Informatiu · no se substitueix');
+    await expect(guardDutyRow.locator('.info-only-label')).toHaveText('Sense substitució');
     await expect(guardDutyRow.locator('[data-assignacio]')).toHaveCount(0);
     await expect(page.locator('.coverage-professor-cell .cell-kicker').first()).toHaveText('Absència');
 
     const firstAssignment = page.locator('#coverage-list [data-assignacio]').first();
-    const candidateLabels = await firstAssignment.locator('option').allTextContents();
+    const candidateLabels = await page.locator('#coverage-list [data-assignacio]').nth(1).locator('option').allTextContents();
     const guardIndex = candidateLabels.findIndex((label) => label.includes('Guàrdia -'));
     const outsideDutyIndexes = candidateLabels
       .map((label, index) => label.includes('Ni G ni alliberat') ? index : -1)
@@ -544,6 +726,7 @@ test.describe('Guàrdies: comportament existent', () => {
     ))).toBeUndefined();
     await page.getByRole('button', { name: 'Publica' }).click();
     await expect(page.locator('#day-status-action')).toHaveText('Tanca jornada');
+    page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Tanca jornada' }).click();
     await expect(page.locator('#day-status-action')).toHaveText('Reobre');
     const guardCount = await page.evaluate(() => (
@@ -671,6 +854,7 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('.coverage-session.pati-session .coverage-session-list')).toHaveCount(0);
 
     await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#pati-panel summary').click();
     await page.locator('#pati-holiday-date').fill('2026-09-21');
     await page.locator('#pati-holiday-label').fill('Festa del centre');
     await page.locator('#add-pati-holiday').click();

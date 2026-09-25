@@ -1,3 +1,12 @@
+<script setup>
+import { onMounted } from 'vue';
+
+onMounted(() => window.dispatchEvent(new CustomEvent('guardies:convivencia-ready')));
+function clearWeek() {
+  window.dispatchEvent(new CustomEvent('guardies:clear-convivencia'));
+}
+</script>
+
 <template>
   <details id="convivencia-panel" class="admin-panel convivencia-panel no-print">
     <summary>
@@ -14,7 +23,7 @@
             <p class="kicker">Convivència</p>
             <h2>Assignació per dia i sessió</h2>
           </div>
-          <button id="clear-convivencia" type="button" class="ghost">Neteja setmana</button>
+          <button id="clear-convivencia" type="button" class="ghost" @click="clearWeek">Neteja setmana</button>
         </div>
         <div id="convivencia-admin-list" class="convivencia-admin-list"></div>
       </section>

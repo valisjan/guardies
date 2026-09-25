@@ -1,4 +1,5 @@
 import * as parser from './horariXmlParser.js';
+import { renderPublicCoverage, renderPublicOutings } from './publicDayRenderer.js';
 import { GUARD_CODES_STORAGE, useGuardiesStore } from './stores/guardies.js';
 import {
   classroomPartnerForAbsence,
@@ -20,9 +21,7 @@ import {
   getGuardiesContext,
   loadGuardiesData,
   loadGuardiesDay,
-  loadGuardiesStats,
   rebuildGuardiesGuardHistory,
-  updateGuardiesGuardHistory,
   loadGuardiesTeacherDirectory,
   loadUnclosedGuardiesDays,
   mergeGuardiesDayPlan,
@@ -32,6 +31,7 @@ import {
   saveGuardiesPati,
   subscribeGuardiesData,
   subscribeGuardiesDay,
+  subscribeGuardiesPublicView,
   subscribeDirectoryVersion,
   bumpDirectoryVersion,
   transitionGuardiesDay,
@@ -52,12 +52,18 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   };
   const REMOTE_CACHE_PREFIX = 'quota_guardies_remote_cache:';
   const DAY_CACHE_PREFIX = 'quota_guardies_day_cache:';
+  const DRAFT_CACHE_PREFIX = 'guardies_pending_day:';
   const UNCLOSED_CACHE_PREFIX = 'quota_guardies_unclosed_days:';
-  const UNCLOSED_CACHE_TTL = 2 * 60 * 1000;
+  const UNCLOSED_CACHE_TTL = 15 * 60 * 1000;
+  const VISIBILITY_LISTENER_GRACE = 5 * 60 * 1000;
   const state = useGuardiesStore();
   let daySaveTimer = null;
+  let daySaveInFlight = null;
+  let navigationInFlight = false;
   let lastDaySignature = '';
   let lastRemoteDataSignature = '';
+  let lastAppliedConfiguration = null;
+  let remoteStatsRevision = 0;
   let unsubscribeGuardiesData = () => {};
   let unsubscribeGuardiesDay = () => {};
   let unsubscribeDirectoryVersion = () => {};
@@ -65,15 +71,34 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let directoryReloadInFlight = null;
   let watchedDate = '';
   let pendingRemoteDay = null;
+  let loadedDate = '';
+  let dayLoadGeneration = 0;
   let teacherAliasesById = new Map();
+  const professorInfoCache = new Map();
+  const occupationCache = new Map();
+  let teacherStatsInFlight = null;
   let professorResultIndex = -1;
   let bootstrapInFlight = null;
   let bootstrapRetryTimer = null;
   let bootstrapRetryAttempt = 0;
   let visibilityResumeInFlight = null;
+  let visibilityStopTimer = null;
+  let remoteListenersSuspended = false;
+  let lastPublicDaySignature = '';
+  let publicDaySavePending = false;
 
   function handleOnline() {
-    if (state.persistenceStatus === 'error') bootstrap();
+    if (['error', 'stale'].includes(state.persistenceStatus) || ['error', 'stale'].includes(state.dayPersistenceStatus)) bootstrap();
+  }
+
+  function stopRemoteListeners() {
+    unsubscribeGuardiesData();
+    unsubscribeGuardiesDay();
+    unsubscribeDirectoryVersion();
+    unsubscribeGuardiesData = () => {};
+    unsubscribeGuardiesDay = () => {};
+    unsubscribeDirectoryVersion = () => {};
+    remoteListenersSuspended = true;
   }
 
   const el = {
@@ -114,6 +139,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   window.addEventListener('guardies:retry-connection', bootstrap);
   document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('guardies:pati-updated', () => renderCoverage());
+  window.addEventListener('guardies:convivencia-ready', renderConvivenciaAdmin);
+  window.addEventListener('guardies:clear-convivencia', async () => {
+    if (!state.canWrite) return;
+    state.convivencia.clear();
+    await saveConvivencia();
+    renderConvivenciaAdmin();
+    renderCoverage();
+  });
   window.addEventListener('guardies:exclusions-updated', async () => {
     parseStoredData({ resetSelection: false });
     await activateGuardiesDay(state.date);
@@ -191,6 +224,25 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (event.detail?.reloadDay) await activateGuardiesDay(state.date);
     render();
   });
+  window.addEventListener('guardies:change-date', (event) => navigateToDate(event.detail?.date));
+  window.addEventListener('guardies:load-teacher-stats', ensureTeacherStatistics);
+  window.addEventListener('guardies:resolve-conflict', (event) => resolveDayConflict(event.detail?.choice));
+
+  async function navigateToDate(date) {
+    if (!date || date === state.date || navigationInFlight) return;
+    navigationInFlight = true;
+    try {
+      await persistDayNow();
+      state.changeDate(date);
+      await activateGuardiesDay(date);
+      render();
+    } catch (error) {
+      state.dayPersistenceStatus = 'error';
+      showError(`No s'ha pogut guardar la jornada. ${error.message || error}`);
+    } finally {
+      navigationInFlight = false;
+    }
+  }
   window.addEventListener('guardies:reload-directory', async () => {
     if (!state.canWrite || !state.courseId) return;
     try {
@@ -202,12 +254,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     }
   });
 
-  window.addEventListener('beforeunload', () => {
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-    window.removeEventListener('online', handleOnline);
-    unsubscribeGuardiesData();
-    unsubscribeGuardiesDay();
-    unsubscribeDirectoryVersion();
+  window.addEventListener('beforeunload', (event) => {
+    if (!hasUnsavedDay() && !daySaveInFlight && !publicDaySavePending) return;
+    stashDayDraft();
+    event.preventDefault();
+    event.returnValue = '';
   });
   window.addEventListener('online', handleOnline);
   bootstrap();
@@ -220,11 +271,21 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (bootstrapInFlight) return bootstrapInFlight;
     bootstrapInFlight = bootstrapInternal().finally(() => {
       bootstrapInFlight = null;
+      if (state.persistenceStatus === 'error' && !state.authRequired) scheduleBootstrapRetry();
     });
     return bootstrapInFlight;
   }
 
   async function bootstrapInternal() {
+    if (state.contextReady && state.dayLoaded && state.canWrite) {
+      try {
+        await persistDayNow();
+      } catch (error) {
+        state.dayPersistenceStatus = 'error';
+        showError(`No s'ha pogut guardar la jornada. ${error.message || error}`);
+        return;
+      }
+    }
     unsubscribeGuardiesData();
     unsubscribeGuardiesDay();
     unsubscribeDirectoryVersion();
@@ -234,6 +295,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.authRequired = false;
     state.persistenceStatus = 'loading';
     state.teacherDirectory = [];
+    professorInfoCache.clear();
     state.unclosedDays = [];
     state.guardCounts = new Map();
     const search = new URLSearchParams(window.location.search);
@@ -254,10 +316,24 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.viewerName = context.user?.displayName || '';
       state.viewerEmail = context.user?.email || '';
       state.authRequired = false;
+      if (!state.canWrite) {
+        state.sessions = [];
+        state.allSessions = [];
+        state.professorOptions = [];
+        state.teacherStatsStatus = 'idle';
+        state.persistenceStatus = 'ready';
+        await activateGuardiesDay(state.date);
+        state.contextReady = true;
+        bootstrapRetryAttempt = 0;
+        render();
+        window.dispatchEvent(new CustomEvent('guardies:auth-ready'));
+        if (state.teacherSection === 'stats') ensureTeacherStatistics();
+        return;
+      }
       let remoteData;
       let usingCachedData = false;
       try {
-        remoteData = await loadGuardiesData(state.courseId);
+        remoteData = await subscribeToRemoteData({ initial: true });
       } catch (error) {
         remoteData = loadCachedRemoteData(state.courseId);
         if (!remoteData) throw error;
@@ -266,18 +342,20 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       }
       if (!usingCachedData) remoteData = await migrateLegacyData(remoteData);
       applyRemoteData(remoteData);
-      lastRemoteDataSignature = remoteDataSignature({ ...remoteData, stats: { counts: {} } });
+      lastRemoteDataSignature = remoteDataSignature(remoteData);
+      state.guardCounts = new Map(Object.entries(remoteData.stats?.counts || {}));
+      state.guardHistory = remoteData.stats?.guardHistory || {};
+      state.guardHistoryVersion = Number(remoteData.stats?.guardHistoryVersion) || 0;
       state.persistenceStatus = usingCachedData ? 'stale' : 'ready';
       const adminPanel = document.getElementById('admin-panel');
       if (adminPanel) adminPanel.open = false;
       parseStoredData({ resetSelection: true });
       await activateGuardiesDay(state.date);
-      if (!document.hidden) subscribeToRemoteData();
       state.contextReady = true;
       bootstrapRetryAttempt = 0;
       render();
       window.dispatchEvent(new CustomEvent('guardies:auth-ready'));
-      loadBootstrapAuxiliaryData(state.courseId).catch(() => {});
+      loadBootstrapAuxiliaryData(state.courseId, remoteData.stats || { counts: {} }).catch(() => {});
     } catch (error) {
       state.persistenceStatus = 'error';
       state.contextReady = true;
@@ -285,28 +363,31 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       showError(state.authRequired ? '' : error.message || String(error));
       render();
       window.dispatchEvent(new CustomEvent('guardies:auth-ready'));
-      if (!state.authRequired) scheduleBootstrapRetry();
     }
   }
 
-  async function loadBootstrapAuxiliaryData(courseId) {
+  async function loadBootstrapAuxiliaryData(courseId, stats) {
+    const statsRevision = remoteStatsRevision;
     const cachedUnclosedDays = state.canWrite ? loadCachedUnclosedDays(courseId) : null;
-    const [teacherDirectory, stats, unclosedDays] = await Promise.all([
+    const [teacherDirectory, unclosedDays] = await Promise.all([
       state.canWrite
         ? loadGuardiesTeacherDirectory(courseId).catch(() => [])
         : Promise.resolve([]),
-      loadGuardiesStats(courseId).catch(() => ({ counts: {} })),
       state.canWrite
         ? cachedUnclosedDays
           ? Promise.resolve(cachedUnclosedDays)
-          : loadGuardiesUnclosedDaysAndCache(courseId)
+          : loadGuardiesUnclosedDaysAndCache(courseId).catch(() => state.unclosedDays)
         : Promise.resolve([]),
     ]);
     if (courseId !== state.courseId) return;
     state.teacherDirectory = teacherDirectory;
+    professorInfoCache.clear();
     state.unclosedDays = unclosedDays;
-    state.guardCounts = new Map(Object.entries(stats.counts || {}));
-    state.guardHistory = stats.guardHistory || {};
+    if (statsRevision === remoteStatsRevision) {
+      state.guardCounts = new Map(Object.entries(stats.counts || {}));
+      state.guardHistory = stats.guardHistory || {};
+      state.guardHistoryVersion = Number(stats.guardHistoryVersion) || 0;
+    }
     if (state.canWrite && Number(stats.guardHistoryVersion) !== 1) {
       const absenceDetails = Object.fromEntries(
         parser.agruparSessionsCobertura(state.sessions.filter(isMeaningfulSession))
@@ -323,6 +404,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         .then((result) => {
           if (courseId !== state.courseId) return;
           state.guardHistory = result.guardHistory || {};
+          state.guardHistoryVersion = 1;
           render();
         })
         .catch(() => {});
@@ -341,7 +423,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   async function loadGuardiesUnclosedDaysAndCache(courseId) {
-    const days = await loadUnclosedGuardiesDays(courseId, localDateString(new Date())).catch(() => []);
+    const days = await loadUnclosedGuardiesDays(courseId, localDateString(new Date()));
     saveCachedUnclosedDays(courseId, days);
     return days;
   }
@@ -367,22 +449,27 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function handleVisibilityChange() {
     if (document.hidden) {
-      unsubscribeGuardiesData();
-      unsubscribeGuardiesDay();
-      unsubscribeDirectoryVersion();
-      unsubscribeGuardiesData = () => {};
-      unsubscribeGuardiesDay = () => {};
-      unsubscribeDirectoryVersion = () => {};
+      if (visibilityStopTimer) window.clearTimeout(visibilityStopTimer);
+      visibilityStopTimer = window.setTimeout(() => {
+        visibilityStopTimer = null;
+        if (document.hidden) stopRemoteListeners();
+      }, VISIBILITY_LISTENER_GRACE);
       return;
     }
+    if (visibilityStopTimer) {
+      window.clearTimeout(visibilityStopTimer);
+      visibilityStopTimer = null;
+    }
     if (!state.contextReady || !state.courseId || visibilityResumeInFlight) return;
+    if (!remoteListenersSuspended) return;
     visibilityResumeInFlight = (async () => {
       if (directoryReloadPending) {
         directoryReloadPending = false;
         await reloadTeacherDirectory();
       }
-      subscribeToRemoteData();
+      if (state.canWrite || state.teacherStatsStatus === 'ready') subscribeToRemoteData();
       await activateGuardiesDay(state.date, { preserveCurrent: true });
+      remoteListenersSuspended = false;
     })().catch(() => {}).finally(() => {
       visibilityResumeInFlight = null;
     });
@@ -462,10 +549,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       await saveGuardiesConvivencia(state.courseId, legacy.convivencia);
     }
     storageRemove(Object.values(LEGACY_STORAGE));
-    return loadGuardiesData(state.courseId);
+    return { ...(await loadGuardiesData(state.courseId)), stats: remoteData.stats };
   }
 
   function applyRemoteData(remoteData) {
+    const { stats: ignoredStats, ...configuration } = remoteData;
+    lastAppliedConfiguration = configuration;
     const reference = remoteData.files.reference;
     const untis = remoteData.files.untis;
     state.referenceText = reference?.text || '';
@@ -481,7 +570,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const hasFiles = Object.values(remoteData.files || {}).some((file) => file?.text);
     if (hasFiles && state.courseId) storageSet(
       `${REMOTE_CACHE_PREFIX}${state.courseId}`,
-      JSON.stringify({ ...remoteData, cachedAt: new Date().toISOString() }),
+      JSON.stringify({ ...configuration, cachedAt: new Date().toISOString() }),
     );
   }
 
@@ -506,6 +595,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       excludedTeacherIds: remoteData.excludedTeacherIds || [],
       counts: remoteData.stats?.counts || {},
       guardHistory: remoteData.stats?.guardHistory || {},
+      guardHistoryVersion: remoteData.stats?.guardHistoryVersion || 0,
     });
   }
 
@@ -515,6 +605,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     directoryReloadInFlight = loadGuardiesTeacherDirectory(state.courseId)
       .then((directory) => {
         state.teacherDirectory = directory;
+        professorInfoCache.clear();
       })
       .catch(() => {
         // Keep the previous directory if the reload fails.
@@ -525,7 +616,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     return directoryReloadInFlight;
   }
 
-  function subscribeToRemoteData() {
+  function subscribeToRemoteData({ initial = false } = {}) {
+    const courseId = state.courseId;
+    let resolveInitial;
+    let rejectInitial;
+    let initialPending = initial;
+    const ready = initial ? new Promise((resolve, reject) => { resolveInitial = resolve; rejectInitial = reject; }) : null;
     unsubscribeGuardiesData();
     unsubscribeDirectoryVersion();
     unsubscribeDirectoryVersion = state.canWrite
@@ -538,39 +634,77 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       })
       : () => {};
     unsubscribeGuardiesData = subscribeGuardiesData(state.courseId, async (remoteData) => {
+      if (courseId !== state.courseId) return;
+      if (initialPending) {
+        initialPending = false;
+        resolveInitial(remoteData);
+        return;
+      }
       const signature = remoteDataSignature(remoteData);
       if (signature === lastRemoteDataSignature) {
-        if (state.persistenceStatus === 'stale') {
+        if (['stale', 'error'].includes(state.persistenceStatus)) {
           state.persistenceStatus = 'ready';
           showError('');
           render();
         }
         return;
       }
-      const previousFiles = JSON.stringify({
-        reference: state.referenceText,
-        untis: state.untisText,
-        duties: state.dutiesText,
+      const filesChanged = state.referenceText !== (remoteData.files.reference?.text || '')
+        || state.untisText !== (remoteData.files.untis?.text || '')
+        || state.dutiesText !== (remoteData.files.duties?.text || '');
+      const previousExclusions = JSON.stringify(Array.from(state.excludedTeacherIds).sort());
+      const settingsSignature = (data) => JSON.stringify({
+        convivencia: data?.convivencia, pati: data?.pati,
+        observationPresets: data?.observationPresets,
+        excludedTeacherIds: data?.excludedTeacherIds,
+        names: ['reference', 'untis', 'duties'].map((kind) => data?.files?.[kind]?.name),
       });
+      const configurationChanged = filesChanged
+        || settingsSignature(lastAppliedConfiguration) !== settingsSignature(remoteData);
       lastRemoteDataSignature = signature;
-      applyRemoteData(remoteData);
+      if (configurationChanged) applyRemoteData(remoteData);
+      remoteStatsRevision += 1;
       state.guardCounts = new Map(Object.entries(remoteData.stats?.counts || {}));
       state.guardHistory = remoteData.stats?.guardHistory || state.guardHistory || {};
-      const nextFiles = JSON.stringify({
-        reference: state.referenceText,
-        untis: state.untisText,
-        duties: state.dutiesText,
-      });
-      parseStoredData({ resetSelection: false });
-      if (previousFiles !== nextFiles && daySignature() === lastDaySignature) {
+      state.guardHistoryVersion = Number(remoteData.stats?.guardHistoryVersion) || state.guardHistoryVersion || 0;
+      if (filesChanged || previousExclusions !== JSON.stringify(Array.from(state.excludedTeacherIds).sort())) {
+        parseStoredData({ resetSelection: false, renderAfter: false });
+      }
+      if (state.canWrite && filesChanged && daySignature() === lastDaySignature) {
         await hydrateGuardiesDay(state.date);
       }
       state.persistenceStatus = 'ready';
-      render();
+      if (configurationChanged) render();
+      else if (state.canWrite && state.contextReady && state.dayLoaded) renderCoverage();
     }, (error) => {
-      if (error?.code === 'permission-denied') return;
+      if (initialPending) { initialPending = false; rejectInitial(error); }
+      state.persistenceStatus = 'error';
       showError(`No s'han pogut sincronitzar les dades. ${error.message || error}`);
     }, { iosPollInterval: 5 * 60 * 1000 });
+    return ready;
+  }
+
+  async function ensureTeacherStatistics() {
+    if (state.canWrite || state.teacherStatsStatus === 'ready' || teacherStatsInFlight) return;
+    const courseId = state.courseId;
+    state.teacherStatsStatus = 'loading';
+    teacherStatsInFlight = (async () => {
+      try {
+        const data = await subscribeToRemoteData({ initial: true });
+        if (courseId !== state.courseId || state.canWrite) return;
+        applyRemoteData(data);
+        lastRemoteDataSignature = remoteDataSignature(data);
+        state.guardCounts = new Map(Object.entries(data.stats?.counts || {}));
+        state.guardHistory = data.stats?.guardHistory || {};
+        parseStoredData({ resetSelection: false, renderAfter: false });
+        state.teacherStatsStatus = 'ready';
+        state.persistenceStatus = 'ready';
+      } catch (error) {
+        state.teacherStatsStatus = 'error';
+        showError(`No s'ha pogut carregar el recompte. ${error.message || error}`);
+      }
+    })().finally(() => { teacherStatsInFlight = null; });
+    return teacherStatsInFlight;
   }
 
   function serializableDay() {
@@ -620,7 +754,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       : [];
     const patioObservation = state.comentaris.get(PATI_COMMENT_KEY) || '';
     const day = diaXmlSeleccionat();
-    const hours = hoursForSelectedDay().map((hour) => {
+    const dayHours = hoursForSelectedDay();
+    const seventhHour = dayHours.filter((hour) => hour !== 'PATI')[6];
+    const hours = dayHours.map((hour) => {
       if (hour === 'PATI') {
         return {
           key: 'PATI',
@@ -641,6 +777,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         key: String(hour),
         kind: 'guardies',
         label: horaLabel(hour),
+        observation: hour === seventhHour ? state.comentaris.get(SEVENTH_COMMENT_KEY) || '' : '',
         rows: (byHour.get(hour) || []).map((item) => {
           const absentTeacherIds = item.absentTeacherIds?.length ? item.absentTeacherIds : [item.placa];
           const assignedId = state.assignacions.get(item.id) || '';
@@ -681,20 +818,99 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   async function syncPublicGuardiesDay() {
     if (!state.isAdmin || !state.courseId || !state.date) return;
+    const courseId = state.courseId;
+    const date = state.date;
     const published = ['published', 'closed'].includes(state.dayStatus);
+    const projection = published ? publicGuardiesDay() : null;
+    const signature = JSON.stringify(projection);
+    if (signature === lastPublicDaySignature) return;
     await savePublicGuardiesDay(
-      state.courseId,
-      state.date,
-      published ? publicGuardiesDay() : null,
+      courseId,
+      date,
+      projection,
     );
+    if (courseId !== state.courseId || date !== state.date) return;
+    lastPublicDaySignature = signature;
+    publicDaySavePending = false;
   }
 
   function daySignature(payload = serializableDay()) {
     return JSON.stringify(payload);
   }
 
+  function hasUnsavedDay() {
+    return state.canWrite && state.dayLoaded && loadedDate === state.date && daySignature() !== lastDaySignature;
+  }
+
+  function draftKey() {
+    return `${DRAFT_CACHE_PREFIX}${state.courseId}:${state.viewerEmail}:${state.date}`;
+  }
+
+  function stashDayDraft() {
+    if (!hasUnsavedDay()) return;
+    storageSet(draftKey(), JSON.stringify({
+      payload: serializableDay(), revision: state.dayRevision, baseSignature: lastDaySignature,
+    }));
+  }
+
+  function restoreDayDraft(date) {
+    if (!state.canWrite) return;
+    const draft = loadJson(draftKey(), null);
+    if (!draft?.payload || !draft.baseSignature || date !== state.date) return;
+    applyGuardiesDay({ ...draft.payload, revision: draft.revision }, date);
+    lastDaySignature = draft.baseSignature;
+    state.dayPersistenceStatus = 'refreshing';
+  }
+
+  function markDayConflict(saved, date) {
+    if (date !== state.date) return;
+    pendingRemoteDay = { saved, date };
+    state.dayConflict = true;
+    state.conflictRemoteClosed = saved?.status === 'closed';
+    state.dayPersistenceStatus = 'error';
+    stashDayDraft();
+    showError('Canvis en una altra sessió. Els teus canvis es conserven.');
+  }
+
+  async function resolveDayConflict(choice) {
+    if (!state.canWrite || !state.dayConflict || !pendingRemoteDay || navigationInFlight) return;
+    const { saved, date } = pendingRemoteDay;
+    if (date !== state.date) return;
+    if (choice === 'remote') {
+      if (!window.confirm('Vols descartar els canvis locals i carregar la jornada compartida?')) return;
+      storageRemove([draftKey()]);
+      pendingRemoteDay = null;
+      applyGuardiesDay(saved, date);
+      showError('');
+      render();
+      return;
+    }
+    if (choice !== 'local' || saved?.status === 'closed') return;
+    if (!window.confirm('Se substituiran les absències i assignacions compartides pels canvis d’aquesta pantalla. Vols continuar?')) return;
+    navigationInFlight = true;
+    state.dayRevision = Number(saved?.revision) || 0;
+    state.dayStatus = saved?.status || 'draft';
+    state.publishedAt = saved?.publishedAt || '';
+    state.closedAt = saved?.closedAt || '';
+    state.countedAssignments = saved?.countedAssignments || [];
+    state.dayConflict = false;
+    pendingRemoteDay = null;
+    try {
+      await persistDayNow();
+      showError('');
+    } catch (error) {
+      state.dayPersistenceStatus = 'error';
+      showError(error.message || String(error));
+    } finally {
+      navigationInFlight = false;
+    }
+  }
+
   function applyGuardiesDay(saved, date) {
     if (date !== state.date) return;
+    loadedDate = date;
+    state.dayConflict = false;
+    state.conflictRemoteClosed = false;
     state.clearDayContext();
     const day = xmlDayForDate(date);
     const items = parser.agruparSessionsCobertura(
@@ -748,27 +964,42 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.dayLoaded = true;
   }
 
-  async function hydrateGuardiesDay(date, { preserveCurrent = false } = {}) {
+  async function hydrateGuardiesDay(date, { preserveCurrent = false, read = loadGuardiesDay } = {}) {
     if (!state.courseId || !date) return;
+    const generation = ++dayLoadGeneration;
+    const courseId = state.courseId;
+    preserveCurrent ||= hasUnsavedDay();
+    const cached = loadCachedGuardiesDay(date);
     if (!preserveCurrent) {
-      state.dayLoaded = false;
-      state.dayPersistenceStatus = 'loading';
-      state.clearDayContext();
+      if (cached) {
+        applyGuardiesDay(cached, date);
+        state.dayPersistenceStatus = 'refreshing';
+      } else {
+        state.dayLoaded = false;
+        state.dayPersistenceStatus = 'loading';
+        state.clearDayContext();
+      }
     } else {
       state.dayPersistenceStatus = 'refreshing';
     }
+    if (!preserveCurrent) restoreDayDraft(date);
     render();
     try {
-      const saved = await loadGuardiesDay(state.courseId, date, {
+      const saved = await read(courseId, date, {
         publishedOnly: state.teacherView || !state.isAdmin,
       });
-      if (date !== state.date) return;
+      if (date !== state.date || courseId !== state.courseId || generation !== dayLoadGeneration) return;
       if (saved) cacheGuardiesDay(date, saved);
+      if (hasUnsavedDay() || daySaveInFlight || state.dayConflict) {
+        if ((Number(saved?.revision) || 0) !== state.dayRevision) markDayConflict(saved, date);
+        else if (!state.dayConflict) state.dayPersistenceStatus = daySaveInFlight ? 'saving' : 'ready';
+        return;
+      }
       applyGuardiesDay(saved, date);
     } catch (error) {
-      const cached = loadCachedGuardiesDay(date);
+      if (date !== state.date || courseId !== state.courseId || generation !== dayLoadGeneration) return;
       if (cached) {
-        if (!preserveCurrent) applyGuardiesDay(cached, date);
+        if (!preserveCurrent && !state.dayLoaded) applyGuardiesDay(cached, date);
         state.dayPersistenceStatus = 'stale';
         showError('No s\'ha pogut connectar per carregar aquesta jornada. Es mostren les últimes dades guardades i es reintentarà la connexió.');
       } else {
@@ -776,22 +1007,23 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         showError(`No s'ha pogut carregar la jornada. ${error.message || error}`);
       }
     } finally {
-      if (date === state.date) state.dayLoaded = true;
+      if (date === state.date && courseId === state.courseId && generation === dayLoadGeneration) state.dayLoaded = true;
     }
   }
 
   async function activateGuardiesDay(date, { preserveCurrent = false } = {}) {
+    if (!state.canWrite) return activatePublicDay(date, { preserveCurrent });
     unsubscribeGuardiesDay();
     watchedDate = date;
-    pendingRemoteDay = null;
-    await hydrateGuardiesDay(date, { preserveCurrent });
-    if (date !== state.date || date !== watchedDate) return;
-    if (state.isAdmin && ['published', 'closed'].includes(state.dayStatus)) {
-      syncPublicGuardiesDay().catch(() => {});
-    }
+    if (!hasUnsavedDay() && !state.dayConflict) pendingRemoteDay = null;
+    let first = true;
+    let resolveFirst;
+    let rejectFirst;
+    const initialDay = new Promise((resolve, reject) => { resolveFirst = resolve; rejectFirst = reject; });
     unsubscribeGuardiesDay = subscribeGuardiesDay(state.courseId, date, (saved, metadata) => {
+      if (first) { first = false; resolveFirst(saved); return; }
       if (date !== state.date || date !== watchedDate || !state.dayLoaded) return;
-      if (state.dayPersistenceStatus === 'stale' && !metadata?.fromCache) {
+      if (!state.dayConflict && ['stale', 'error', 'refreshing'].includes(state.dayPersistenceStatus) && !metadata?.fromCache && daySignature() === lastDaySignature) {
         state.dayPersistenceStatus = 'ready';
         showError('');
       }
@@ -800,6 +1032,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       if ((!isDeletion && remoteRevision <= state.dayRevision) || (isDeletion && state.dayRevision === 0)) return;
       if (state.dayPersistenceStatus === 'saving' || daySignature() !== lastDaySignature) {
         pendingRemoteDay = { saved, date };
+        if (!daySaveInFlight) markDayConflict(saved, date);
         return;
       }
       applyGuardiesDay(saved, date);
@@ -807,11 +1040,45 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       showError('');
       render();
     }, (error) => {
-      if (error?.code === 'permission-denied') return;
+      if (first) { first = false; rejectFirst(error); }
+      state.dayPersistenceStatus = 'error';
       showError(`No s'ha pogut sincronitzar la jornada. ${error.message || error}`);
     }, {
       publishedOnly: state.teacherView || !state.isAdmin,
       iosPollInterval: state.canWrite ? 30 * 1000 : 60 * 1000,
+    });
+    await hydrateGuardiesDay(date, { preserveCurrent, read: () => initialDay });
+    if (date !== state.date || date !== watchedDate) return;
+    if (state.isAdmin && ['published', 'closed'].includes(state.dayStatus)) {
+      lastPublicDaySignature = '';
+      syncPublicGuardiesDay().catch(() => {});
+    }
+  }
+
+  function activatePublicDay(date, { preserveCurrent = false } = {}) {
+    unsubscribeGuardiesDay();
+    const courseId = state.courseId;
+    watchedDate = date;
+    if (!preserveCurrent || state.publicDay?.date !== date) state.publicDay = null;
+    state.dayLoaded = Boolean(state.publicDay);
+    state.dayPersistenceStatus = state.dayLoaded ? 'refreshing' : 'loading';
+    render();
+    return new Promise((resolve, reject) => {
+      unsubscribeGuardiesDay = subscribeGuardiesPublicView(courseId, date, (day, metadata = {}) => {
+        if (courseId !== state.courseId || date !== state.date || date !== watchedDate) return;
+        state.publicDay = ['published', 'closed'].includes(day?.status) ? day : null;
+        state.dayStatus = state.publicDay?.status || 'unpublished';
+        state.updatedAt = state.publicDay?.clientUpdatedAt || '';
+        state.dayPersistenceStatus = metadata.fromCache ? 'stale' : 'ready';
+        state.dayLoaded = true;
+        render();
+        resolve();
+      }, (error) => {
+        if (courseId !== state.courseId || date !== state.date) return;
+        state.dayPersistenceStatus = 'error';
+        showError(`No s'ha pogut carregar la jornada. ${error.message || error}`);
+        reject(error);
+      });
     });
   }
 
@@ -833,6 +1100,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   function flushPendingRemoteDay() {
     if (!pendingRemoteDay || pendingRemoteDay.date !== state.date) return false;
     const { saved, date } = pendingRemoteDay;
+    if (hasUnsavedDay()) {
+      markDayConflict(saved, date);
+      return false;
+    }
     pendingRemoteDay = null;
     const remoteRevision = Number(saved?.revision) || 0;
     if ((saved && remoteRevision <= state.dayRevision) || (!saved && state.dayRevision === 0)) return false;
@@ -846,54 +1117,93 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const payload = serializableDay();
     const signature = daySignature(payload);
     if (signature === lastDaySignature) return;
+    stashDayDraft();
+    if (state.dayConflict) return;
     clearTimeout(daySaveTimer);
     daySaveTimer = setTimeout(async () => {
       try {
-        state.dayPersistenceStatus = 'saving';
-        const saved = await saveGuardiesDay(state.courseId, state.date, payload, state.dayRevision);
-        state.dayRevision = saved.revision;
-        state.updatedAt = saved.clientUpdatedAt || new Date().toISOString();
-        lastDaySignature = signature;
-        state.dayPersistenceStatus = 'ready';
-        if (['published', 'closed'].includes(state.dayStatus)) await syncPublicGuardiesDay();
-        flushPendingRemoteDay();
+        await persistDayNow();
       } catch (error) {
         state.dayPersistenceStatus = 'error';
-        const synchronized = flushPendingRemoteDay();
-        showError(synchronized
-          ? 'La jornada havia canviat en una altra sessió i s\'ha sincronitzat. Revisa el teu darrer canvi.'
-          : `No s'ha pogut guardar la jornada. ${error.message || error}`);
+        stashDayDraft();
+        if (pendingRemoteDay) markDayConflict(pendingRemoteDay.saved, pendingRemoteDay.date);
+        else showError(`No s'ha pogut guardar la jornada. ${error.message || error}`);
       }
     }, 250);
   }
 
   async function persistDayNow() {
     clearTimeout(daySaveTimer);
-    const payload = serializableDay();
-    const signature = daySignature(payload);
-    if (signature === lastDaySignature) return;
-    state.dayPersistenceStatus = 'saving';
-    const saved = await saveGuardiesDay(state.courseId, state.date, payload, state.dayRevision);
-    state.dayRevision = saved.revision;
-    state.updatedAt = saved.clientUpdatedAt || new Date().toISOString();
-    lastDaySignature = signature;
-    state.dayPersistenceStatus = 'ready';
-    if (['published', 'closed'].includes(state.dayStatus)) await syncPublicGuardiesDay();
-    flushPendingRemoteDay();
+    if (daySaveInFlight) await daySaveInFlight;
+    if (state.dayConflict) throw new Error('Hi ha canvis en una altra sessió. Tria quina versió vols conservar.');
+    if (!state.canWrite || !state.courseId || !state.dayLoaded || state.dayStatus === 'closed') return;
+    const courseId = state.courseId;
+    const date = state.date;
+    if (daySignature() === lastDaySignature) {
+      if (publicDaySavePending) await syncPublicGuardiesDay();
+      return;
+    }
+    daySaveInFlight = (async () => {
+      while (courseId === state.courseId && date === state.date) {
+        const payload = serializableDay();
+        const signature = daySignature(payload);
+        if (signature === lastDaySignature) break;
+        state.dayPersistenceStatus = 'saving';
+        const saved = await saveGuardiesDay(courseId, date, payload, state.dayRevision);
+        if (courseId !== state.courseId || date !== state.date) return;
+        state.dayRevision = saved.revision;
+        state.updatedAt = saved.clientUpdatedAt || new Date().toISOString();
+        lastDaySignature = signature;
+        if (daySignature() === signature) storageRemove([draftKey()]);
+        else stashDayDraft();
+        if (['published', 'closed'].includes(state.dayStatus)) {
+          publicDaySavePending = true;
+          await syncPublicGuardiesDay();
+        }
+      }
+      state.dayPersistenceStatus = 'ready';
+      flushPendingRemoteDay();
+    })();
+    try {
+      await daySaveInFlight;
+    } catch (error) {
+      stashDayDraft();
+      if (error.code === 'guardies/conflict' && courseId === state.courseId && date === state.date) {
+        const saved = await loadGuardiesDay(courseId, date);
+        markDayConflict(saved, date);
+      }
+      throw error;
+    } finally {
+      daySaveInFlight = null;
+    }
   }
 
   async function changeDayStatus(action) {
-    if (!state.canWrite || !['publish', 'unpublish', 'close', 'reopen'].includes(action)) return;
+    if (navigationInFlight || !state.canWrite || !['publish', 'unpublish', 'close', 'reopen'].includes(action)) return;
     if (action === 'close') {
       const day = xmlDayForDate(state.date);
       const pending = Array.from(state.absencies.values())
         .filter((item) => item.dia === day && !state.assignacions.has(item.id)).length;
       if (pending && !window.confirm(`Queden ${pending} guàrdies sense cobrir. Vols tancar igualment?`)) return;
     }
+    navigationInFlight = true;
     try {
       state.dayPersistenceStatus = 'saving';
       await persistDayNow();
-      const result = await transitionGuardiesDay(state.courseId, state.date, action);
+      const guardHistoryEntries = [];
+      if (action === 'close') {
+        state.assignacions.forEach((teacherId, absenceId) => {
+          if (state.assignmentSources.get(absenceId) !== 'guard' || state.cancelledAssignments.has(absenceId)) return;
+          const item = state.absencies.get(absenceId);
+          if (!item || item.dia !== xmlDayForDate(state.date)) return;
+          const groups = Array.from(new Set([
+            ...(item.grupsVisibles || []), ...(item.cursosVisibles || []),
+            ...(item.grups || []), ...(item.cursos || []),
+          ].filter(Boolean)));
+          guardHistoryEntries.push({ teacherId, groups });
+        });
+      }
+      const result = await transitionGuardiesDay(state.courseId, state.date, action, { guardHistoryEntries });
       state.dayStatus = result.day.status;
       state.publishedAt = result.day.publishedAt || '';
       state.closedAt = result.day.closedAt || '';
@@ -904,28 +1214,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         : state.countedAssignments;
       state.guardCounts = new Map(Object.entries(result.stats?.counts || Object.fromEntries(state.guardCounts)));
       if (['close', 'reopen', 'unpublish'].includes(action)) {
-        if (action === 'close') {
-          const entries = [];
-          state.assignacions.forEach((teacherId, absenceId) => {
-            if (state.assignmentSources.get(absenceId) !== 'guard') return;
-            const item = state.absencies.get(absenceId);
-            if (!item || item.dia !== xmlDayForDate(state.date)) return;
-            const groups = Array.from(new Set([
-              ...(item.grupsVisibles || []), ...(item.cursosVisibles || []),
-              ...(item.grups || []), ...(item.cursos || []),
-            ].filter(Boolean)));
-            entries.push({ teacherId, groups });
-            state.guardHistory[teacherId] ||= {};
-            state.guardHistory[teacherId][state.date] = groups;
-          });
-          await updateGuardiesGuardHistory(state.courseId, state.date, entries);
-        } else {
-          await updateGuardiesGuardHistory(state.courseId, state.date, [], true);
-          Object.keys(state.guardHistory).forEach((teacherId) => {
-            delete state.guardHistory[teacherId][state.date];
-            if (!Object.keys(state.guardHistory[teacherId]).length) delete state.guardHistory[teacherId];
-          });
-        }
+        state.guardHistory = result.stats?.guardHistory || state.guardHistory;
+        state.guardHistoryVersion = Number(result.stats?.guardHistoryVersion) || state.guardHistoryVersion;
       }
       await syncPublicGuardiesDay();
       state.unclosedDays = await loadUnclosedGuardiesDays(
@@ -941,6 +1231,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     } catch (error) {
       state.dayPersistenceStatus = 'error';
       showError(`No s'ha pogut canviar l'estat de la jornada. ${error.message || error}`);
+    } finally {
+      navigationInFlight = false;
     }
   }
 
@@ -1056,7 +1348,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const todayInfo = document.getElementById('today-info');
     const modeButtons = Array.from(document.querySelectorAll('[data-intake-mode]'));
     const modePanels = Array.from(document.querySelectorAll('[data-mode-panel]'));
-    const clearConvivencia = document.getElementById('clear-convivencia');
 
     if (adminPanel) adminPanel.open = false;
     if (todayInfo) {
@@ -1079,15 +1370,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     });
 
     el.convivenciaAdminList = document.getElementById('convivencia-admin-list');
-    el.clearConvivencia = clearConvivencia;
-    clearConvivencia?.addEventListener('click', async () => {
-      if (!state.canWrite) return;
-      state.convivencia.clear();
-      await saveConvivencia();
-    });
   }
 
   function saveGuardCodes() {
+    occupationCache.clear();
     storageSet(GUARD_CODES_STORAGE, JSON.stringify(Array.from(state.guardiaCodes)));
   }
 
@@ -1234,7 +1520,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     }
   }
 
-  function parseStoredData({ resetSelection }) {
+  function parseStoredData({ resetSelection, renderAfter = true }) {
+    professorInfoCache.clear();
+    occupationCache.clear();
     let referenceError = '';
     let untisError = '';
     state.referencia = null;
@@ -1338,7 +1626,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       showError(error.message || String(error));
     }
 
-    render();
+    if (renderAfter) render();
   }
 
   function applyDefaultGuardiaCodes(defaultCodes) {
@@ -1884,6 +2172,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   function renderConvivenciaAdmin() {
+    el.convivenciaAdminList = document.getElementById('convivencia-admin-list');
     if (!el.convivenciaAdminList) return;
     const hores = (state.resum?.hores || []).slice()
       .sort((a, b) => a.localeCompare(b, 'ca', { numeric: true }));
@@ -1950,6 +2239,16 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   function render() {
+    if (state.contextReady && !state.canWrite) {
+      const visibleDay = state.dayLoaded && Boolean(state.publicDay) && state.dayPersistenceStatus !== 'loading';
+      el.workspace.classList.toggle('hidden', !visibleDay);
+      el.empty.classList.toggle('hidden', visibleDay);
+      el.coverageList.innerHTML = renderPublicCoverage(state.publicDay);
+      el.printDateLabel.textContent = formatData(state.date);
+      const outings = document.getElementById('public-outing-list');
+      if (outings) outings.innerHTML = renderPublicOutings(state.publicDay);
+      return;
+    }
     const ready = state.contextReady
       && state.persistenceStatus !== 'loading'
       && state.dayPersistenceStatus !== 'loading'
@@ -2084,19 +2383,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     `;
 
     el.scheduleGrid.querySelectorAll('[data-jump-day]').forEach((button) => {
-      button.addEventListener('click', () => {
-        setDateToXmlDay(button.dataset.jumpDay);
-        state.absencies.clear();
-        state.assignacions.clear();
-        state.assignmentSources.clear();
-        state.comentaris.clear();
-        state.grupsFora.clear();
-        state.grupProfessorsFora.clear();
-        state.grupProfessorsAlliberats.clear();
-        state.partialGroups.clear();
-        state.outingAbsenceIds.clear();
-        render();
-      });
+      button.addEventListener('click', () => setDateToXmlDay(button.dataset.jumpDay));
     });
   }
 
@@ -2349,27 +2636,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     reportResult(assigned > 0, message);
   }
 
-  function renderConvivenciaForHour(dia, hora) {
-    const professors = convivenciaProfessors(dia, hora);
-    if (!professors.length) return '';
-    const hasAbsence = professors.some((placa) => isProfessorAbsentAtHour(dia, hora, placa));
-    return `
-      <div class="convivencia-strip ${hasAbsence ? 'has-absence' : ''}">
-        <span>Convivència</span>
-        <div>
-          ${professors.map((placa) => {
-            const absent = isProfessorAbsentAtHour(dia, hora, placa);
-            return `
-              <strong class="${absent ? 'absent' : ''}">
-                ${escapeHtml(labelProfessor(placa))}
-                ${absent ? '<em>Absent</em>' : ''}
-              </strong>
-            `;
-          }).join('')}
-        </div>
-      </div>
-    `;
-  }
 
   function renderSeventhObservation() {
     const observation = state.comentaris.get(SEVENTH_COMMENT_KEY) || '';
@@ -2531,21 +2797,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     });
   }
 
-  function renderAbsentNormalGuardiesForHour(dia, hora) {
-    const professors = parser.ocupacioFranja(state.sessions, dia, hora, state.guardiaCodes)
-      .filter((professor) => professor.guardies.length && isProfessorAbsentAtHour(dia, hora, professor.placa))
-      .map((professor) => professor.placa);
-    const unique = Array.from(new Set(professors));
-    if (!unique.length) return '';
-    return `
-      <div class="guard-absence-strip">
-        <span>Guàrdia normal absent</span>
-        <div>
-          ${unique.map((placa) => `<strong>${escapeHtml(labelProfessor(placa))}</strong>`).join('')}
-        </div>
-      </div>
-    `;
-  }
 
   function sessionsProfessorDia(placa, dia) {
     return state.sessions.filter((sessio) => sessio.placa === placa && sessio.dia === dia && isMeaningfulSession(sessio));
@@ -2693,7 +2944,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   function guardiesPerFranja(dia, hora, professorAbsent, currentAbsenceId = '') {
-    const ocupacio = parser.ocupacioFranja(state.sessions, dia, hora, state.guardiaCodes);
+    const key = `${dia}|${hora}`;
+    if (!occupationCache.has(key)) occupationCache.set(key, parser.ocupacioFranja(state.sessions, dia, hora, state.guardiaCodes));
+    const ocupacio = occupationCache.get(key);
     const ocupacioByPlaca = new Map(ocupacio.map((professor) => [professor.placa, professor]));
     const candidates = new Map();
 
@@ -3104,56 +3357,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     `;
   }
 
-  function renderCoverageItem(item) {
-    const candidates = guardiesPerFranja(item.dia, item.hora, item.placa, item.id);
-    const assignat = state.assignacions.get(item.id) || '';
-    const hasCandidates = candidates.length > 0;
-    const assignatLabel = assignat ? labelProfessor(assignat) : 'Pendent';
-    const comentari = state.comentaris.get(item.id) || '';
-    const details = coverageDetails(item);
 
-    return `
-      <article class="coverage-item ${assignat ? 'covered' : ''}">
-        <div class="coverage-head">
-          <div>
-            <div class="session-title">${escapeHtml(labelProfessor(item.placa))}</div>
-            <div class="session-meta">${escapeHtml(details)}</div>
-          </div>
-          <button type="button" class="icon-remove no-print" aria-label="Elimina aquesta absència" data-remove-absence="${escapeHtml(item.id)}">X</button>
-        </div>
-        <div class="assignment">
-          <select data-assignacio="${escapeHtml(item.id)}" ${hasCandidates ? '' : 'disabled'}>
-            <option value="">Professor/a preassignat/ada</option>
-            ${candidates.map((candidate) => `
-              <option
-                class="candidate-option ${candidateOptionClass(candidate)}"
-                value="${escapeHtml(candidate.placa)}"
-                ${candidate.placa === assignat ? 'selected' : ''}
-                ${candidate.unavailable ? 'disabled' : ''}
-              >
-                ${escapeHtml(candidateSelectLabel(candidate))}
-              </option>
-            `).join('')}
-          </select>
-          <button type="button" class="ghost" data-clear-assignacio="${escapeHtml(item.id)}">Neteja</button>
-          <span class="print-only print-assignment">Guàrdia: ${escapeHtml(assignatLabel)}</span>
-        </div>
-        <label class="comment-field no-print">
-          Comentari
-          <textarea data-comment="${escapeHtml(item.id)}" rows="2" placeholder="Aula, feina, incidència...">${escapeHtml(comentari)}</textarea>
-        </label>
-        <div class="print-only print-comment" data-comment-print="${escapeHtml(item.id)}">${comentari ? `Comentari: ${escapeHtml(comentari)}` : ''}</div>
-      </article>
-    `;
-  }
-
-  function coverageDetails(item) {
-    return [
-      groupLabel(item),
-      formatMateria(item),
-      aulaLabel(item),
-    ].filter(Boolean).join(' · ') || 'Sense detall';
-  }
 
   function groupLabel(item) {
     if (item.grupsVisibles?.length) return item.grupsVisibles.join(' + ');
@@ -3166,20 +3370,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     return '';
   }
 
-  function assignmentLoadLabel(item, placa) {
-    const count = countAssignmentsSameSlot(item.dia, item.hora, placa);
-    return plural(count, 'en aquesta hora', 'en aquesta hora');
-  }
 
-  function countAssignmentsSameSlot(dia, hora, placa) {
-    let count = 0;
-    state.assignacions.forEach((assignedPlaca, absenceId) => {
-      if (assignedPlaca !== placa) return;
-      const absence = state.absencies.get(absenceId);
-      if (absence?.dia === dia && absence?.hora === hora) count += 1;
-    });
-    return count;
-  }
 
   function horaLabel(hora) {
     if (hora === 'PATI') return 'Pati · 10:45–11:15';
@@ -3189,6 +3380,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   function professorInfo(placa) {
+    if (professorInfoCache.has(placa)) return professorInfoCache.get(placa);
     const sessio = (state.allSessions.length ? state.allSessions : state.sessions)
       .find((item) => item.placa === placa && (item.professorCurta || item.professorNom));
     const place = state.referencia?.places?.get(placa);
@@ -3207,12 +3399,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       .map((name) => String(name || '').trim())
       .find((name) => name && !aliases.has(normalizeSearch(name))) || '';
     const referenceName = String(place?.descripcio || '').trim();
-    return {
+    const info = {
       short,
       name: parsedName
         || (directoryName && !aliases.has(normalizeSearch(directoryName)) ? directoryName : '')
         || referenceName,
     };
+    professorInfoCache.set(placa, info);
+    return info;
   }
 
   function professorShort(placa) {
@@ -3238,13 +3432,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     return Array.from(aliases).some((alias) => state.excludedTeacherIds.has(alias));
   }
 
-  function activityInfo(code) {
-    const info = state.referencia?.activitats?.get(code);
-    const label = info
-      ? info.label || info.descripcio || 'Activitat'
-      : 'Activitat';
-    return { label, info };
-  }
 
   function tipusItem(item) {
     if (isGuardiaItem(item)) return 'Guàrdia';
@@ -3277,20 +3464,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     ));
   }
 
-  function formatSessionsActivitat(sessions) {
-    const labels = Array.from(new Set(sessions.map((sessio) => (
-      sessio.activitatCurta || sessio.activitatNom || sessio.activitat
-    )).filter(Boolean)));
-    return labels.length ? labels.join(', ') : 'Guàrdia';
-  }
 
-  function formatCandidateAvailability(candidate) {
-    const labels = [];
-    if (candidate.guardies?.length) labels.push(formatSessionsActivitat(candidate.guardies));
-    if (candidate.alliberaments?.length) labels.push(formatAlliberamentLabel(candidate.alliberaments));
-    if (candidate.convivencia) labels.push('Convivencia');
-    return labels.length ? labels.join(' + ') : 'Disponible';
-  }
 
   function candidateSelectLabel(candidate) {
     const source = candidate.alliberaments?.length ? 'released' : candidate.outsideDuty ? 'other' : 'guard';
@@ -3312,14 +3486,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     return 'candidate-guard';
   }
 
-  function formatAlliberamentLabel(items) {
-    const grups = Array.from(new Set(items.flatMap((item) => (
-      item.grupsVisibles?.length
-        ? item.grupsVisibles
-        : item.grups.map((grup) => `Grup ${grup}`)
-    )).filter(Boolean)));
-    return grups.length ? `Alliberat: ${grups.join(' + ')}` : 'Alliberat';
-  }
 
   function formatMateria(item) {
     if (isGuardiaItem(item) && !item.materia) return 'Guàrdia';
@@ -3358,7 +3524,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   function setDateToXmlDay(xmlDay) {
     const date = dateForXmlDayInSameWeek(state.date, xmlDay);
     if (!date) return;
-    state.changeDate(date);
+    navigateToDate(date);
   }
 
   function localDateString(date) {
