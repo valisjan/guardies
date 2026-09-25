@@ -462,7 +462,7 @@ h3 {
 
 .date-dock {
   display: grid;
-  grid-template-columns: 210px minmax(190px, 1fr) minmax(170px, 0.82fr);
+  grid-template-columns: 190px minmax(170px, 1fr) minmax(150px, 0.8fr);
   align-items: stretch;
   gap: 7px;
   min-width: 0;
@@ -470,11 +470,10 @@ h3 {
 
 .date-field {
   display: grid;
-  grid-template-rows: auto 36px;
+  grid-template-rows: auto 34px;
   align-content: stretch;
-  gap: 5px;
-  min-height: 64px;
-  padding-top: 8px;
+  gap: 3px;
+  min-height: 56px;
 }
 
 .date-field > label,
@@ -497,15 +496,15 @@ h3 {
 .date-input-row input {
   width: 100%;
   min-width: 0;
-  min-height: 36px;
+  min-height: 34px;
   padding: 0 9px;
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-weight: 750;
   line-height: 1;
 }
 
 .date-arrow {
-  min-height: 36px;
+  min-height: 34px;
   padding: 0;
   border-color: var(--border);
   background: var(--surface-subtle);
@@ -524,18 +523,18 @@ h3 {
   flex-direction: column;
   justify-content: flex-start;
   min-width: 0;
-  min-height: 64px;
+  min-height: 56px;
   border: 1px solid var(--primary-border);
   border-radius: 7px;
   background: var(--primary-soft);
-  padding: 8px 12px 7px;
+  padding: 7px 10px;
 }
 
 .date-summary-card strong {
   display: block;
   margin-top: 5px;
   overflow: hidden;
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-weight: 800;
   line-height: 1.1;
   text-overflow: ellipsis;
@@ -579,11 +578,11 @@ h3 {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  min-height: 64px;
+  min-height: 56px;
 }
 
 .day-command-bar > button {
-  min-height: 42px;
+  min-height: 36px;
 }
 
 .day-summary {
@@ -592,11 +591,11 @@ h3 {
   gap: 8px;
   margin-right: auto;
   min-width: 0;
-  min-height: 42px;
+  min-height: 36px;
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--surface-subtle);
-  padding: 5px 9px;
+  padding: 4px 8px;
   color: var(--muted);
   font-size: 0.73rem;
   font-weight: 750;
@@ -3346,9 +3345,9 @@ h3 {
   display: none !important;
 }
 
-@media (max-width: 1450px) {
+@media (max-width: 1120px) {
   .work-header {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(420px, 1fr);
   }
 
   .day-command-bar {
