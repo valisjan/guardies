@@ -107,6 +107,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   });
   window.addEventListener('guardies:clear-files', clearPersistentFiles);
   window.addEventListener('guardies:auth-changed', bootstrap);
+  window.addEventListener('guardies:retry-connection', bootstrap);
   document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('guardies:pati-updated', () => renderCoverage());
   window.addEventListener('guardies:exclusions-updated', async () => {
@@ -1502,32 +1503,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     el.groupSearch.value = '';
     el.groupSearch.disabled = !state.canWrite || state.dayStatus === 'closed' || !available.length;
     el.clearGroups.disabled = !state.canWrite || state.dayStatus === 'closed' || !state.grupsFora.size;
-  }
-
-  function renderSelectedGroups(grups = grupsOrdenatsAmbLabel()) {
-    const byCode = new Map(grups.map((grup) => [grup.codi, grup]));
-    const selected = Array.from(state.grupsFora)
-      .map((codi) => byCode.get(codi))
-      .filter(Boolean)
-      .sort((a, b) => a.label.localeCompare(b.label, 'ca', { numeric: true }));
-
-    if (!selected.length) {
-      el.selectedGroups.innerHTML = '<div class="empty-small">Cap grup seleccionat.</div>';
-      return;
-    }
-
-    el.selectedGroups.innerHTML = selected.map((grup) => `
-      <span class="chip group-chip">
-        ${escapeHtml(grup.label)}
-        <button type="button" aria-label="Treu ${escapeHtml(grup.label)}" data-remove-group="${escapeHtml(grup.codi)}">×</button>
-      </span>
-    `).join('');
-
-    el.selectedGroups.querySelectorAll('[data-remove-group]').forEach((button) => {
-      button.addEventListener('click', () => {
-        toggleGroupOut(button.dataset.removeGroup);
-      });
-    });
   }
 
   function renderSelectedGroupsByHour(grups = grupsOrdenatsAmbLabel()) {

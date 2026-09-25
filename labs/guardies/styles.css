@@ -385,6 +385,22 @@ h3 {
   color: var(--amber-strong);
 }
 
+.unclosed-day-link {
+  border: 0;
+  background: transparent;
+  color: var(--amber-strong);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 850;
+  padding: 0 2px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.unclosed-day-link:hover {
+  color: var(--primary-strong);
+}
+
 .range-builder,
 .outing-range {
   display: grid;

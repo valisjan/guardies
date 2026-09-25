@@ -89,6 +89,15 @@ function goToday() {
   window.dispatchEvent(new CustomEvent('guardies:legacy-render', { detail: { reloadDay: true } }));
 }
 
+function retryConnection() {
+  window.dispatchEvent(new CustomEvent('guardies:retry-connection'));
+}
+
+function openUnclosedDay(unclosedDate) {
+  store.changeDate(unclosedDate);
+  window.dispatchEvent(new CustomEvent('guardies:legacy-render', { detail: { reloadDay: true } }));
+}
+
 function preparePrintDensity() {
   const rows = document.querySelectorAll('#coverage-list .coverage-item:not(.not-completed)').length;
   const patioCards = document.querySelectorAll('#coverage-list .pati-zone-card').length;
@@ -143,7 +152,14 @@ function changeStatus(action) {
   <div class="work-header-stack no-print">
     <p v-if="!teacherView && canWrite && unclosedDays.length" class="unclosed-days-warning" role="status">
       <strong>Dies no tancats:</strong>
-      {{ unclosedDays.map(formatShortDate).join(' · ') }}
+      <button
+        v-for="unclosedDate in unclosedDays"
+        :key="unclosedDate"
+        type="button"
+        class="unclosed-day-link"
+        :aria-label="`Obre el dia ${formatShortDate(unclosedDate)}`"
+        @click="openUnclosedDay(unclosedDate)"
+      >{{ formatShortDate(unclosedDate) }}</button>
     </p>
     <header class="work-header" :class="{ 'teacher-date-header': teacherView }">
     <div v-if="!teacherView" class="work-title">
@@ -177,6 +193,7 @@ function changeStatus(action) {
         <span class="day-count">{{ assignedAbsences }}/{{ selectedAbsences.length }} cobertes</span>
         <span class="last-sync">{{ lastSyncLabel }}</span>
       </div>
+      <button v-if="persistenceStatus === 'error'" id="retry-connection" type="button" class="ghost" @click="retryConnection">Reintenta ara</button>
       <button id="print-coverage" type="button" class="ghost" :disabled="dayPersistenceStatus === 'loading'" @click="printCoverage">Imprimeix A3</button>
       <button
         v-if="canWrite"
