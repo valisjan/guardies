@@ -229,6 +229,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.contextReady = false;
     state.authRequired = false;
     state.persistenceStatus = 'loading';
+    state.teacherDirectory = [];
+    state.unclosedDays = [];
+    state.guardCounts = new Map();
     const search = new URLSearchParams(window.location.search);
     state.teacherView = search.get('vista') === 'professor';
     render();
@@ -259,19 +262,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       }
       if (!usingCachedData) remoteData = await migrateLegacyData(remoteData);
       applyRemoteData(remoteData);
-      const [teacherDirectory, stats, unclosedDays] = await Promise.all([
-        state.canWrite
-          ? loadGuardiesTeacherDirectory(state.courseId).catch(() => [])
-          : Promise.resolve([]),
-        loadGuardiesStats(state.courseId).catch(() => ({ counts: {} })),
-        state.canWrite
-          ? loadUnclosedGuardiesDays(state.courseId, localDateString(new Date())).catch(() => [])
-          : Promise.resolve([]),
-      ]);
-      state.teacherDirectory = teacherDirectory;
-      state.unclosedDays = unclosedDays;
-      state.guardCounts = new Map(Object.entries(stats.counts || {}));
-      lastRemoteDataSignature = remoteDataSignature({ ...remoteData, stats });
+      lastRemoteDataSignature = remoteDataSignature({ ...remoteData, stats: { counts: {} } });
       state.persistenceStatus = usingCachedData ? 'stale' : 'ready';
       const adminPanel = document.getElementById('admin-panel');
       if (adminPanel) adminPanel.open = false;
@@ -282,6 +273,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       bootstrapRetryAttempt = 0;
       render();
       window.dispatchEvent(new CustomEvent('guardies:auth-ready'));
+      loadBootstrapAuxiliaryData(state.courseId).catch(() => {});
     } catch (error) {
       state.persistenceStatus = 'error';
       state.contextReady = true;
@@ -291,6 +283,23 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       window.dispatchEvent(new CustomEvent('guardies:auth-ready'));
       if (!state.authRequired) scheduleBootstrapRetry();
     }
+  }
+
+  async function loadBootstrapAuxiliaryData(courseId) {
+    const [teacherDirectory, stats, unclosedDays] = await Promise.all([
+      state.canWrite
+        ? loadGuardiesTeacherDirectory(courseId).catch(() => [])
+        : Promise.resolve([]),
+      loadGuardiesStats(courseId).catch(() => ({ counts: {} })),
+      state.canWrite
+        ? loadUnclosedGuardiesDays(courseId, localDateString(new Date())).catch(() => [])
+        : Promise.resolve([]),
+    ]);
+    if (courseId !== state.courseId) return;
+    state.teacherDirectory = teacherDirectory;
+    state.unclosedDays = unclosedDays;
+    state.guardCounts = new Map(Object.entries(stats.counts || {}));
+    render();
   }
 
   function scheduleBootstrapRetry() {
@@ -466,13 +475,15 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   function subscribeToRemoteData() {
     unsubscribeGuardiesData();
     unsubscribeDirectoryVersion();
-    unsubscribeDirectoryVersion = subscribeDirectoryVersion(state.courseId, () => {
-      if (document.hidden) {
-        directoryReloadPending = true;
-      } else {
-        reloadTeacherDirectory();
-      }
-    });
+    unsubscribeDirectoryVersion = state.canWrite
+      ? subscribeDirectoryVersion(state.courseId, () => {
+        if (document.hidden) {
+          directoryReloadPending = true;
+        } else {
+          reloadTeacherDirectory();
+        }
+      })
+      : () => {};
     unsubscribeGuardiesData = subscribeGuardiesData(state.courseId, async (remoteData) => {
       const signature = remoteDataSignature(remoteData);
       if (signature === lastRemoteDataSignature) {
