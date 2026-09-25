@@ -140,6 +140,13 @@ test.describe('Guàrdies: comportament existent', () => {
     await page.getByRole('button', { name: 'Dia anterior' }).click();
     await expect(page.locator('#date-input')).toHaveValue('2026-09-07');
 
+    await page.locator('#date-input').fill('2026-09-11');
+    await page.locator('#date-input').press('Tab');
+    await page.getByRole('button', { name: 'Dia següent' }).click();
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-14');
+    await page.getByRole('button', { name: 'Dia anterior' }).click();
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-11');
+
     await page.getByRole('link', { name: 'Professorat', exact: true }).click();
     await expect(page).toHaveURL(/vista=professor/);
     await expect(page).toHaveURL(/data=2026-09-07/);

@@ -99,7 +99,6 @@ export const useGuardiesStore = defineStore('guardies', {
       this.publishedAt = '';
       this.updatedAt = '';
       this.closedAt = '';
-      this.cancelledAssignments.clear();
       this.countedAssignments = [];
     },
     changeDate(date) {

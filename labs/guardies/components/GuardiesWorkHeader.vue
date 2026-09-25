@@ -50,6 +50,8 @@ function shiftDate(days) {
   const parsed = new Date(`${date.value}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return;
   parsed.setDate(parsed.getDate() + days);
+  if (parsed.getDay() === 6) parsed.setDate(parsed.getDate() + (days > 0 ? 2 : -1));
+  if (parsed.getDay() === 0) parsed.setDate(parsed.getDate() + (days > 0 ? 1 : -2));
   store.changeDate(localDateString(parsed));
   window.dispatchEvent(new CustomEvent('guardies:legacy-render', { detail: { reloadDay: true } }));
 }
@@ -83,6 +85,7 @@ function printCoverage() {
 }
 
 function clearDay() {
+  if (!window.confirm('Vols netejar totes les absències i sortides d’aquest dia?')) return;
   store.clearAbsencePlan();
   store.clearGroupsOut();
   window.dispatchEvent(new CustomEvent('guardies:legacy-render'));
