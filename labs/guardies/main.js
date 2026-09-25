@@ -505,6 +505,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       observationPresets: remoteData.observationPresets || [],
       excludedTeacherIds: remoteData.excludedTeacherIds || [],
       counts: remoteData.stats?.counts || {},
+      guardHistory: remoteData.stats?.guardHistory || {},
     });
   }
 

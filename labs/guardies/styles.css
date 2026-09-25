@@ -1935,6 +1935,11 @@ h3 {
   background: var(--green-soft);
 }
 
+.guard-roster-teacher.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
 .guard-roster-teacher span {
   overflow: hidden;
   color: var(--text-soft);

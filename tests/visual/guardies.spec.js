@@ -92,6 +92,26 @@ async function uploadConfiguration(page) {
 }
 
 test.describe('Guàrdies: comportament existent', () => {
+  test('mostra l’historial G del professor en clicar-lo', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.evaluate(() => {
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const data = JSON.parse(localStorage.getItem(key));
+      data.stats = {
+        ...(data.stats || {}),
+        guardHistoryVersion: 1,
+        guardHistory: { 2: { '2026-09-18': ['1ESO-A'] } },
+      };
+      localStorage.setItem(key, JSON.stringify(data));
+    });
+    await page.reload();
+    await page.getByRole('tab', { name: 'Recompte de guàrdies' }).click();
+    await page.locator('[data-roster-teacher="2"]').first().click();
+    await expect(page.locator('.guard-history')).toContainText('18/09/2026');
+    await expect(page.locator('.guard-history')).toContainText('1ESO-A');
+  });
+
   test('arrenca buit i obliga a carregar els fitxers en ordre', async ({ page }) => {
     await openGuardies(page);
 

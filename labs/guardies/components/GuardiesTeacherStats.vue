@@ -107,8 +107,25 @@ const selectedTeacher = computed(() => {
 });
 
 const selectedHistory = computed(() => {
-  const history = guardHistory.value?.[selectedTeacherId.value] || {};
-  return Object.entries(history)
+  const teacher = selectedTeacher.value;
+  if (!teacher) return [];
+  const aliases = new Set([
+    teacher.placa,
+    teacher.short,
+    teacher.id,
+    teacher.codiUntis,
+    teacher.name,
+    teacher.label,
+  ].map(normalize).filter(Boolean));
+  const merged = new Map();
+  Object.entries(guardHistory.value || {}).forEach(([teacherId, dates]) => {
+    if (teacherId !== selectedTeacherId.value && !aliases.has(normalize(teacherId))) return;
+    Object.entries(dates && typeof dates === 'object' ? dates : {}).forEach(([date, groups]) => {
+      const current = merged.get(date) || [];
+      merged.set(date, Array.from(new Set([...current, ...(Array.isArray(groups) ? groups : [])])));
+    });
+  });
+  return Array.from(merged.entries())
     .sort(([left], [right]) => right.localeCompare(left))
     .map(([date, groups]) => ({ date, groups: Array.isArray(groups) ? groups : [] }));
 });
@@ -150,8 +167,9 @@ function selectTeacher(teacherId) {
               v-for="teacher in cell.teachers"
               :key="teacher.teacherId"
               class="guard-roster-teacher"
-              :class="[`heat-${teacher.heat}`, { 'is-mine': teacher.mine }]"
+              :class="[`heat-${teacher.heat}`, { 'is-mine': teacher.mine, selected: selectedTeacherId === teacher.teacherId }]"
               :data-roster-teacher="teacher.teacherId"
+              :aria-pressed="selectedTeacherId === teacher.teacherId"
               role="button"
               tabindex="0"
               @click="selectTeacher(teacher.teacherId)"
