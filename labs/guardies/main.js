@@ -816,6 +816,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   async function changeDayStatus(action) {
     if (!state.canWrite || !['publish', 'unpublish', 'close', 'reopen'].includes(action)) return;
+    if (action === 'close') {
+      const day = xmlDayForDate(state.date);
+      const pending = Array.from(state.absencies.values())
+        .filter((item) => item.dia === day && !state.assignacions.has(item.id)).length;
+      if (pending && !window.confirm(`Queden ${pending} guàrdies sense cobrir. Vols tancar igualment?`)) return;
+    }
     try {
       state.dayPersistenceStatus = 'saving';
       await persistDayNow();

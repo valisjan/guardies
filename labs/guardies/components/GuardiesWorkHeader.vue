@@ -4,7 +4,10 @@ import { storeToRefs } from 'pinia';
 import { useGuardiesStore } from '../stores/guardies.js';
 
 const store = useGuardiesStore();
-const { date, absencies, dayStatus, dayPersistenceStatus, canWrite, teacherView, unclosedDays } = storeToRefs(store);
+const {
+  date, absencies, assignacions, dayStatus, dayPersistenceStatus,
+  persistenceStatus, updatedAt, canWrite, teacherView, unclosedDays,
+} = storeToRefs(store);
 
 const xmlDay = computed(() => {
   if (!date.value) return '';
@@ -15,6 +18,29 @@ const xmlDay = computed(() => {
 const selectedAbsences = computed(() => (
   Array.from(absencies.value.values()).filter((item) => item.dia === xmlDay.value)
 ));
+
+const assignedAbsences = computed(() => selectedAbsences.value
+  .filter((item) => assignacions.value.has(item.id)).length);
+
+const syncLabel = computed(() => {
+  if (persistenceStatus.value === 'loading' || dayPersistenceStatus.value === 'loading') return 'Connectant…';
+  if (persistenceStatus.value === 'saving' || dayPersistenceStatus.value === 'saving') return 'Guardant…';
+  if (persistenceStatus.value === 'stale' || dayPersistenceStatus.value === 'stale') return 'Dades locals';
+  if (persistenceStatus.value === 'error' || dayPersistenceStatus.value === 'error') return 'Error de connexió';
+  return 'Sincronitzat';
+});
+
+const syncClass = computed(() => ({
+  'sync-stale': ['stale', 'error'].includes(persistenceStatus.value) || ['stale', 'error'].includes(dayPersistenceStatus.value),
+  'sync-saving': persistenceStatus.value === 'saving' || dayPersistenceStatus.value === 'saving',
+}));
+
+const lastSyncLabel = computed(() => {
+  if (!updatedAt.value) return 'Sense canvis guardats';
+  const parsed = new Date(updatedAt.value);
+  if (Number.isNaN(parsed.getTime())) return 'Última sincronització desconeguda';
+  return `Última sincronització: ${new Intl.DateTimeFormat('ca-ES', { hour: '2-digit', minute: '2-digit' }).format(parsed)}`;
+});
 
 function formatDate(value) {
   if (!value) return 'Sense data';
@@ -53,6 +79,13 @@ function shiftDate(days) {
   if (parsed.getDay() === 6) parsed.setDate(parsed.getDate() + (days > 0 ? 2 : -1));
   if (parsed.getDay() === 0) parsed.setDate(parsed.getDate() + (days > 0 ? 1 : -2));
   store.changeDate(localDateString(parsed));
+  window.dispatchEvent(new CustomEvent('guardies:legacy-render', { detail: { reloadDay: true } }));
+}
+
+function goToday() {
+  const today = localDateString(new Date());
+  if (today === date.value) return;
+  store.changeDate(today);
   window.dispatchEvent(new CustomEvent('guardies:legacy-render', { detail: { reloadDay: true } }));
 }
 
@@ -132,13 +165,18 @@ function changeStatus(action) {
         <strong>{{ formatDate(date) }}</strong>
         <em v-if="!['1', '2', '3', '4', '5'].includes(xmlDay)">Dia no lectiu</em>
       </div>
-      <div v-if="!teacherView" id="today-info" class="date-summary-card today-info">
+      <button v-if="!teacherView" id="today-info" type="button" class="date-summary-card today-info" title="Ves a avui" @click="goToday">
         <span>Avui</span>
         <strong>{{ formatDate(localDateString(new Date())) }}</strong>
-      </div>
+      </button>
     </div>
 
     <div v-if="!teacherView" class="day-command-bar">
+      <div class="day-summary" aria-live="polite">
+        <span class="pill sync-pill" :class="syncClass">{{ syncLabel }}</span>
+        <span class="day-count">{{ assignedAbsences }}/{{ selectedAbsences.length }} cobertes</span>
+        <span class="last-sync">{{ lastSyncLabel }}</span>
+      </div>
       <button id="print-coverage" type="button" class="ghost" :disabled="dayPersistenceStatus === 'loading'" @click="printCoverage">Imprimeix A3</button>
       <button
         v-if="canWrite"
