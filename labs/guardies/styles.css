@@ -1806,23 +1806,6 @@ h3 {
   font-size: 0.67rem;
 }
 
-.heatmap-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--muted);
-  font-size: 0.62rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.heatmap-swatch {
-  width: 15px;
-  height: 15px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-}
-
 .guard-matrix-frame {
   max-height: 680px;
   overflow: auto;
@@ -1966,42 +1949,36 @@ h3 {
   font-size: 0.72rem;
 }
 
-.guard-roster-teacher.heat-0 b,
-.heatmap-swatch.heat-0 {
+.guard-roster-teacher.heat-0 b {
   background: var(--surface-strong);
   color: var(--muted);
 }
 
-.guard-roster-teacher.heat-1 b,
-.heatmap-swatch.heat-1 {
+.guard-roster-teacher.heat-1 b {
   border-color: color-mix(in srgb, var(--primary) 22%, var(--border));
   background: color-mix(in srgb, var(--primary) 10%, var(--surface));
   color: var(--primary-strong);
 }
 
-.guard-roster-teacher.heat-2 b,
-.heatmap-swatch.heat-2 {
+.guard-roster-teacher.heat-2 b {
   border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
   background: color-mix(in srgb, var(--primary) 20%, var(--surface));
   color: var(--primary-strong);
 }
 
-.guard-roster-teacher.heat-3 b,
-.heatmap-swatch.heat-3 {
+.guard-roster-teacher.heat-3 b {
   border-color: color-mix(in srgb, var(--amber) 45%, var(--border));
   background: color-mix(in srgb, var(--amber) 24%, var(--surface));
   color: var(--amber);
 }
 
-.guard-roster-teacher.heat-4 b,
-.heatmap-swatch.heat-4 {
+.guard-roster-teacher.heat-4 b {
   border-color: color-mix(in srgb, var(--amber) 62%, var(--border));
   background: color-mix(in srgb, var(--amber) 38%, var(--surface));
   color: var(--text);
 }
 
-.guard-roster-teacher.heat-5 b,
-.heatmap-swatch.heat-5 {
+.guard-roster-teacher.heat-5 b {
   border-color: color-mix(in srgb, var(--coral) 68%, var(--border));
   background: color-mix(in srgb, var(--coral) 42%, var(--surface));
   color: var(--text);

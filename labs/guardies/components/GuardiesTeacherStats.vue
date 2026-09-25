@@ -108,11 +108,6 @@ const guardMatrix = computed(() => {
         <p class="kicker">Curs {{ courseName }}</p>
         <h2 id="teacher-stats-title">Recompte de guàrdies per hores</h2>
       </div>
-      <div class="heatmap-legend" aria-label="Llegenda del mapa de calor">
-        <span>Menys</span>
-        <i v-for="level in 5" :key="level" class="heatmap-swatch" :class="`heat-${level}`" aria-hidden="true"></i>
-        <span>Més</span>
-      </div>
     </header>
 
     <div v-if="guardMatrix.length" class="guard-matrix-frame">
