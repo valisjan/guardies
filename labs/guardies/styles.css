@@ -470,16 +470,20 @@ h3 {
 
 .date-field {
   display: grid;
-  align-content: space-between;
-  gap: 3px;
+  grid-template-rows: auto 36px;
+  align-content: stretch;
+  gap: 5px;
+  min-height: 64px;
 }
 
 .date-field > label,
 .date-summary-card > span {
   display: block;
   color: var(--muted);
-  font-size: 0.64rem;
+  font-size: 0.66rem;
   font-weight: 850;
+  letter-spacing: 0.035em;
+  line-height: 1;
   text-transform: uppercase;
 }
 
@@ -492,10 +496,15 @@ h3 {
 .date-input-row input {
   width: 100%;
   min-width: 0;
+  min-height: 36px;
+  padding: 0 9px;
+  font-size: 0.88rem;
+  font-weight: 750;
+  line-height: 1;
 }
 
 .date-arrow {
-  min-height: 34px;
+  min-height: 36px;
   padding: 0;
   border-color: var(--border);
   background: var(--surface-subtle);
@@ -510,19 +519,24 @@ h3 {
 }
 
 .date-summary-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   min-width: 0;
+  min-height: 64px;
   border: 1px solid var(--primary-border);
-  border-radius: 5px;
+  border-radius: 7px;
   background: var(--primary-soft);
-  padding: 6px 9px;
+  padding: 9px 12px;
 }
 
 .date-summary-card strong {
   display: block;
-  margin-top: 2px;
+  margin-top: 5px;
   overflow: hidden;
-  font-size: 0.82rem;
-  line-height: 1.2;
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -543,6 +557,7 @@ h3 {
   color: var(--text);
   cursor: pointer;
   font: inherit;
+  font-weight: 750;
   margin: 0;
   text-align: left;
   transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
@@ -562,23 +577,34 @@ h3 {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 8px;
+  min-height: 64px;
+}
+
+.day-command-bar > button {
+  min-height: 42px;
 }
 
 .day-summary {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   margin-right: auto;
   min-width: 0;
-  min-height: 29px;
+  min-height: 42px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 7px;
   background: var(--surface-subtle);
-  padding: 3px 7px;
+  padding: 5px 9px;
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.73rem;
   font-weight: 750;
+}
+
+.sync-pill {
+  min-height: 29px;
+  padding: 0 10px;
+  font-size: 0.72rem;
 }
 
 .day-count {
@@ -588,7 +614,7 @@ h3 {
 
 .last-sync {
   border-left: 1px solid var(--border);
-  padding-left: 7px;
+  padding-left: 8px;
   white-space: nowrap;
 }
 
