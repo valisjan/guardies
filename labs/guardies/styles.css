@@ -593,13 +593,26 @@ h3 {
 }
 
 .sync-pill.sync-saving {
-  border-color: var(--warning-border, var(--primary-border));
-  background: var(--warning-soft, var(--primary-soft));
+  border-color: var(--amber-border);
+  background: var(--amber-soft);
+  color: var(--amber);
 }
 
 .sync-pill.sync-stale {
-  border-color: var(--coral);
-  background: color-mix(in srgb, var(--coral) 10%, var(--surface));
+  border-color: var(--amber-border);
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.sync-pill.sync-ready {
+  border-color: var(--green-border);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.sync-pill.sync-error {
+  border-color: var(--coral-border);
+  background: var(--coral-soft);
   color: var(--coral);
 }
 

@@ -30,10 +30,16 @@ const syncLabel = computed(() => {
   return 'Sincronitzat';
 });
 
-const syncClass = computed(() => ({
-  'sync-stale': ['stale', 'error'].includes(persistenceStatus.value) || ['stale', 'error'].includes(dayPersistenceStatus.value),
-  'sync-saving': persistenceStatus.value === 'saving' || dayPersistenceStatus.value === 'saving',
-}));
+const syncClass = computed(() => {
+  const persistence = persistenceStatus.value;
+  const dayPersistence = dayPersistenceStatus.value;
+  if (persistence === 'error' || dayPersistence === 'error') return { 'sync-error': true };
+  if (persistence === 'stale' || dayPersistence === 'stale') return { 'sync-stale': true };
+  if (['loading', 'saving'].includes(persistence) || ['loading', 'saving'].includes(dayPersistence)) {
+    return { 'sync-saving': true };
+  }
+  return { 'sync-ready': true };
+});
 
 const lastSyncLabel = computed(() => {
   if (!updatedAt.value) return 'Sense canvis guardats';
