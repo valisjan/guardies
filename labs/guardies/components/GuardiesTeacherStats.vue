@@ -32,6 +32,12 @@ function publicTeacherName(teacher) {
   return `(${short || label || teacher.placa})`;
 }
 
+function heatLevel(value, maximum) {
+  const count = Number(value) || 0;
+  if (!maximum || count <= 0) return 0;
+  return Math.min(5, Math.max(1, Math.ceil((count / maximum) * 5)));
+}
+
 const days = [
   { key: '1', label: 'Dilluns' },
   { key: '2', label: 'Dimarts' },
@@ -60,7 +66,7 @@ const guardMatrix = computed(() => {
     teachersBySlot.get(key).add(session.placa);
   });
 
-  return hours.map((hour, index) => ({
+  const matrix = hours.map((hour, index) => ({
     hour,
     period: `${index + 1}a`,
     cells: days.map((day) => {
@@ -79,6 +85,19 @@ const guardMatrix = computed(() => {
       };
     }),
   }));
+  const maximum = Math.max(0, ...matrix.flatMap((row) => row.cells.flatMap((cell) => (
+    cell.teachers.map((teacher) => Number(teacher.count) || 0)
+  ))));
+  return matrix.map((row) => ({
+    ...row,
+    cells: row.cells.map((cell) => ({
+      ...cell,
+      teachers: cell.teachers.map((teacher) => ({
+        ...teacher,
+        heat: heatLevel(teacher.count, maximum),
+      })),
+    })),
+  }));
 });
 </script>
 
@@ -88,6 +107,11 @@ const guardMatrix = computed(() => {
       <div>
         <p class="kicker">Curs {{ courseName }}</p>
         <h2 id="teacher-stats-title">Recompte de guàrdies per hores</h2>
+      </div>
+      <div class="heatmap-legend" aria-label="Llegenda del mapa de calor">
+        <span>Menys</span>
+        <i v-for="level in 5" :key="level" class="heatmap-swatch" :class="`heat-${level}`" aria-hidden="true"></i>
+        <span>Més</span>
       </div>
     </header>
 
@@ -114,7 +138,7 @@ const guardMatrix = computed(() => {
               v-for="teacher in cell.teachers"
               :key="teacher.teacherId"
               class="guard-roster-teacher"
-              :class="{ 'is-mine': teacher.mine }"
+              :class="[`heat-${teacher.heat}`, { 'is-mine': teacher.mine }]"
               :data-roster-teacher="teacher.teacherId"
             >
               <span>{{ teacher.label }}</span>
