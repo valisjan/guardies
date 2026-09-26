@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { guardCountForSlot, guardSlotKey } from '../../../src/modules/guardies/domain/workflow.js';
 import { slotHistoryEntries } from '../../../src/modules/guardies/domain/guard-history.js';
@@ -87,6 +87,7 @@ const guardLayout = computed(() => {
       const key = guardSlotKey(day.key, hour);
       return {
         key,
+        dayLabel: day.label,
         teachers: Array.from(teachersBySlot.get(key) || [], (teacherId) => {
           const label = teachers.get(teacherId) || teacherId;
           return { teacherId, label, mine: Boolean(viewer && viewer === nameSignature(label)) };
@@ -155,19 +156,24 @@ function historyForTeacher(teacher, index) {
   return merged;
 }
 
-function slotHistoryText(entries) {
-  const lines = entries.map(({ date, groups }) => {
-    const formatted = dateFormatter.format(new Date(`${date}T12:00:00`));
-    return `${formatted} · ${groups.length ? groups.join(' · ') : '—'}`;
-  });
-  return [`${entries.length} ${entries.length === 1 ? 'guàrdia' : 'guàrdies'}`, ...lines].join('\n');
+function slotHistory(entries) {
+  const lines = entries.map(({ date, groups }) => ({
+    date: dateFormatter.format(new Date(`${date}T12:00:00`)),
+    groups: groups.length ? groups.join(' · ') : '—',
+  }));
+  const countLabel = `${entries.length} ${entries.length === 1 ? 'guàrdia' : 'guàrdies'}`;
+  return {
+    countLabel,
+    lines,
+    text: [countLabel, ...lines.map((line) => `${line.date} · ${line.groups}`)].join('\n'),
+  };
 }
 
 const historyKey = (teacherId, slot) => `${teacherId}|${slot}`;
 
 // Text del tooltip per professor i franja: només les guàrdies d'aquella
 // franja, igual que el recompte que es mostra a la cel·la.
-const historyTextBySlot = computed(() => {
+const historyBySlot = computed(() => {
   const index = historyIndex.value;
   const texts = new Map();
   professorOptions.value.forEach((teacher) => {
@@ -175,15 +181,31 @@ const historyTextBySlot = computed(() => {
     const slots = new Set(Object.values(merged).flatMap((bySlot) => Object.keys(bySlot)));
     slots.forEach((slot) => {
       const entries = slotHistoryEntries(merged, slot);
-      if (entries.length) texts.set(historyKey(teacher.placa, slot), slotHistoryText(entries));
+      if (entries.length) texts.set(historyKey(teacher.placa, slot), slotHistory(entries));
     });
   });
   return texts;
 });
 
-function historyTextFor(teacherId, slot) {
-  return historyTextBySlot.value.get(historyKey(teacherId, slot)) || '';
+function historyFor(teacherId, slot) {
+  return historyBySlot.value.get(historyKey(teacherId, slot)) || null;
 }
+
+function historyTextFor(teacherId, slot) {
+  return historyFor(teacherId, slot)?.text || '';
+}
+
+// Cerca: atenua qui no coincideix, sense moure la graella.
+const query = ref('');
+const normalizedQuery = computed(() => normalize(query.value));
+function matchesQuery(teacher) {
+  return !normalizedQuery.value || normalize(teacher.label).includes(normalizedQuery.value);
+}
+
+// Franges on apareix qui consulta, destacades per defecte.
+const highlightMine = ref(true);
+const hasMine = computed(() => guardLayout.value.some((row) => row.cells.some((cell) => cell.teachers.some((teacher) => teacher.mine))));
+const heatLevels = [0, 1, 2, 3, 4, 5];
 </script>
 
 <template>
@@ -191,9 +213,27 @@ function historyTextFor(teacherId, slot) {
     <p v-if="teacherStatsStatus === 'loading'" role="status">Carregant recompte…</p>
     <button v-if="teacherStatsStatus === 'error'" type="button" @click="retryStats">Reintenta</button>
     <header class="teacher-stats-head">
-      <div>
-        <p class="kicker">Curs {{ courseName }}</p>
-        <h2 id="teacher-stats-title">Recompte de guàrdies per hores</h2>
+      <div class="teacher-stats-title">
+        <h2 id="teacher-stats-title">Recompte de guàrdies</h2>
+        <p>Curs {{ courseName }} · guàrdies de G fetes a cada franja. Passa per sobre d'un nom per veure'n les dates.</p>
+      </div>
+      <div class="teacher-stats-tools">
+        <label class="stats-search">
+          <span>Cerca professorat</span>
+          <span class="stats-search-field">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4-4" /></svg>
+            <input v-model="query" type="search" placeholder="Nom o cognom" autocomplete="off" />
+          </span>
+        </label>
+        <button v-if="hasMine" type="button" class="stats-toggle" :aria-pressed="highlightMine ? 'true' : 'false'" @click="highlightMine = !highlightMine">
+          <svg v-if="highlightMine" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+          Destaca les meves franges
+        </button>
+        <div class="stats-legend" role="img" aria-label="Llegenda: de menys a més guàrdies">
+          <span>Menys</span>
+          <span v-for="level in heatLevels" :key="level" class="heat-swatch" :class="`heat-${level}`"></span>
+          <span>Més</span>
+        </div>
       </div>
     </header>
 
@@ -213,6 +253,7 @@ function historyTextFor(teacherId, slot) {
             v-for="cell in row.cells"
             :key="cell.key"
             class="guard-matrix-cell"
+            :class="{ 'is-mine-slot': highlightMine && cell.teachers.some((teacher) => teacher.mine) }"
             :data-roster-slot="cell.key"
             role="cell"
           >
@@ -220,15 +261,23 @@ function historyTextFor(teacherId, slot) {
               v-for="teacher in cell.teachers"
               :key="teacher.teacherId"
               class="guard-roster-teacher"
-              :class="[`heat-${teacher.heat}`, { 'is-mine': teacher.mine }]"
+              :class="[`heat-${teacher.heat}`, { 'is-mine': teacher.mine, 'is-dimmed': !matchesQuery(teacher) }]"
               :data-roster-teacher="teacher.teacherId"
               :aria-label="`${teacher.label}${historyTextFor(teacher.teacherId, cell.key) ? ` · ${historyTextFor(teacher.teacherId, cell.key)}` : ''}`"
               role="button"
               tabindex="0"
             >
-              <span>{{ teacher.label }}</span>
+              <span class="roster-name">{{ teacher.label }}</span>
+              <span v-if="teacher.mine" class="roster-you">Tu</span>
               <b data-roster-count :aria-label="`${teacher.count} guàrdies realitzades en aquesta hora`">{{ teacher.count }}</b>
-              <span v-if="historyTextFor(teacher.teacherId, cell.key)" class="guard-history-tooltip" role="tooltip">{{ historyTextFor(teacher.teacherId, cell.key) }}</span>
+              <span v-if="historyFor(teacher.teacherId, cell.key)" class="guard-history-tooltip" role="tooltip">
+                <strong class="tooltip-name">{{ teacher.label }}</strong>
+                <span class="tooltip-meta">{{ cell.dayLabel }}, {{ row.period }} hora · {{ historyFor(teacher.teacherId, cell.key).countLabel }}</span>
+                <span v-for="line in historyFor(teacher.teacherId, cell.key).lines" :key="line.date" class="tooltip-line">
+                  <span class="tooltip-date">{{ line.date }}</span>
+                  <span class="tooltip-groups">{{ line.groups }}</span>
+                </span>
+              </span>
             </article>
             <span v-if="!cell.teachers.length" class="guard-matrix-empty">—</span>
           </div>

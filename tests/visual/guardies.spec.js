@@ -528,6 +528,37 @@ test.describe('Guàrdies: comportament existent', () => {
     expect(await page.evaluate(() => window.__samePage === true)).toBe(true);
   });
 
+  test('el recompte permet cercar professorat i destacar les franges pròpies', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.goto('/?data=2026-09-07&vista=professor');
+    await page.getByRole('tab', { name: 'Recompte de guàrdies' }).click();
+    await expect(page.locator('[data-roster-teacher]').first()).toBeVisible();
+    // Sense coincidència amb qui consulta, no hi ha franges pròpies per destacar.
+    await expect(page.getByRole('button', { name: 'Destaca les meves franges' })).toHaveCount(0);
+
+    await page.getByLabel('Cerca professorat').fill('fuentes');
+    const fuentes = page.locator('[data-roster-teacher="2"]').first();
+    await expect(fuentes).not.toHaveClass(/is-dimmed/);
+    await expect(page.locator('[data-roster-teacher].is-dimmed').first()).toBeVisible();
+    await page.getByLabel('Cerca professorat').fill('');
+    await expect(page.locator('[data-roster-teacher].is-dimmed')).toHaveCount(0);
+
+    await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      useGuardiesStore().viewerName = 'Fuentes Serra, Gabriel';
+    });
+    const toggle = page.getByRole('button', { name: 'Destaca les meves franges' });
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(fuentes).toHaveClass(/is-mine/);
+    await expect(fuentes.locator('.roster-you')).toHaveText('Tu');
+    const mineSlot = page.locator('.guard-matrix-cell.is-mine-slot').first();
+    await expect(mineSlot).toBeVisible();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('.guard-matrix-cell.is-mine-slot')).toHaveCount(0);
+  });
+
   test('mostra les dates G del professor en passar-hi per damunt', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
@@ -558,7 +589,10 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(teacher.locator('.guard-history-tooltip')).toContainText('1 guàrdia');
     await expect(teacher.locator('.guard-history-tooltip')).toContainText('18/09/2026');
     await expect(teacher.locator('.guard-history-tooltip')).toContainText('1ESO-A');
-    await expect(teacher.locator('.guard-history-tooltip')).toHaveText('1 guàrdia\n18/09/2026 · 1ESO-A');
+    // Fitxa redissenyada: nom, franja i recompte, i una línia per data.
+    await expect(teacher.locator('.guard-history-tooltip .tooltip-meta')).toContainText('1a hora · 1 guàrdia');
+    await expect(teacher.locator('.guard-history-tooltip .tooltip-line')).toHaveCount(1);
+    await expect(teacher.locator('.guard-history-tooltip .tooltip-line')).toHaveText(/18\/09\/2026\s*1ESO-A/);
     await expect(teacher.locator('.guard-history-tooltip')).not.toContainText('9ESO-Z');
     await expect(teacher).not.toHaveAttribute('title', /.+/);
   });
@@ -699,7 +733,7 @@ test.describe('Guàrdies: comportament existent', () => {
     await page.goto('/?vista=professor');
     await expect(page.getByRole('tab', { name: 'Estadístiques' })).toHaveCount(0);
     await page.getByRole('tab', { name: 'Recompte de guàrdies' }).click();
-    await expect(page.getByRole('heading', { name: 'Recompte de guàrdies per hores' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Recompte de guàrdies', exact: true })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Dilluns' })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Divendres' })).toBeVisible();
     const publicTeacher = page.locator('[data-roster-slot="1|8:00"] [data-roster-teacher="2"]');

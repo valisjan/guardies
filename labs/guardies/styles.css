@@ -4816,6 +4816,331 @@ button.ghost {
   }
 }
 
+/* ==========================================================================
+   Redisseny · fase 3: recompte de guàrdies del professorat.
+   ========================================================================== */
+@media screen {
+  .teacher-stats-panel {
+    gap: 18px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .teacher-stats-head {
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 16px 24px;
+  }
+
+  .teacher-stats-title {
+    display: grid;
+    flex: 1 1 320px;
+    gap: 6px;
+  }
+
+  .teacher-stats-head h2 {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+
+  .teacher-stats-title p {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  .teacher-stats-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px 16px;
+  }
+
+  .stats-search {
+    display: grid;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .stats-search-field {
+    display: flex;
+    width: 260px;
+    min-height: 44px;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    background: var(--surface);
+    padding: 0 12px;
+    color: var(--muted);
+  }
+
+  .stats-search-field:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-soft);
+  }
+
+  .stats-search-field input[type="search"] {
+    min-height: 40px;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: var(--text);
+    font-size: 0.95rem;
+    box-shadow: none;
+  }
+
+  .stats-search-field input[type="search"]:focus-visible {
+    box-shadow: none;
+  }
+
+  .stats-toggle {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    padding: 0 14px;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .stats-toggle:hover {
+    border-color: var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .stats-toggle[aria-pressed="true"] {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    color: var(--primary-strong);
+  }
+
+  .stats-legend {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 5px;
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+
+  .heat-swatch {
+    width: 16px;
+    height: 16px;
+    border-radius: 5px;
+  }
+
+  /* Escala de calor d'un sol to: de neutre a índigo intens. */
+  .heat-swatch.heat-0,
+  .guard-roster-teacher.heat-0 b { background: var(--surface-strong); color: var(--muted); }
+  .heat-swatch.heat-1,
+  .guard-roster-teacher.heat-1 b { background: color-mix(in srgb, var(--primary) 14%, var(--surface)); color: var(--primary-strong); }
+  .heat-swatch.heat-2,
+  .guard-roster-teacher.heat-2 b { background: color-mix(in srgb, var(--primary) 28%, var(--surface)); color: var(--primary-strong); }
+  .heat-swatch.heat-3,
+  .guard-roster-teacher.heat-3 b { background: color-mix(in srgb, var(--primary) 46%, var(--surface)); color: var(--primary-strong); }
+  .heat-swatch.heat-4,
+  .guard-roster-teacher.heat-4 b { background: color-mix(in srgb, var(--primary) 72%, var(--surface)); color: var(--on-primary); }
+  .heat-swatch.heat-5,
+  .guard-roster-teacher.heat-5 b { background: var(--primary); color: var(--on-primary); }
+
+  .guard-matrix-frame {
+    max-height: calc(100vh - 230px);
+    min-height: 320px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+
+  .guard-matrix-row {
+    grid-template-columns: 92px repeat(5, minmax(180px, 1fr));
+    min-height: 0;
+  }
+
+  .guard-matrix-columns {
+    min-height: 46px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .guard-matrix-columns > * {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: none;
+  }
+
+  .guard-matrix-corner,
+  .guard-matrix-hour {
+    background: var(--surface);
+  }
+
+  .guard-matrix-hour {
+    align-content: start;
+    justify-items: start;
+    padding: 14px 16px;
+    color: var(--text);
+  }
+
+  .guard-matrix-hour strong {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+  }
+
+  .guard-matrix-hour small {
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+
+  .guard-matrix-cell {
+    gap: 6px;
+    padding: 10px;
+    transition: background-color 150ms ease;
+  }
+
+  .guard-matrix-cell.is-mine-slot {
+    background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+  }
+
+  .guard-roster-teacher {
+    position: relative;
+    min-height: 40px;
+    gap: 8px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-small);
+    background: var(--surface-subtle);
+    padding: 0 6px 0 10px;
+    transition: opacity 150ms ease, border-color 150ms ease;
+  }
+
+  .guard-roster-teacher:hover {
+    border-color: var(--border-strong);
+  }
+
+  .guard-roster-teacher.is-mine {
+    border: 2px solid var(--primary);
+    background: var(--surface);
+  }
+
+  .guard-roster-teacher.is-dimmed {
+    opacity: 0.32;
+  }
+
+  .guard-roster-teacher .roster-name,
+  .guard-matrix-cell .guard-roster-teacher .roster-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 0.82rem;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .guard-roster-teacher.is-mine .roster-name {
+    font-weight: 700;
+  }
+
+  .guard-roster-teacher .roster-you {
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--primary);
+    padding: 2px 7px;
+    color: var(--on-primary);
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+
+  .guard-roster-teacher b,
+  .guard-matrix-cell .guard-roster-teacher b {
+    flex: 0 0 auto;
+    min-width: 28px;
+    min-height: 28px;
+    border: 0;
+    border-radius: 7px;
+    padding: 0 6px;
+    font-size: 0.82rem;
+  }
+
+  /* Fitxa de dates: targeta fosca sobre el nom. Especificitat alta perquè la
+     regla antiga dels span del professor no n'imposi el color ni el retall. */
+  .guard-roster-teacher .guard-history-tooltip {
+    overflow: visible;
+    text-overflow: clip;
+    top: calc(100% + 6px);
+    width: 280px;
+    max-width: 80vw;
+    border: 0;
+    border-radius: 14px;
+    background: #15171c;
+    padding: 14px 16px;
+    color: #f5f4f0;
+    box-shadow: 0 18px 40px rgb(20 24 32 / 0.28);
+    white-space: normal;
+    font-size: 0.82rem;
+    font-weight: 500;
+  }
+
+  .dark .guard-roster-teacher .guard-history-tooltip {
+    background: #f5f4f0;
+    color: #15171c;
+  }
+
+  .guard-history-tooltip > span,
+  .guard-history-tooltip .tooltip-line span {
+    overflow: visible;
+    color: inherit;
+    font-size: inherit;
+    white-space: normal;
+  }
+
+  .guard-history-tooltip .tooltip-name {
+    display: block;
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+
+  .guard-history-tooltip .tooltip-meta {
+    display: block;
+    margin: 2px 0 10px;
+    opacity: 0.72;
+  }
+
+  .guard-history-tooltip .tooltip-line {
+    display: flex;
+    gap: 12px;
+    padding: 3px 0;
+  }
+
+  .guard-history-tooltip .tooltip-date {
+    flex-shrink: 0;
+    opacity: 0.72;
+  }
+}
+
+@media screen and (max-width: 620px) {
+  .teacher-stats-head h2 {
+    font-size: 1.6rem;
+  }
+
+  .teacher-stats-tools,
+  .stats-search,
+  .stats-search-field {
+    width: 100%;
+  }
+}
+
 @media print {
   @page { size: A3 portrait; margin: 6mm; }
   :root {
