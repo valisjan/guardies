@@ -5,6 +5,18 @@
 [build.environment]
   NODE_VERSION = "22"
 
+# Fitxers amb hash al nom: no canvien mai, no cal revalidar-los a cada càrrega.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# El service worker s'ha de comprovar sempre perquè cada desplegament arribi.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
