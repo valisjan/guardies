@@ -37,6 +37,7 @@ import {
   subscribeGuardiesData,
   subscribeGuardiesStats,
   clearGuardiesContextCache,
+  warmGuardiesDay,
   loadGuardiesTeacherSchedule,
   subscribeGuardiesDay,
   subscribeGuardiesPublicView,
@@ -425,6 +426,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.guardCounts = new Map();
     const search = new URLSearchParams(window.location.search);
     state.teacherView = search.get('vista') === 'professor';
+    let releaseWarmDay = () => {};
     render();
     try {
       const requestedCourseId = search.get('curs') || '';
@@ -461,6 +463,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       }
       let remoteData;
       let usingCachedData = false;
+      // La jornada es demana ja, en paral·lel amb la configuració. La data
+      // provisional només pot canviar per un festiu propi del centre.
+      releaseWarmDay = warmGuardiesDay(
+        state.courseId,
+        automaticInitialDate ? nextTeachingDate(localDateString(new Date()), state.patiConfig) : state.date,
+      );
       try {
         remoteData = await subscribeToRemoteData({ initial: true });
       } catch (error) {
@@ -481,12 +489,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       parseStoredData({ resetSelection: true });
       applyAutomaticInitialDate();
       await activateGuardiesDay(state.date);
+      releaseWarmDay();
       state.contextReady = true;
       bootstrapRetryAttempt = 0;
       render();
       window.dispatchEvent(new CustomEvent('guardies:auth-ready'));
       loadBootstrapAuxiliaryData(state.courseId, remoteData.stats || { counts: {} }).catch(() => {});
     } catch (error) {
+      releaseWarmDay();
       state.persistenceStatus = 'error';
       state.contextReady = true;
       state.authRequired = String(error?.message || error).includes('Inicia sessió');

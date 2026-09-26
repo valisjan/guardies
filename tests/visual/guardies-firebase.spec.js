@@ -225,6 +225,17 @@ export function abortedError(cause) { return Object.assign(new Error('aborted', 
     expect(result).toEqual({ started: 1, aborted: [true], changes: 0, errors: [] });
   });
 
+  test('warming the day does nothing on iOS, where it would duplicate REST reads', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const { warmGuardiesDay } = await import('/src/services/guardiesStorage.js');
+      const release = warmGuardiesDay('test', '2026-09-07');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      release();
+      return window.__restTest.calls.length;
+    });
+    expect(result).toBe(0);
+  });
+
   test('a poll missed while hidden runs on return; a quick return does not add reads', async ({ page }) => {
     const result = await page.evaluate(async () => {
       const { subscribeGuardiesStats } = await import('/src/services/guardiesStorage.js');
@@ -305,4 +316,18 @@ test('switching views reuses the profile and course instead of reading them agai
     };
   });
   expect(result).toEqual({ admin: [true, false], teacher: [false, true], course: 'test', cachedReads: 2, readsAfterClear: 2 });
+});
+
+test('warming the day registers one listener and releases it', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const { warmGuardiesDay } = await import('/src/services/guardiesStorage.js');
+    const f = window.__firestoreTest;
+    const release = warmGuardiesDay('test', '2026-09-07');
+    const listened = [...f.listeners.keys()];
+    const invalid = warmGuardiesDay('test', 'no-data');
+    release();
+    invalid();
+    return { listened, active: [...f.listeners.values()].reduce((n, set) => n + set.size, 0) };
+  });
+  expect(result).toEqual({ listened: ['cursos/test/guardiesDays/2026-09-07'], active: 0 });
 });

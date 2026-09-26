@@ -1011,6 +1011,19 @@ export async function loadUnclosedGuardiesDays(cursId, beforeDate) {
     .sort();
 }
 
+// Precarrega la jornada mentre arriba la configuració. És una escolta sense
+// efectes que el SDK comparteix amb l'escolta real del mateix document: la
+// lectura només es paga una vegada si es tanca quan la real ja és activa. No
+// s'usa a iOS, on cada consulta és una petició REST i es duplicaria.
+export function warmGuardiesDay(cursId, date) {
+  if (E2E_AUTH_BYPASS || isIOSWebKit || !cursId || !/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return () => {};
+  try {
+    return onSnapshot(guardiesDayRef(cursId, date), () => {}, () => {});
+  } catch {
+    return () => {};
+  }
+}
+
 export function subscribeGuardiesDay(
   cursId,
   date,
