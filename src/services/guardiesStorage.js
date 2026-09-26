@@ -390,6 +390,24 @@ async function resolveCourse(requestedCourseId) {
   return { id: selected.id, name: selected.nom || selected.id };
 }
 
+// El perfil i el curs no canvien en passar d'una vista a l'altra dins la
+// mateixa sessió: es reutilitzen en lloc de tornar-los a llegir a cada canvi.
+// Un altre usuari (canvi de sessió) torna a llegir el perfil.
+let cachedProfile = null;
+let cachedCourse = null;
+
+async function cachedResolveCourse(requestedCourseId) {
+  if (cachedCourse && (!requestedCourseId || requestedCourseId === cachedCourse.id)) return cachedCourse;
+  const course = await resolveCourse(requestedCourseId);
+  cachedCourse = course;
+  return course;
+}
+
+export function clearGuardiesContextCache() {
+  cachedProfile = null;
+  cachedCourse = null;
+}
+
 export async function getGuardiesContext(requestedCourseId = '', { teacherView = false } = {}) {
   if (E2E_AUTH_BYPASS) {
     return {
@@ -404,8 +422,12 @@ export async function getGuardiesContext(requestedCourseId = '', { teacherView =
 
   const user = await waitForUser();
   if (!user) throw new Error('Inicia sessió per accedir a les dades de guàrdies.');
-  const userSnapshot = await withNetworkRetry(() => readDoc(doc(db, 'usuaris', user.uid)));
-  const profile = userSnapshot.exists() ? userSnapshot.data() : {};
+  let profile = cachedProfile?.uid === user.uid ? cachedProfile.data : null;
+  if (!profile) {
+    const userSnapshot = await withNetworkRetry(() => readDoc(doc(db, 'usuaris', user.uid)));
+    profile = userSnapshot.exists() ? userSnapshot.data() : {};
+    cachedProfile = { uid: user.uid, data: profile };
+  }
   const role = profile.rol || '';
   const isAdmin = role === 'admin';
   return {
@@ -414,7 +436,7 @@ export async function getGuardiesContext(requestedCourseId = '', { teacherView =
       displayName: profile.nom || user.displayName || '',
       email: profile.email || user.email || '',
     },
-    course: await resolveCourse(requestedCourseId),
+    course: await cachedResolveCourse(requestedCourseId),
     role,
     isAdmin,
     teacherView: !isAdmin || teacherView,

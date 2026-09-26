@@ -384,6 +384,57 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect.poll(status).toBe('ready');
   });
 
+  test('canvia entre Guàrdies i Professorat sense recarregar i reutilitza l\'horari processat', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      window.__samePage = true;
+      window.__parsedBefore = useGuardiesStore().allSessions;
+    });
+    const professorat = page.getByRole('link', { name: 'Professorat', exact: true });
+    const guardies = page.getByRole('link', { name: 'Guàrdies', exact: true });
+
+    await professorat.click();
+    await expect(professorat).toHaveAttribute('aria-current', 'page');
+    await expect(page).toHaveURL(/vista=professor/);
+    await expect(page.getByRole('tab', { name: 'Guàrdies del dia' })).toBeVisible();
+    await page.getByRole('tab', { name: 'Recompte de guàrdies' }).click();
+    await expect(page.locator('[data-roster-teacher]').first()).toBeVisible();
+
+    await guardies.click();
+    await expect(guardies).toHaveAttribute('aria-current', 'page');
+    await expect(page).not.toHaveURL(/vista=professor/);
+    await expect(page.locator('#workspace')).toBeVisible();
+    const state = await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      return { samePage: window.__samePage === true, sameParse: useGuardiesStore().allSessions === window.__parsedBefore };
+    });
+    expect(state).toEqual({ samePage: true, sameParse: true });
+
+    // Enrere del navegador: torna a Professorat, també sense recarregar.
+    await page.goBack();
+    await expect(page).toHaveURL(/vista=professor/);
+    await expect(page.getByRole('tab', { name: 'Guàrdies del dia' })).toBeVisible();
+    await expect(page.locator('#workspace')).toBeHidden();
+    expect(await page.evaluate(() => window.__samePage === true)).toBe(true);
+  });
+
+  test('dos canvis de vista seguits acaben a l\'últim triat', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.evaluate(() => { window.__samePage = true; });
+    await page.getByRole('link', { name: 'Professorat', exact: true }).click();
+    await page.getByRole('link', { name: 'Guàrdies', exact: true }).click();
+    await expect(page).not.toHaveURL(/vista=professor/);
+    await expect(page.locator('#workspace')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Guàrdies', exact: true })).toHaveAttribute('aria-current', 'page');
+    await page.waitForTimeout(300);
+    await expect(page.locator('#workspace')).toBeVisible();
+    await expect(page.locator('.nav-progress')).not.toHaveClass(/active/);
+    expect(await page.evaluate(() => window.__samePage === true)).toBe(true);
+  });
+
   test('mostra les dates G del professor en passar-hi per damunt', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

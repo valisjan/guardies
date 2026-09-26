@@ -279,3 +279,30 @@ test('REST reads report cancellation as aborted, not as a connection failure', a
   });
   expect(result).toEqual({ abortedCode: 'aborted', fetchAborted: true, offlineCode: 'unavailable' });
 });
+
+test('switching views reuses the profile and course instead of reading them again', async ({ page }) => {
+  await page.route('**/src/firebase*', (route) => route.fulfill({
+    contentType: 'application/javascript',
+    body: 'export const db = {}; export const auth = { currentUser: { uid: "u1", displayName: "Admin", email: "a@x" } }; export const isIOSWebKit = false; export const authPersistenceReady = Promise.resolve();',
+  }));
+  const result = await page.evaluate(async () => {
+    const { getGuardiesContext, clearGuardiesContextCache } = await import('/src/services/guardiesStorage.js');
+    const f = window.__firestoreTest;
+    f.docs.set('usuaris/u1', { rol: 'admin', nom: 'Admin' });
+    f.docs.set('cursos/test', { nom: 'Curs test' });
+    const admin = await getGuardiesContext('test');
+    const teacher = await getGuardiesContext('test', { teacherView: true });
+    const withoutCourse = await getGuardiesContext('', { teacherView: false });
+    const cachedReads = f.reads.length;
+    clearGuardiesContextCache();
+    await getGuardiesContext('test');
+    return {
+      admin: [admin.canWrite, admin.teacherView],
+      teacher: [teacher.canWrite, teacher.teacherView],
+      course: withoutCourse.course.id,
+      cachedReads,
+      readsAfterClear: f.reads.length - cachedReads,
+    };
+  });
+  expect(result).toEqual({ admin: [true, false], teacher: [false, true], course: 'test', cachedReads: 2, readsAfterClear: 2 });
+});

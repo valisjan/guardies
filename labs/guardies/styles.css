@@ -272,6 +272,43 @@ h3 {
 .brand-strip span:nth-child(2) { background: #5cbd7d; }
 .brand-strip span:nth-child(3) { background: #7789dd; }
 
+/* Barra fina de càrrega sobre la franja de marca mentre canvia la vista. */
+.app-nav { position: sticky; }
+
+.nav-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+
+.nav-progress::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: var(--primary);
+  animation: nav-progress 900ms ease-in-out infinite;
+}
+
+.nav-progress.active {
+  opacity: 1;
+}
+
+@keyframes nav-progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(290%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-progress::before { animation: none; width: 100%; opacity: 0.6; }
+}
+
 .page {
   width: min(1480px, calc(100% - 24px));
   margin: 0 auto;

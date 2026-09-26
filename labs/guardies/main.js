@@ -34,6 +34,7 @@ import {
   saveGuardiesPati,
   subscribeGuardiesData,
   subscribeGuardiesStats,
+  clearGuardiesContextCache,
   loadGuardiesTeacherSchedule,
   subscribeGuardiesDay,
   subscribeGuardiesPublicView,
@@ -105,6 +106,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let bootstrapRetryAttempt = 0;
   // Un reintent o una reconnexió amb la pestanya oculta s'aplaça fins que torni a ser visible.
   let bootstrapDeferredUntilVisible = false;
+  // Canvi de vista demanat mentre una arrencada encara és en curs.
+  let viewNavigationPending = false;
+  // Curs dels fitxers d'horari que hi ha a l'estat, per reutilitzar-los entre vistes.
+  let scheduleTextsCourseId = '';
   let visibilityResumeInFlight = null;
   let visibilityStopTimer = null;
   let remoteListenersSuspended = false;
@@ -171,7 +176,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     removeUploadedFile(event.detail?.kind);
   });
   window.addEventListener('guardies:clear-files', clearPersistentFiles);
-  window.addEventListener('guardies:auth-changed', bootstrap);
+  window.addEventListener('guardies:auth-changed', () => {
+    clearGuardiesContextCache();
+    bootstrap();
+  });
+  window.addEventListener('guardies:navigate-view', navigateView);
+  window.addEventListener('popstate', handlePopState);
   window.addEventListener('guardies:retry-connection', bootstrap);
   document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('guardies:pati-updated', () => renderCoverage());
@@ -301,6 +311,36 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   window.addEventListener('online', handleOnline);
   bootstrap();
 
+  // Guàrdies i Professorat són la mateixa aplicació: canviar de vista torna a
+  // arrencar les dades sense recarregar la pàgina. Si ja n'hi ha una en curs,
+  // en acabar s'arrenca la vista que indiqui la URL en aquell moment.
+  function navigateView() {
+    if (bootstrapInFlight) {
+      viewNavigationPending = true;
+      return;
+    }
+    bootstrap();
+  }
+
+  function syncViewUrl() {
+    const url = new URL(window.location.href);
+    if (state.teacherView && state.isAdmin) url.searchParams.set('vista', 'professor');
+    else url.searchParams.delete('vista');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  function handlePopState() {
+    const search = new URLSearchParams(window.location.search);
+    const teacherView = search.get('vista') === 'professor' || !state.isAdmin;
+    const requestedCourse = search.get('curs');
+    if (teacherView !== state.teacherView || (requestedCourse && requestedCourse !== state.courseId)) {
+      navigateView();
+      return;
+    }
+    const date = search.get('data');
+    if (date && date !== state.date) navigateToDate(date);
+  }
+
   function bootstrap() {
     bootstrapDeferredUntilVisible = false;
     if (bootstrapRetryTimer) {
@@ -310,6 +350,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (bootstrapInFlight) return bootstrapInFlight;
     bootstrapInFlight = bootstrapInternal().finally(() => {
       bootstrapInFlight = null;
+      window.dispatchEvent(new CustomEvent('guardies:view-settled'));
+      if (viewNavigationPending) {
+        viewNavigationPending = false;
+        bootstrap();
+        return;
+      }
       if (state.persistenceStatus === 'error' && !state.authRequired) scheduleBootstrapRetry();
     });
     return bootstrapInFlight;
@@ -322,6 +368,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       } catch (error) {
         state.dayPersistenceStatus = 'error';
         showError(`No s'ha pogut guardar la jornada. ${error.message || error}`);
+        // La vista no canvia per no perdre els canvis: la URL ha de continuar indicant-la.
+        syncViewUrl();
         return;
       }
     }
@@ -580,6 +628,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function applyRemoteData(remoteData) {
     const { stats: ignoredStats, ...configuration } = remoteData;
+    scheduleTextsCourseId = state.courseId;
     lastAppliedConfiguration = configuration;
     const reference = remoteData.files.reference;
     const untis = remoteData.files.untis;
@@ -729,15 +778,20 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.teacherStatsStatus = 'loading';
     teacherStatsInFlight = (async () => {
       try {
-        const schedule = await loadGuardiesTeacherSchedule(courseId);
-        if (courseId !== state.courseId || state.canWrite) return;
-        state.referenceText = schedule.files.reference?.text || '';
-        state.referenceName = schedule.files.reference?.name || '';
-        state.untisText = schedule.files.untis?.text || '';
-        state.untisName = schedule.files.untis?.name || '';
-        state.dutiesText = schedule.files.duties?.text || '';
-        state.dutiesName = schedule.files.duties?.name || '';
-        state.excludedTeacherIds = new Set(schedule.excludedTeacherIds || []);
+        // Si la vista de guàrdies ja ha carregat els fitxers d'aquest curs, no
+        // cal tornar-los a llegir: el processament també es reutilitza.
+        if (scheduleTextsCourseId !== courseId || !state.dutiesText) {
+          const schedule = await loadGuardiesTeacherSchedule(courseId);
+          if (courseId !== state.courseId || state.canWrite) return;
+          state.referenceText = schedule.files.reference?.text || '';
+          state.referenceName = schedule.files.reference?.name || '';
+          state.untisText = schedule.files.untis?.text || '';
+          state.untisName = schedule.files.untis?.name || '';
+          state.dutiesText = schedule.files.duties?.text || '';
+          state.dutiesName = schedule.files.duties?.name || '';
+          state.excludedTeacherIds = new Set(schedule.excludedTeacherIds || []);
+          scheduleTextsCourseId = courseId;
+        }
         parseStoredData({ resetSelection: false, renderAfter: false });
         await watchTeacherStats();
         if (courseId !== state.courseId) return;
