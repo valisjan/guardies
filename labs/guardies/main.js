@@ -1,3 +1,4 @@
+import { markRaw } from 'vue';
 import * as parser from './horariXmlParser.js';
 import { renderPublicCoverage, renderPublicOutings } from './publicDayRenderer.js';
 import { createScheduleIndex } from '../../src/modules/guardies/domain/schedule-index.js';
@@ -86,6 +87,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let dayLoadGeneration = 0;
   let teacherAliasesById = new Map();
   const professorInfoCache = new Map();
+  // Mateix ordre que localeCompare('ca', { numeric: true }), sense recrear-lo a cada comparació.
+  const catalanCollator = new Intl.Collator('ca', { numeric: true });
   const occupationCache = new Map();
   const occupationByTeacherCache = new Map();
   let parsedScheduleCache = null;
@@ -1711,7 +1714,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
     if (!sameFiles && state.referenceText) {
       try {
-        state.referencia = parser.parseGestibReference(state.referenceText);
+        state.referencia = markRaw(parser.parseGestibReference(state.referenceText));
       } catch (error) {
         referenceError = error.message || String(error);
       }
@@ -1719,7 +1722,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
     if (!sameFiles && state.untisText) {
       try {
-        state.professoratUntis = parser.parseUntisProfessorat(state.untisText);
+        state.professoratUntis = markRaw(parser.parseUntisProfessorat(state.untisText));
         if (!state.professoratUntis.professors.size) {
           untisError = 'No s\'ha trobat professorat reconeixible al fitxer d\'Untis.';
         }
@@ -1735,7 +1738,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           professoratUntis: state.professoratUntis,
         });
         if (!sameFiles) {
-          state.allSessions = mergeSessions(result.sessions, []);
+          // Les estructures de l'horari es reemplacen senceres i mai es modifiquen:
+          // no necessiten proxies reactius, que encareixen cada accés.
+          state.allSessions = markRaw(mergeSessions(result.sessions, []));
           parsedScheduleCache = {
             referenceText: state.referenceText, untisText: state.untisText, dutiesText: state.dutiesText,
             referencia: state.referencia, professoratUntis: state.professoratUntis,
@@ -1757,9 +1762,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         } else {
           state.allSessions = parsedScheduleCache.allSessions;
         }
-        state.sessions = state.allSessions.filter((session) => !isExcludedTeacher(session.placa));
+        state.sessions = markRaw(state.allSessions.filter((session) => !isExcludedTeacher(session.placa)));
         scheduleIndex = createScheduleIndex(state.sessions);
-        state.allProfessorOptions = professorsOrdenatsAmbLabel(state.allSessions);
+        state.allProfessorOptions = markRaw(professorsOrdenatsAmbLabel(state.allSessions));
         state.resum = {
           ...result.resum,
           sessions: state.sessions.length,
@@ -3048,6 +3053,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         });
       }
     });
+    // El nom de cada professor es calcula una sola vegada, no a cada comparació.
+    const labels = new Map();
+    const labelFor = (placa) => {
+      if (!labels.has(placa)) labels.set(placa, labelProfessor(placa));
+      return labels.get(placa);
+    };
     return Array.from(sessions.values()).map((session) => (
       isPatiGuardiaSession(session)
         ? { ...session, hora: 'PATI', franja: parser.franjaKey(session.dia, 'PATI') }
@@ -3057,8 +3068,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       if (dayDifference) return dayDifference;
       const hourDifference = sortHours(a.hora, b.hora);
       if (hourDifference) return hourDifference;
-      return labelProfessor(a.placa).localeCompare(labelProfessor(b.placa), 'ca', { numeric: true });
+      return catalanCompare(labelFor(a.placa), labelFor(b.placa));
     });
+  }
+
+  function catalanCompare(left, right) {
+    return catalanCollator.compare(left, right);
   }
 
 
@@ -3538,7 +3553,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (indexA >= 0 && indexB >= 0) return indexA - indexB;
     if (indexA >= 0) return -1;
     if (indexB >= 0) return 1;
-    return String(a || '').localeCompare(String(b || ''), 'ca', { numeric: true });
+    return catalanCompare(String(a || ''), String(b || ''));
   }
 
   function renderCoverageRow(item) {

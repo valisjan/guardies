@@ -20,12 +20,22 @@
     return (text || '').toString().replace(/^\uFEFF/, '').trim();
   }
 
+  // Els mateixos codis es normalitzen milers de vegades en processar un horari.
+  const clausNormalitzades = new Map();
+  const MAX_CLAUS_NORMALITZADES = 20000;
+
   function normalitzarClau(valor) {
-    return textNet(valor)
+    const text = typeof valor === 'string' ? valor : (valor ?? '').toString();
+    const guardada = clausNormalitzades.get(text);
+    if (guardada !== undefined) return guardada;
+    const normal = textNet(text)
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '');
+    if (clausNormalitzades.size >= MAX_CLAUS_NORMALITZADES) clausNormalitzades.clear();
+    clausNormalitzades.set(text, normal);
+    return normal;
   }
 
   function addIndex(index, clau, item) {
@@ -237,13 +247,23 @@
     return codis;
   }
 
+  // Índex (codi curt normalitzat -> plaça) creat una vegada per referència.
+  // Conserva la primera plaça en ordre, com feia la cerca lineal.
+  const placesPerCodiCurt = new WeakMap();
+
   function placaPerCodiProfessor(referencia, codiProfessor) {
     if (!referencia?.places || !codiProfessor) return codiProfessor;
-    const normal = normalitzarClau(codiProfessor);
-    for (const [placa, info] of referencia.places.entries()) {
-      if (normalitzarClau(info.curta) === normal) return placa;
+    let index = placesPerCodiCurt.get(referencia.places);
+    if (!index) {
+      index = new Map();
+      for (const [placa, info] of referencia.places.entries()) {
+        const clau = normalitzarClau(info.curta);
+        if (!index.has(clau)) index.set(clau, placa);
+      }
+      placesPerCodiCurt.set(referencia.places, index);
     }
-    return codiProfessor;
+    const placa = index.get(normalitzarClau(codiProfessor));
+    return placa === undefined ? codiProfessor : placa;
   }
 
   function parseUntisGuardies(gpu001Text, { gpu002Text = '', referencia = null, professoratUntis = null, hores = [] } = {}) {
@@ -753,16 +773,20 @@
       .sort((a, b) => String(a.valor).localeCompare(String(b.valor), 'ca', { numeric: true }));
   }
 
+  // Mateix ordre que localeCompare('ca', { numeric: true }) sense recrear
+  // la configuració d'idioma a cada comparació.
+  const comparadorCatala = new Intl.Collator('ca', { numeric: true }).compare;
+
   function ordenarPerDiaHora(a, b) {
     const dia = Number(a.dia) - Number(b.dia);
     if (dia) return dia;
-    return (a.hora || '').localeCompare(b.hora || '', 'ca', { numeric: true });
+    return comparadorCatala(a.hora || '', b.hora || '');
   }
 
   function ordenarSessions(a, b) {
     const franja = ordenarPerDiaHora(a, b);
     if (franja) return franja;
-    return (a.placa || '').localeCompare(b.placa || '', 'ca', { numeric: true });
+    return comparadorCatala(a.placa || '', b.placa || '');
   }
 
   function resumSessions(sessions) {
