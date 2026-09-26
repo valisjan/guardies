@@ -420,6 +420,35 @@ test.describe('Guàrdies: comportament existent', () => {
     expect(await page.evaluate(() => window.__samePage === true)).toBe(true);
   });
 
+  test('tornar de Professorat a Guàrdies no desa la jornada ni en perd les absències', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    const stored = () => page.evaluate(() => {
+      const day = JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07'];
+      return day ? { revision: day.revision, status: day.status, absences: day.absenceIds.length } : null;
+    });
+    await expect.poll(async () => (await stored())?.absences || 0).toBeGreaterThan(0);
+    await page.getByRole('button', { name: 'Publica' }).click();
+    await expect(page.locator('#day-status-action')).toHaveText('Tanca jornada');
+    await page.waitForTimeout(400);
+    const before = await stored();
+    expect(before.status).toBe('published');
+
+    await page.getByRole('link', { name: 'Professorat', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Guàrdies del dia' })).toBeVisible();
+    await page.getByRole('link', { name: 'Guàrdies', exact: true }).click();
+    await expect(page.locator('#workspace')).toBeVisible();
+    await expect(page.locator('#day-status-action')).toHaveText('Tanca jornada');
+    await page.waitForTimeout(700);
+
+    expect(await stored()).toEqual(before);
+    await expect(page.locator('[data-remove-absence]')).toHaveCount(before.absences);
+    await expect(page.locator('#error-box')).toBeHidden();
+  });
+
   test('dos canvis de vista seguits acaben a l\'últim triat', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

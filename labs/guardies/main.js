@@ -380,6 +380,17 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     unsubscribeDirectoryVersion = () => {};
     // L'arrencada torna a obrir totes les escoltes.
     remoteListenersSuspended = false;
+    // La jornada comença de zero: l'estat de la vista anterior (p. ex. la
+    // jornada pública del professorat) no es pot prendre per canvis locals i
+    // desar-se sobre la jornada compartida. Els canvis reals ja s'han desat a dalt.
+    clearTimeout(daySaveTimer);
+    state.dayLoaded = false;
+    loadedDate = '';
+    lastDaySignature = '';
+    autoNormalizedSignature = null;
+    pendingRemoteDay = null;
+    state.publicDay = null;
+    state.clearDayContext();
     directoryReloadPending = false;
     state.contextReady = false;
     state.authRequired = false;
@@ -1375,6 +1386,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         const signature = daySignature(payload);
         if (signature === lastDaySignature) break;
         state.dayPersistenceStatus = 'saving';
+        // Xarxa de seguretat: un estat que no és de gestió (p. ex. 'unpublished' de la
+        // vista del professorat) indica un estat barrejat i no s'ha de desar mai.
+        if (!['draft', 'published', 'closed'].includes(payload.status)) {
+          throw new Error('Estat de jornada no vàlid: no es desa per protegir la jornada compartida.');
+        }
         const projection = ['published', 'closed'].includes(payload.status) ? publicGuardiesDay() : null;
         const saved = await saveGuardiesDay(courseId, date, payload, state.dayRevision, { publicProjection: projection });
         if (courseId !== state.courseId || date !== state.date) return;
