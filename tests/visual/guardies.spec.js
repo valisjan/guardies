@@ -829,6 +829,37 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('.unclosed-days-warning')).toBeHidden();
   });
 
+  test('tanca totes les jornades pendents des de l\'avís i torna al dia on era', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    for (const date of ['2020-09-07', '2020-09-08']) {
+      await page.locator('#date-input').fill(date);
+      await page.locator('#date-input').press('Tab');
+      await page.locator('#professor-search').fill('ADELL');
+      await page.locator('#professor-results [data-professor]').first().click();
+      await page.locator('#schedule-grid [data-absence]:not(:disabled)').first().check();
+      await page.getByRole('button', { name: 'Publica' }).click();
+      await expect(page.locator('#day-status-action')).toHaveText('Tanca jornada');
+    }
+    await page.locator('#date-input').fill('2026-09-07');
+    await page.locator('#date-input').press('Tab');
+    await expect(page.locator('.unclosed-days-warning')).toContainText('07/09/2020');
+    await expect(page.locator('.unclosed-days-warning')).toContainText('08/09/2020');
+
+    const dialogs = [];
+    page.on('dialog', (dialog) => { dialogs.push(dialog.message()); dialog.accept(); });
+    await page.getByRole('button', { name: 'Tanca-les totes' }).click();
+    await expect(page.locator('.unclosed-days-warning')).toBeHidden();
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-07');
+    expect(dialogs).toHaveLength(1);
+    expect(dialogs[0]).toContain('Vols tancar 2 jornades');
+    const statuses = await page.evaluate(() => {
+      const days = JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days;
+      return [days['2020-09-07'].status, days['2020-09-08'].status];
+    });
+    expect(statuses).toEqual(['closed', 'closed']);
+  });
+
   test('permet corregir manualment els recomptes de G i alliberat', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

@@ -285,6 +285,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   window.addEventListener('guardies:resolve-conflict', (event) => resolveDayConflict(event.detail?.choice));
   window.addEventListener('guardies:resume-autosave', resumeAutoSave);
   window.addEventListener('guardies:undo', applyUndo);
+  window.addEventListener('guardies:close-days', (event) => closeUnclosedDays(event.detail?.dates || []));
   window.addEventListener('guardies:dismiss-undo', clearUndo);
 
   async function navigateToDate(date) {
@@ -1524,17 +1525,19 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     }
   }
 
-  async function changeDayStatus(action) {
-    if (navigationInFlight || !state.canWrite || !['publish', 'unpublish', 'close', 'reopen'].includes(action)) return;
+  // Retorna true si el canvi s'ha fet. En tancar diverses jornades, la confirmació
+  // de guàrdies sense cobrir i la relectura de pendents es fan una sola vegada.
+  async function changeDayStatus(action, { confirmPending = true, refreshUnclosed = true } = {}) {
+    if (navigationInFlight || !state.canWrite || !['publish', 'unpublish', 'close', 'reopen'].includes(action)) return false;
     if (state.autoSavePaused) {
       showError(AUTO_SAVE_PAUSED_MESSAGE);
-      return;
+      return false;
     }
-    if (action === 'close') {
+    if (action === 'close' && confirmPending) {
       const day = xmlDayForDate(state.date);
       const pending = Array.from(state.absencies.values())
         .filter((item) => item.dia === day && !state.assignacions.has(item.id)).length;
-      if (pending && !window.confirm(`Queden ${pending} guàrdies sense cobrir. Vols tancar igualment?`)) return;
+      if (pending && !window.confirm(`Queden ${pending} guàrdies sense cobrir. Vols tancar igualment?`)) return false;
     }
     navigationInFlight = true;
     try {
@@ -1570,22 +1573,68 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         ? { ...projection, status: result.day.status, revision: result.day.revision, publishedAt: result.day.publishedAt || '', clientUpdatedAt: result.day.clientUpdatedAt }
         : null);
       publicDaySavePending = false;
-      state.unclosedDays = await loadUnclosedGuardiesDays(
-        state.courseId,
-        localDateString(new Date()),
-      ).catch(() => state.unclosedDays);
-      saveCachedUnclosedDays(state.courseId, state.unclosedDays);
+      if (refreshUnclosed) await refreshUnclosedDays();
       lastDaySignature = daySignature();
       state.dayPersistenceStatus = 'ready';
       flushPendingRemoteDay();
       showError('');
       render();
+      return true;
     } catch (error) {
       state.dayPersistenceStatus = 'error';
       showError(`No s'ha pogut canviar l'estat de la jornada. ${friendlyError(error)}`);
+      return false;
     } finally {
       navigationInFlight = false;
     }
+  }
+
+  async function refreshUnclosedDays() {
+    state.unclosedDays = await loadUnclosedGuardiesDays(
+      state.courseId,
+      localDateString(new Date()),
+    ).catch(() => state.unclosedDays);
+    saveCachedUnclosedDays(state.courseId, state.unclosedDays);
+  }
+
+  // Tanca les jornades pendents des de l'avís amb el mateix procediment que el
+  // botó "Tanca jornada" (recomptes, historial i projecció pública), jornada a
+  // jornada, i després torna al dia on era.
+  async function closeUnclosedDays(dates) {
+    const list = Array.from(new Set(dates.filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date || '')))).sort();
+    if (!state.canWrite || state.closingDays || !list.length) return;
+    const labels = list.map(formatShortDate).join(', ');
+    const question = list.length === 1
+      ? `Vols tancar la jornada del ${labels}? Les guàrdies que no s'hagin cobert quedaran sense cobrir.`
+      : `Vols tancar ${list.length} jornades (${labels})? Les guàrdies que no s'hagin cobert quedaran sense cobrir.`;
+    if (!window.confirm(question)) return;
+    state.closingDays = true;
+    const originalDate = state.date;
+    const failed = [];
+    try {
+      for (const date of list) {
+        await navigateToDate(date);
+        if (state.date !== date || !state.dayLoaded) {
+          failed.push(date);
+          continue;
+        }
+        if (state.dayStatus === 'closed') continue;
+        const closed = await changeDayStatus('close', { confirmPending: false, refreshUnclosed: false });
+        if (!closed) failed.push(date);
+      }
+    } finally {
+      await refreshUnclosedDays();
+      if (state.date !== originalDate) await navigateToDate(originalDate);
+      state.closingDays = false;
+    }
+    if (failed.length) showError(`No s'han pogut tancar: ${failed.map(formatShortDate).join(', ')}.`);
+  }
+
+  function formatShortDate(value) {
+    const parsed = new Date(`${value}T12:00:00`);
+    return Number.isNaN(parsed.getTime())
+      ? value
+      : new Intl.DateTimeFormat('ca-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(parsed);
   }
 
   function datesBetween(from, to) {

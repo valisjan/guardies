@@ -7,7 +7,7 @@ const store = useGuardiesStore();
 const {
   date, absencies, dayStatus, dayPersistenceStatus,
   persistenceStatus, canWrite, teacherView, unclosedDays,
-  dayConflict, conflictRemoteClosed, coverageSummary, autoSavePaused,
+  dayConflict, conflictRemoteClosed, coverageSummary, autoSavePaused, closingDays,
 } = storeToRefs(store);
 
 const xmlDay = computed(() => {
@@ -59,6 +59,10 @@ function resumeAutoSave() {
 
 function resolveConflict(choice) {
   window.dispatchEvent(new CustomEvent('guardies:resolve-conflict', { detail: { choice } }));
+}
+
+function closeUnclosedDays() {
+  window.dispatchEvent(new CustomEvent('guardies:close-days', { detail: { dates: unclosedDays.value } }));
 }
 
 function openUnclosedDay(unclosedDate) {
@@ -136,6 +140,9 @@ function changeStatus(action) {
         :aria-label="`Obre el dia ${formatShortDate(unclosedDate)}`"
         @click="openUnclosedDay(unclosedDate)"
       >{{ formatShortDate(unclosedDate) }}</button>
+      <button type="button" class="unclosed-close-all" :disabled="closingDays" @click="closeUnclosedDays">
+        {{ closingDays ? 'Tancant…' : unclosedDays.length === 1 ? 'Tanca-la' : 'Tanca-les totes' }}
+      </button>
     </p>
     <header v-if="!teacherView" class="work-header">
     <div class="work-title">

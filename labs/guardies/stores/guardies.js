@@ -86,6 +86,8 @@ export const useGuardiesStore = defineStore('guardies', {
     autoSavePaused: false,
     // Avís amb "Desfés" després d'una acció que esborra o canvia molt: { id, message }.
     undoToast: null,
+    // Tancament de jornades pendents en curs des de l'avís.
+    closingDays: false,
   }),
   actions: {
     clearAbsencePlan() {

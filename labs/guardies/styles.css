@@ -5221,6 +5221,27 @@ button.ghost {
   }
 }
 
+/* Botó per tancar les jornades pendents des de l'avís */
+@media screen {
+  .unclosed-close-all {
+    min-height: 28px;
+    margin-left: 8px;
+    border: 1px solid var(--amber-border);
+    border-radius: 999px;
+    background: var(--surface);
+    padding: 0 12px;
+    color: var(--amber);
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .unclosed-close-all:hover {
+    border-color: var(--amber-dot);
+    background: var(--surface);
+    color: var(--amber);
+  }
+}
+
 @media print {
   @page { size: A3 portrait; margin: 6mm; }
   :root {
