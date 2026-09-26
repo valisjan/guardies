@@ -558,6 +558,48 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('#observation-presets-panel')).toContainText('Feina a Classroom');
   });
 
+  test('una normalització automàtica no genera conflicte quan un altre administrador desa la jornada', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#duties-file').setInputFiles(sharedDutiesFile);
+    await expect(page.locator('[data-upload-status="duties"]')).toHaveText('OK');
+    await page.getByRole('tab', { name: 'Gestió diària' }).click();
+    await page.locator('#date-input').fill('2026-09-07');
+    await page.locator('#date-input').press('Tab');
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#schedule-grid .schedule-item').filter({ hasText: '8:55' }).locator('[data-absence]').check();
+    await expect(page.locator('#coverage-list .co-teacher-badge')).toHaveText('Queda amb el grup');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07']?.revision || 0)).toBeGreaterThan(0);
+    await page.waitForTimeout(400);
+
+    // Una altra sessió va desar la jornada sense l'assignació de codocència, i just
+    // després en desa una altra versió: entre les dues només hi ha normalització automàtica.
+    const result = await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      const store = useGuardiesStore();
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const write = (mutate) => {
+        const data = JSON.parse(localStorage.getItem(key));
+        mutate(data.days['2026-09-07']);
+        data.days['2026-09-07'].revision += 1;
+        localStorage.setItem(key, JSON.stringify(data));
+        window.dispatchEvent(new StorageEvent('storage', { key }));
+        return data.days['2026-09-07'].revision;
+      };
+      write((day) => { day.assignments = {}; });
+      const revision = write((day) => { day.comments = { ...day.comments, extra: 'Altra sessió' }; });
+      return { revision, conflict: store.dayConflict };
+    });
+    expect(result.conflict).toBe(false);
+    await expect(page.locator('.day-conflict')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      return useGuardiesStore().dayRevision;
+    })).toBeGreaterThanOrEqual(result.revision);
+  });
+
   test('deixa el company de la mateixa aula sense comptar-li cap guàrdia', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

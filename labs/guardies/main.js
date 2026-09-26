@@ -77,6 +77,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let directoryReloadInFlight = null;
   let watchedDate = '';
   let pendingRemoteDay = null;
+  // Signatura de l'estat just després d'una normalització automàtica. Si en el
+  // moment d'un conflicte l'estat encara hi coincideix, l'usuari no ha editat res.
+  let autoNormalizedSignature = null;
+  let autoAdoptTimes = [];
+  const AUTO_ADOPT_LIMIT = 3;
+  const AUTO_ADOPT_WINDOW = 2 * 60 * 1000;
   let loadedDate = '';
   let dayLoadGeneration = 0;
   let teacherAliasesById = new Map();
@@ -708,7 +714,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         await hydrateGuardiesDay(state.date);
       }
       state.persistenceStatus = remoteConfigurationFromCache ? 'stale' : 'ready';
-      if (configurationChanged) commitCoverageEdit({ renderAll: true });
+      if (configurationChanged) commitAutomaticCoverage({ renderAll: true });
       else if (state.canWrite && state.contextReady && state.dayLoaded) renderCoverage();
     }, (error) => {
       if (initialPending) { initialPending = false; rejectInitial(error); }
@@ -901,26 +907,57 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (!hasUnsavedDay()) return;
     storageSet(draftKey(), JSON.stringify({
       payload: serializableDay(), revision: state.dayRevision, baseSignature: lastDaySignature,
+      auto: autoNormalizedSignature !== null && daySignature() === autoNormalizedSignature,
     }));
   }
 
   function restoreDayDraft(date) {
     if (!state.canWrite) return;
     const draft = loadJson(draftKey(), null);
+    if (draft?.auto) {
+      // Només contenia la normalització automàtica: es recalcula en carregar.
+      storageRemove([draftKey()]);
+      return;
+    }
     if (!draft?.payload || !draft.baseSignature || date !== state.date) return;
     applyGuardiesDay({ ...draft.payload, revision: draft.revision }, date);
     lastDaySignature = draft.baseSignature;
     state.dayPersistenceStatus = 'refreshing';
   }
 
+  // Un conflicte on l'única diferència local és la normalització automàtica no
+  // és una edició de ningú: s'adopta la jornada compartida. El límit evita
+  // bucles d'escriptura entre sessions amb configuracions diferents.
+  function tryAdoptRemoteDay(saved, date) {
+    if (!state.canWrite || !saved || date !== state.date) return false;
+    if (autoNormalizedSignature === null || daySignature() !== autoNormalizedSignature) return false;
+    const now = Date.now();
+    autoAdoptTimes = autoAdoptTimes.filter((time) => now - time < AUTO_ADOPT_WINDOW);
+    if (autoAdoptTimes.length >= AUTO_ADOPT_LIMIT) return false;
+    autoAdoptTimes.push(now);
+    storageRemove([draftKey()]);
+    pendingRemoteDay = null;
+    applyGuardiesDay(saved, date);
+    cacheGuardiesDay(date, saved);
+    showError('');
+    commitAutomaticCoverage({ renderAll: true });
+    return true;
+  }
+
   function markDayConflict(saved, date) {
-    if (date !== state.date) return;
+    if (date !== state.date) return false;
+    if (tryAdoptRemoteDay(saved, date)) return true;
     pendingRemoteDay = { saved, date };
     state.dayConflict = true;
     state.conflictRemoteClosed = saved?.status === 'closed';
     state.dayPersistenceStatus = 'error';
     stashDayDraft();
-    showError('Canvis en una altra sessió. Els teus canvis es conserven.');
+    const modified = saved?.clientUpdatedAt ? new Date(saved.clientUpdatedAt) : null;
+    const when = modified && !Number.isNaN(modified.getTime())
+      ? ` (última modificació a les ${modified.toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit' })})`
+      : '';
+    showError(`Canvis en una altra sessió${when}. Els teus canvis es conserven.`);
+    return false;
   }
 
   async function resolveDayConflict(choice) {
@@ -1011,6 +1048,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.countedAssignments = Array.isArray(saved?.countedAssignments) ? saved.countedAssignments : [];
     state.dayRevision = Number(saved?.revision) || 0;
     lastDaySignature = daySignature();
+    autoNormalizedSignature = null;
     state.dayPersistenceStatus = 'ready';
     state.dayLoaded = true;
   }
@@ -1065,8 +1103,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         // Normalize confirmed data (or a restored local draft), never a stale
         // cache before the server has supplied the current revision.
         if (synchronized && isConfirmed()) {
-          reconcileCoverageState();
-          scheduleDaySave();
+          runAutomaticNormalization(() => {
+            reconcileCoverageState();
+            scheduleDaySave();
+          });
         }
       }
     }
@@ -1102,7 +1142,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         if (!metadata?.fromCache && !metadata?.hasPendingWrites) {
           if (normalizationPending) {
             normalizationPending = false;
-            commitCoverageEdit({ renderAll: true });
+            commitAutomaticCoverage({ renderAll: true });
           }
           repairPublicDay();
         }
@@ -1118,7 +1158,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       showError('');
       normalizationPending = Boolean(metadata?.fromCache || metadata?.hasPendingWrites);
       if (normalizationPending) render();
-      else commitCoverageEdit({ renderAll: true });
+      else commitAutomaticCoverage({ renderAll: true });
     }, (error) => {
       if (first) { first = false; rejectFirst(error); }
       state.dayPersistenceStatus = 'error';
@@ -1256,7 +1296,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       stashDayDraft();
       if (error.code === 'guardies/conflict' && courseId === state.courseId && date === state.date) {
         const saved = await loadGuardiesDay(courseId, date);
-        markDayConflict(saved, date);
+        if (markDayConflict(saved, date)) return;
       }
       throw error;
     } finally {
@@ -2554,6 +2594,19 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (renderAll) render();
     else renderCoverage();
     if (state.contextReady) scheduleDaySave();
+  }
+
+  // Igual que commitCoverageEdit, però per a recàlculs sense cap edició de l'usuari.
+  function commitAutomaticCoverage(options) {
+    runAutomaticNormalization(() => commitCoverageEdit(options));
+  }
+
+  // Només es marca com a automàtic si abans l'estat estava net o ja era
+  // automàtic: una edició real prèvia no es pot amagar darrere d'un recàlcul.
+  function runAutomaticNormalization(work) {
+    const clean = !hasUnsavedDay() || daySignature() === autoNormalizedSignature;
+    work();
+    autoNormalizedSignature = clean ? daySignature() : null;
   }
 
   function renderCoverage() {
