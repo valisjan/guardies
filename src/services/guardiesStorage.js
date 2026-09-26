@@ -34,7 +34,7 @@ import {
   normalizeCountedAssignment,
   updateGuardCounts,
 } from '../modules/guardies/domain/workflow';
-import { GUARD_HISTORY_VERSION, guardHistoryFromClosedDays } from '../modules/guardies/domain/guard-history.js';
+import { GUARD_HISTORY_VERSION } from '../modules/guardies/domain/guard-history.js';
 
 const FILE_KINDS = new Set(['reference', 'untis', 'duties']);
 const DELETABLE_FILE_KINDS = new Set([...FILE_KINDS, 'schedule']);
@@ -106,20 +106,6 @@ function cleanGuardHistory(value) {
       })
       .filter(Boolean)),
   ]));
-}
-
-function stableStringify(value) {
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
-  }
-  return JSON.stringify(value) ?? 'null';
-}
-
-// Només el contingut que la reconstrucció pot invalidar. Ignora updatedAt i
-// l'ordre de claus, que varien segons la lectura (SDK, REST o caché).
-function statsContentSignature(stats) {
-  return stableStringify({ counts: stats?.counts || {}, guardHistory: stats?.guardHistory || {} });
 }
 
 function changeGuardHistoryDate(history, date, entries = [], remove = false) {
@@ -691,63 +677,6 @@ export async function loadGuardiesStats(cursId) {
   const snapshot = await withNetworkRetry(() => readDoc(guardiesStatsRef(cursId)));
   trackReads('statsLoad', 1);
   return snapshot.exists() ? snapshot.data() : { counts: {} };
-}
-
-export async function saveGuardiesGuardHistory(cursId, history, expectedStats = null) {
-  const cleanHistory = cleanGuardHistory(history);
-  if (E2E_AUTH_BYPASS) {
-    const data = getE2EData(cursId);
-    data.stats ||= { counts: {} };
-    data.stats.guardHistory = cleanHistory;
-    data.stats.guardHistoryVersion = GUARD_HISTORY_VERSION;
-    setE2EData(cursId, data);
-    return data.stats;
-  }
-  return runTransaction(db, async (transaction) => {
-    const reference = guardiesStatsRef(cursId);
-    const snapshot = await transaction.get(reference);
-    const stats = snapshot.exists() ? snapshot.data() : { counts: {} };
-    if (Number(stats.guardHistoryVersion) === GUARD_HISTORY_VERSION) return stats;
-    if (expectedStats && statsContentSignature(stats) !== statsContentSignature(expectedStats)) {
-      throw Object.assign(new Error('El recompte ha canviat durant la reconstrucció de l’historial.'), { code: 'guardies/stats-changed' });
-    }
-    const next = {
-      counts: stats.counts || {},
-      guardHistory: cleanHistory,
-      guardHistoryVersion: GUARD_HISTORY_VERSION,
-      updatedAt: serverTimestamp(),
-    };
-    transaction.set(reference, next);
-    return next;
-  });
-}
-
-
-export async function rebuildGuardiesGuardHistory(cursId, absenceDetails = {}) {
-  try {
-    return await rebuildGuardHistoryOnce(cursId, absenceDetails);
-  } catch (error) {
-    // Un canvi real de recomptes entre la lectura i l'escriptura és transitori:
-    // es torna a llegir i es reconstrueix una sola vegada més.
-    if (error?.code !== 'guardies/stats-changed') throw error;
-    return rebuildGuardHistoryOnce(cursId, absenceDetails);
-  }
-}
-
-async function rebuildGuardHistoryOnce(cursId, absenceDetails) {
-  const initialStats = await loadGuardiesStats(cursId);
-  if (Number(initialStats.guardHistoryVersion) === GUARD_HISTORY_VERSION) return initialStats;
-  if (E2E_AUTH_BYPASS) {
-    const data = getE2EData(cursId);
-    const history = guardHistoryFromClosedDays(Object.entries(data.days || {}), absenceDetails);
-    return saveGuardiesGuardHistory(cursId, history);
-  }
-  const snapshot = await getDocs(query(
-    collection(db, 'cursos', cursId, 'guardiesDays'), where('status', '==', 'closed'),
-  ));
-  trackReads('guardHistoryMigration', snapshot.docs.length, `total:${snapshot.docs.length}`);
-  const history = guardHistoryFromClosedDays(snapshot.docs.map((item) => [item.id, item.data()]), absenceDetails);
-  return saveGuardiesGuardHistory(cursId, history, initialStats);
 }
 
 export async function setGuardiesTeacherCount(cursId, teacherId, source, value, slot = '') {

@@ -280,33 +280,6 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('.day-conflict')).toHaveCount(0);
   });
 
-  test('reconstrueix G conservant tots els grups i ignorant assignacions cancel·lades', async ({ page }) => {
-    await openGuardies(page);
-    const history = await page.evaluate(async () => {
-      const key = 'quota-e2e-guardies:e2e-2026';
-      const data = JSON.parse(localStorage.getItem(key)) || {};
-      data.stats = { counts: {}, guardHistoryVersion: 0 };
-      data.days = { '2026-09-07': {
-        status: 'closed', cancelledAssignments: ['P|1|9:50|c'],
-        assignments: {
-          'P|1|8:00|a': { teacherId: '2', source: 'guard' },
-          'P|1|8:55|b': { teacherId: '2', source: 'guard' },
-          'P|1|9:50|c': { teacherId: '2', source: 'guard' },
-          'P|1|8:00|d': { teacherId: '3', source: 'released' },
-        },
-      } };
-      localStorage.setItem(key, JSON.stringify(data));
-      const { rebuildGuardiesGuardHistory } = await import('/src/services/guardiesStorage.js');
-      const result = await rebuildGuardiesGuardHistory('e2e-2026', {
-        'P|1|8:00|a': { groups: ['1ESO-A'] }, 'P|1|8:55|b': { groups: ['2ESO-B'] }, 'P|1|9:50|c': { groups: ['3ESO-C'] },
-      });
-      const repeated = await rebuildGuardiesGuardHistory('e2e-2026', {});
-      return { first: result.guardHistory, repeated: repeated.guardHistory };
-    });
-    expect(history.first).toEqual({ 2: { '2026-09-07': { '1|8:00': ['1ESO-A'], '1|8:55': ['2ESO-B'] } } });
-    expect(history.repeated).toEqual(history.first);
-  });
-
   test('desa el comentari al dia original en canviar immediatament de data', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
@@ -361,7 +334,7 @@ test.describe('Guàrdies: comportament existent', () => {
         ...(data.stats || {}),
         guardHistoryVersion: 2,
         guardHistory: { 2: {
-          '2026-09-18': { [slotKey]: ['1ESO-A', '1ESO', '662663', '94'], '9|altra-franja': ['9ESO-Z'] },
+          '2026-09-18': { [slotKey]: ['1ESO-A'], '9|altra-franja': ['9ESO-Z'] },
           '2026-09-11': { '9|altra-franja': ['8ESO-Y'] },
           '2026-09-04': ['7ESO-X'],
         } },

@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { guardCountForSlot, guardSlotKey } from '../../../src/modules/guardies/domain/workflow.js';
-import { displayHistoryGroups, slotHistoryEntries } from '../../../src/modules/guardies/domain/guard-history.js';
+import { slotHistoryEntries } from '../../../src/modules/guardies/domain/guard-history.js';
 import { useGuardiesStore } from '../stores/guardies.js';
 
 const store = useGuardiesStore();
@@ -153,8 +153,7 @@ function historyForTeacher(teacher, index) {
 function slotHistoryText(entries) {
   const lines = entries.map(({ date, groups }) => {
     const formatted = dateFormatter.format(new Date(`${date}T12:00:00`));
-    const clean = displayHistoryGroups(groups);
-    return `${formatted} · ${clean.length ? clean.join(' · ') : '—'}`;
+    return `${formatted} · ${groups.length ? groups.join(' · ') : '—'}`;
   });
   return [`${entries.length} ${entries.length === 1 ? 'guàrdia' : 'guàrdies'}`, ...lines].join('\n');
 }

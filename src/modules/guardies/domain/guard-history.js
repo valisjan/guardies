@@ -12,41 +12,11 @@ export function guardHistoryGroups(item) {
   return Array.from(new Set(groups.map((group) => String(group || '').trim()).filter(Boolean)));
 }
 
-// Neteja els grups ja desats abans d'aquesta regla: descarta identificadors
-// numèrics interns i el curs sol quan hi ha un grup d'aquest curs (3ESO-E).
-export function displayHistoryGroups(groups) {
-  const clean = Array.from(new Set((Array.isArray(groups) ? groups : [])
-    .map((group) => String(group || '').trim())
-    .filter((group) => group && !/^\d+$/.test(group))));
-  return clean.filter((group) => !clean.some((other) => other !== group && other.startsWith(`${group}-`)));
-}
-
 // Franja d'una assignació, calculada com als recomptes: la clau de l'absència
 // és "professor|dia|hora|…" i el dia/hora explícits tenen prioritat.
 export function guardSlotFromAssignment(absenceId, assignment = {}) {
   const [, dayFromId = '', hourFromId = ''] = String(absenceId || '').split('|');
   return String(assignment?.slot || guardSlotKey(assignment?.day || dayFromId, assignment?.hour || hourFromId) || '').trim();
-}
-
-// Reconstrueix l'historial (v2) a partir de les jornades tancades.
-// days: [[data, jornada], …]; absenceDetails: { idAbsència: { groups } }.
-export function guardHistoryFromClosedDays(days, absenceDetails = {}) {
-  const history = {};
-  days.forEach(([date, day]) => {
-    if (day?.status !== 'closed') return;
-    const cancelled = new Set(day.cancelledAssignments || []);
-    Object.entries(day.assignments || {}).forEach(([absenceId, assignment]) => {
-      const raw = typeof assignment === 'string' ? { teacherId: assignment } : assignment;
-      if (raw?.source !== 'guard' || !raw.teacherId || cancelled.has(absenceId)) return;
-      const slot = guardSlotFromAssignment(absenceId, raw);
-      if (!slot) return;
-      history[raw.teacherId] ||= {};
-      history[raw.teacherId][date] ||= {};
-      const bySlot = history[raw.teacherId][date];
-      bySlot[slot] = Array.from(new Set([...(bySlot[slot] || []), ...(absenceDetails[absenceId]?.groups || [])]));
-    });
-  });
-  return history;
 }
 
 // Guàrdies d'una franja concreta: [{ date, groups }] de la més recent a la més

@@ -1,7 +1,7 @@
 import * as parser from './horariXmlParser.js';
 import { renderPublicCoverage, renderPublicOutings } from './publicDayRenderer.js';
 import { createScheduleIndex } from '../../src/modules/guardies/domain/schedule-index.js';
-import { GUARD_HISTORY_VERSION, guardHistoryGroups, guardSlotFromAssignment } from '../../src/modules/guardies/domain/guard-history.js';
+import { guardHistoryGroups, guardSlotFromAssignment } from '../../src/modules/guardies/domain/guard-history.js';
 import { createKeyedRenderer } from '../../src/utils/keyedDom.js';
 import { GUARD_CODES_STORAGE, useGuardiesStore } from './stores/guardies.js';
 import {
@@ -24,7 +24,6 @@ import {
   getGuardiesContext,
   loadGuardiesData,
   loadGuardiesDay,
-  rebuildGuardiesGuardHistory,
   loadGuardiesTeacherDirectory,
   loadUnclosedGuardiesDays,
   mergeGuardiesDayPlan,
@@ -58,8 +57,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   const DRAFT_CACHE_PREFIX = 'guardies_pending_day:';
   const UNCLOSED_CACHE_PREFIX = 'quota_guardies_unclosed_days:';
   const UNCLOSED_CACHE_TTL = 15 * 60 * 1000;
-  const HISTORY_MIGRATION_FAILED_PREFIX = 'quota_guardies_history_migration_failed_v2:';
-  const HISTORY_MIGRATION_RETRY_DELAY = 6 * 60 * 60 * 1000;
   const VISIBILITY_LISTENER_GRACE = 5 * 60 * 1000;
   const state = useGuardiesStore();
   let daySaveTimer = null;
@@ -410,45 +407,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.guardHistory = stats.guardHistory || {};
       state.guardHistoryVersion = Number(stats.guardHistoryVersion) || 0;
     }
-    if (state.canWrite && Number(stats.guardHistoryVersion) !== GUARD_HISTORY_VERSION && state.sessions.length && canRetryGuardHistoryMigration(courseId)) {
-      const absenceDetails = Object.fromEntries(
-        parser.agruparSessionsCobertura(state.sessions.filter(isMeaningfulSession))
-          .map((item) => [item.id, { groups: guardHistoryGroups(item) }]),
-      );
-      rebuildGuardiesGuardHistory(courseId, absenceDetails)
-        .then((result) => {
-          if (courseId !== state.courseId) return;
-          state.guardHistory = result.guardHistory || {};
-          state.guardHistoryVersion = GUARD_HISTORY_VERSION;
-          render();
-        })
-        .catch((error) => {
-          // Sense això, un rebuig persistent (p. ex. regles) rellegiria totes
-          // les jornades tancades a cada càrrega d'administrador.
-          markGuardHistoryMigrationFailed(courseId);
-          if (courseId === state.courseId) {
-            showError(`No s'ha pogut reconstruir l'historial de guàrdies: ${error?.message || error}`);
-          }
-        });
-    }
     render();
-  }
-
-  function canRetryGuardHistoryMigration(courseId) {
-    try {
-      const failedAt = Number(localStorage.getItem(`${HISTORY_MIGRATION_FAILED_PREFIX}${courseId}`)) || 0;
-      return Date.now() - failedAt > HISTORY_MIGRATION_RETRY_DELAY;
-    } catch {
-      return true;
-    }
-  }
-
-  function markGuardHistoryMigrationFailed(courseId) {
-    try {
-      localStorage.setItem(`${HISTORY_MIGRATION_FAILED_PREFIX}${courseId}`, String(Date.now()));
-    } catch {
-      // Sense emmagatzematge local no es pot limitar el reintent.
-    }
   }
 
   function loadCachedUnclosedDays(courseId) {

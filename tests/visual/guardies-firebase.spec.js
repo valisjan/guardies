@@ -11,8 +11,8 @@ const snapshot = (path, data, metadata = { fromCache: false, hasPendingWrites: f
 export const doc = (_, ...parts) => ({ path: parts.join('/') });
 export const collection = doc;
 export const serverTimestamp = () => 'server-time';
-export const getDoc = async (ref) => snapshot(ref.path, f.plainRead ? f.plainRead(ref.path, f.docs.get(ref.path)) : f.docs.get(ref.path));
-export const getDocs = async () => ({ docs: (f.closedDays || []).map(([id, data]) => ({ id, data: () => data })) });
+export const getDoc = async (ref) => snapshot(ref.path, f.docs.get(ref.path));
+export const getDocs = async () => ({ docs: [] });
 export const enableNetwork = async () => {};
 export const query = (ref) => ref;
 export const where = () => ({});
@@ -35,7 +35,6 @@ f.emit = async (path, data, metadata = { fromCache: false, hasPendingWrites: fal
   await new Promise((resolve) => setTimeout(resolve, 0));
 };
 export async function runTransaction(_, callback) {
-  if (f.beforeTransaction) { const hook = f.beforeTransaction; f.beforeTransaction = null; hook(); }
   const operations = [];
   let writing = false;
   const tx = {
@@ -140,33 +139,4 @@ test('private/public commit together, failure commits neither, and obsolete repa
   expect(result).toMatchObject({ savedRevision: 1, publicRevision: 1, failed: true, failedPrivateRevision: 1,
     staleTransition: 'guardies/conflict', obsoleteRepair: false, finalPrivate: 3, finalPublic: 3, matchingRepair: true, matchingWrites: 0 });
   expect(result.commits.filter((paths) => paths.length).every((paths) => paths.some((p) => p.includes('/guardiesDays/')) && paths.some((p) => p.includes('/guardiesPublicDays/')))).toBe(true);
-});
-
-test('history rebuild ignores representation-only differences and retries once on a real change', async ({ page }) => {
-  const result = await page.evaluate(async () => {
-    const { rebuildGuardiesGuardHistory } = await import('/src/services/guardiesStorage.js');
-    const f = window.__firestoreTest;
-    const statsPath = 'cursos/test/guardies/stats';
-    f.closedDays = [['2026-09-07', { status: 'closed', assignments: { 'p|1|h': { teacherId: '2', source: 'guard' } }, cancelledAssignments: [] }]];
-    const details = { 'p|1|h': { groups: ['1ESO-A'] } };
-
-    // La lectura prèvia difereix només en updatedAt i l'ordre de claus.
-    f.docs.set(statsPath, { counts: { 2: { guard: 1 }, 3: { guard: 2 } }, updatedAt: { seconds: 5 } });
-    f.plainRead = (path, data) => (path === statsPath ? { updatedAt: { seconds: 5, nanoseconds: 0 }, counts: { 3: { guard: 2 }, 2: { guard: 1 } } } : data);
-    const first = await rebuildGuardiesGuardHistory('test', details);
-    const attemptsFirst = f.commits.length;
-
-    // Canvi real de recomptes entre la lectura i la transacció: es reintenta una vegada.
-    f.commits.length = 0;
-    f.plainRead = null;
-    f.docs.set(statsPath, { counts: { 2: { guard: 1 } }, updatedAt: { seconds: 6 } });
-    f.beforeTransaction = () => f.docs.set(statsPath, { counts: { 2: { guard: 9 } }, updatedAt: { seconds: 7 } });
-    const second = await rebuildGuardiesGuardHistory('test', details);
-    return { first: first.guardHistory, attemptsFirst, second: second.guardHistory, secondCounts: second.counts, secondCommits: f.commits.length };
-  });
-  expect(result.first).toEqual({ 2: { '2026-09-07': { '1|h': ['1ESO-A'] } } });
-  expect(result.attemptsFirst).toBe(1);
-  expect(result.second).toEqual({ 2: { '2026-09-07': { '1|h': ['1ESO-A'] } } });
-  expect(result.secondCounts).toEqual({ 2: { guard: 9 } });
-  expect(result.secondCommits).toBe(1);
 });
