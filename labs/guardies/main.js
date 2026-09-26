@@ -100,6 +100,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let bootstrapInFlight = null;
   let bootstrapRetryTimer = null;
   let bootstrapRetryAttempt = 0;
+  // Un reintent o una reconnexió amb la pestanya oculta s'aplaça fins que torni a ser visible.
+  let bootstrapDeferredUntilVisible = false;
   let visibilityResumeInFlight = null;
   let visibilityStopTimer = null;
   let remoteListenersSuspended = false;
@@ -108,7 +110,15 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let publicRepairInFlight = null;
 
   function handleOnline() {
-    if (['error', 'stale'].includes(state.persistenceStatus) || ['error', 'stale'].includes(state.dayPersistenceStatus)) bootstrap();
+    if (['error', 'stale'].includes(state.persistenceStatus) || ['error', 'stale'].includes(state.dayPersistenceStatus)) bootstrapWhenVisible();
+  }
+
+  function bootstrapWhenVisible() {
+    if (document.hidden) {
+      bootstrapDeferredUntilVisible = true;
+      return;
+    }
+    bootstrap();
   }
 
   function stopRemoteListeners() {
@@ -289,6 +299,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   bootstrap();
 
   function bootstrap() {
+    bootstrapDeferredUntilVisible = false;
     if (bootstrapRetryTimer) {
       window.clearTimeout(bootstrapRetryTimer);
       bootstrapRetryTimer = null;
@@ -316,6 +327,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     unsubscribeGuardiesDay();
     unsubscribeDirectoryVersion();
     unsubscribeDirectoryVersion = () => {};
+    // L'arrencada torna a obrir totes les escoltes.
+    remoteListenersSuspended = false;
     directoryReloadPending = false;
     state.contextReady = false;
     state.authRequired = false;
@@ -448,7 +461,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     bootstrapRetryAttempt += 1;
     bootstrapRetryTimer = window.setTimeout(() => {
       bootstrapRetryTimer = null;
-      bootstrap();
+      bootstrapWhenVisible();
     }, delay);
   }
 
@@ -464,6 +477,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (visibilityStopTimer) {
       window.clearTimeout(visibilityStopTimer);
       visibilityStopTimer = null;
+    }
+    if (bootstrapDeferredUntilVisible) {
+      bootstrap();
+      return;
     }
     if (!state.contextReady || !state.courseId || visibilityResumeInFlight) return;
     if (!remoteListenersSuspended) return;

@@ -358,6 +358,32 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('.teacher-stats-panel [role="status"]')).toHaveCount(0);
   });
 
+  test('una reconnexió amb la pestanya oculta espera a tornar-hi per recarregar', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    const status = () => page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      return useGuardiesStore().persistenceStatus;
+    });
+    await expect.poll(status).toBe('ready');
+    await page.evaluate(async () => {
+      window.__hidden = false;
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => window.__hidden });
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      useGuardiesStore().persistenceStatus = 'error';
+      window.__hidden = true;
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('online'));
+    });
+    await page.waitForTimeout(300);
+    expect(await status()).toBe('error');
+    await page.evaluate(() => {
+      window.__hidden = false;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expect.poll(status).toBe('ready');
+  });
+
   test('mostra les dates G del professor en passar-hi per damunt', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
