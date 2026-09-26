@@ -50,7 +50,11 @@ const days = [
   { key: '5', label: 'Divendres' },
 ];
 
-const guardMatrix = computed(() => {
+const dateFormatter = new Intl.DateTimeFormat('ca-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+// Estructura estable: professorat de G per franja. No depèn dels recomptes,
+// així que canviar guardCounts no la reconstrueix.
+const guardLayout = computed(() => {
   const teachers = new Map(professorOptions.value.map((teacher) => [teacher.placa, publicTeacherName(teacher)]));
   const viewer = nameSignature(viewerName.value);
   const hours = Array.from(new Set(sessions.value
@@ -70,7 +74,7 @@ const guardMatrix = computed(() => {
     teachersBySlot.get(key).add(session.placa);
   });
 
-  const matrix = hours.map((hour, index) => ({
+  return hours.map((hour, index) => ({
     hour,
     period: `${index + 1}a`,
     cells: days.map((day) => {
@@ -79,32 +83,46 @@ const guardMatrix = computed(() => {
         key,
         teachers: Array.from(teachersBySlot.get(key) || [], (teacherId) => {
           const label = teachers.get(teacherId) || teacherId;
-          return {
-            teacherId,
-            label,
-            count: guardCountForSlot(guardCounts.value.get(teacherId), key),
-            mine: Boolean(viewer && viewer === nameSignature(label)),
-          };
+          return { teacherId, label, mine: Boolean(viewer && viewer === nameSignature(label)) };
         }).sort((a, b) => a.label.localeCompare(b.label, 'ca', { numeric: true })),
       };
     }),
   }));
-  const maximum = Math.max(0, ...matrix.flatMap((row) => row.cells.flatMap((cell) => (
-    cell.teachers.map((teacher) => Number(teacher.count) || 0)
-  ))));
-  return matrix.map((row) => ({
+});
+
+const guardMatrix = computed(() => {
+  const counts = guardCounts.value;
+  let maximum = 0;
+  const rows = guardLayout.value.map((row) => ({
     ...row,
     cells: row.cells.map((cell) => ({
       ...cell,
-      teachers: cell.teachers.map((teacher) => ({
-        ...teacher,
-        heat: heatLevel(teacher.count, maximum),
-      })),
+      teachers: cell.teachers.map((teacher) => {
+        const count = guardCountForSlot(counts.get(teacher.teacherId), cell.key);
+        maximum = Math.max(maximum, Number(count) || 0);
+        return { ...teacher, count };
+      }),
     })),
   }));
+  rows.forEach((row) => row.cells.forEach((cell) => cell.teachers.forEach((teacher) => {
+    teacher.heat = heatLevel(teacher.count, maximum);
+  })));
+  return rows;
 });
 
-function historyForTeacher(teacher) {
+// Historial indexat una sola vegada per nom normalitzat de professor.
+const historyIndex = computed(() => {
+  const index = new Map();
+  Object.entries(guardHistory.value || {}).forEach(([teacherId, dates], order) => {
+    const key = normalize(teacherId);
+    if (!key) return;
+    if (!index.has(key)) index.set(key, []);
+    index.get(key).push({ order, dates: dates && typeof dates === 'object' ? dates : {} });
+  });
+  return index;
+});
+
+function historyForTeacher(teacher, index) {
   if (!teacher) return [];
   const aliases = new Set([
     teacher.placa,
@@ -115,31 +133,35 @@ function historyForTeacher(teacher) {
     teacher.label,
   ].map(normalize).filter(Boolean));
   const merged = new Map();
-  Object.entries(guardHistory.value || {}).forEach(([teacherId, dates]) => {
-    if (!aliases.has(normalize(teacherId))) return;
-    Object.entries(dates && typeof dates === 'object' ? dates : {}).forEach(([date, groups]) => {
+  const matches = new Set();
+  aliases.forEach((alias) => {
+    (index.get(alias) || []).forEach((entry) => matches.add(entry));
+  });
+  Array.from(matches).sort((left, right) => left.order - right.order).forEach(({ dates }) => {
+    Object.entries(dates).forEach(([date, groups]) => {
       const current = merged.get(date) || [];
       merged.set(date, Array.from(new Set([...current, ...(Array.isArray(groups) ? groups : [])])));
     });
   });
   return Array.from(merged.entries())
     .sort(([left], [right]) => right.localeCompare(left))
-    .map(([date, groups]) => ({ date, groups: Array.isArray(groups) ? groups : [] }));
+    .map(([date, groups]) => ({ date, groups }));
 }
 
-function historyText(teacher) {
-  const entries = historyForTeacher(teacher);
+function historyText(teacher, index) {
+  const entries = historyForTeacher(teacher, index);
   if (!entries.length) return '';
   const lines = entries.map(({ date, groups }) => {
-    const formatted = new Intl.DateTimeFormat('ca-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${date}T12:00:00`));
+    const formatted = dateFormatter.format(new Date(`${date}T12:00:00`));
     return `${formatted} · ${groups.length ? groups.join(' · ') : '—'}`;
   });
   return [`${entries.length} ${entries.length === 1 ? 'guàrdia' : 'guàrdies'}`, ...lines].join('\n');
 }
 
-const historyTextByTeacher = computed(() => new Map(
-  professorOptions.value.map((teacher) => [teacher.placa, historyText(teacher)]),
-));
+const historyTextByTeacher = computed(() => {
+  const index = historyIndex.value;
+  return new Map(professorOptions.value.map((teacher) => [teacher.placa, historyText(teacher, index)]));
+});
 </script>
 
 <template>
