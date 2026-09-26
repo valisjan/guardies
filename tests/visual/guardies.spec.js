@@ -320,6 +320,44 @@ test.describe('Guàrdies: comportament existent', () => {
     })).toBe(true);
   });
 
+  test("el professorat només escolta el recompte mentre en veu la pestanya i no reprocessa l'horari en tornar", async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.goto('/?data=2026-09-07&vista=professor');
+    await page.getByRole('tab', { name: 'Recompte de guàrdies' }).click();
+    await expect(page.locator('[data-roster-teacher="2"]').first()).toBeVisible();
+    const setCount = (value) => page.evaluate((guard) => {
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const data = JSON.parse(localStorage.getItem(key));
+      data.stats = { ...(data.stats || {}), counts: { 2: { guard } } };
+      localStorage.setItem(key, JSON.stringify(data));
+      window.dispatchEvent(new StorageEvent('storage', { key }));
+    }, value);
+    const storeState = () => page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      const store = useGuardiesStore();
+      return { guard: store.guardCounts.get('2')?.guard || 0, sameSessions: store.sessions === window.sessionsBeforeLeaving };
+    });
+
+    await setCount(4);
+    await expect.poll(async () => (await storeState()).guard).toBe(4);
+    await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      window.sessionsBeforeLeaving = useGuardiesStore().sessions;
+    });
+
+    await page.getByRole('tab', { name: 'Guàrdies del dia' }).click();
+    await expect(page.locator('.teacher-stats-panel')).toHaveCount(0);
+    await setCount(9);
+    await page.waitForTimeout(200);
+    expect((await storeState()).guard).toBe(4);
+
+    await page.getByRole('tab', { name: 'Recompte de guàrdies' }).click();
+    await expect.poll(async () => (await storeState()).guard).toBe(9);
+    expect((await storeState()).sameSessions).toBe(true);
+    await expect(page.locator('.teacher-stats-panel [role="status"]')).toHaveCount(0);
+  });
+
   test('mostra les dates G del professor en passar-hi per damunt', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

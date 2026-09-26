@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, onBeforeUnmount } from 'vue';
 import { storeToRefs } from 'pinia';
 import { guardCountForSlot, guardSlotKey } from '../../../src/modules/guardies/domain/workflow.js';
 import { slotHistoryEntries } from '../../../src/modules/guardies/domain/guard-history.js';
@@ -11,6 +11,11 @@ const { guardCounts, guardHistory, professorOptions, courseName, viewerName, ses
 function retryStats() {
   window.dispatchEvent(new CustomEvent('guardies:load-teacher-stats'));
 }
+
+// L'horari processat es conserva en memòria; només es deixa d'escoltar el recompte.
+onBeforeUnmount(() => {
+  window.dispatchEvent(new CustomEvent('guardies:release-teacher-stats'));
+});
 
 function normalize(value) {
   return String(value || '')

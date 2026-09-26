@@ -32,6 +32,8 @@ import {
   saveGuardiesFile,
   saveGuardiesPati,
   subscribeGuardiesData,
+  subscribeGuardiesStats,
+  loadGuardiesTeacherSchedule,
   subscribeGuardiesDay,
   subscribeGuardiesPublicView,
   subscribeDirectoryVersion,
@@ -92,6 +94,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let coverageDerived = null;
   let lastCoverageView = null;
   let teacherStatsInFlight = null;
+  // Escolta del document de recomptes del professorat; null si no és activa.
+  let unsubscribeTeacherStats = null;
   let professorResultIndex = -1;
   let bootstrapInFlight = null;
   let bootstrapRetryTimer = null;
@@ -108,6 +112,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   function stopRemoteListeners() {
+    releaseTeacherStats();
     unsubscribeGuardiesData();
     unsubscribeGuardiesDay();
     unsubscribeDirectoryVersion();
@@ -245,6 +250,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   window.addEventListener('guardies:day-edited', () => commitCoverageEdit({ renderAll: true }));
   window.addEventListener('guardies:change-date', (event) => navigateToDate(event.detail?.date));
   window.addEventListener('guardies:load-teacher-stats', ensureTeacherStatistics);
+  window.addEventListener('guardies:release-teacher-stats', releaseTeacherStats);
   window.addEventListener('guardies:resolve-conflict', (event) => resolveDayConflict(event.detail?.choice));
 
   async function navigateToDate(date) {
@@ -305,6 +311,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         return;
       }
     }
+    releaseTeacherStats();
     unsubscribeGuardiesData();
     unsubscribeGuardiesDay();
     unsubscribeDirectoryVersion();
@@ -465,7 +472,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         directoryReloadPending = false;
         await reloadTeacherDirectory();
       }
-      if (state.canWrite || state.teacherStatsStatus === 'ready') subscribeToRemoteData();
+      if (state.canWrite) subscribeToRemoteData();
+      else if (state.teacherStatsStatus === 'ready') watchTeacherStats().catch(() => {});
       await activateGuardiesDay(state.date, { preserveCurrent: true });
       remoteListenersSuspended = false;
     })().catch(() => {}).finally(() => {
@@ -688,27 +696,85 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     return ready;
   }
 
+  // El recompte del professorat llegeix l'horari una vegada per sessió i
+  // només escolta el document de recomptes mentre la pestanya és visible.
   async function ensureTeacherStatistics() {
-    if (state.canWrite || state.teacherStatsStatus === 'ready' || teacherStatsInFlight) return;
+    if (state.canWrite || !state.courseId) return;
+    if (teacherStatsInFlight) return teacherStatsInFlight;
+    if (state.teacherStatsStatus === 'ready') {
+      watchTeacherStats().catch(() => {});
+      return;
+    }
     const courseId = state.courseId;
     state.teacherStatsStatus = 'loading';
     teacherStatsInFlight = (async () => {
       try {
-        const data = await subscribeToRemoteData({ initial: true });
+        const schedule = await loadGuardiesTeacherSchedule(courseId);
         if (courseId !== state.courseId || state.canWrite) return;
-        applyRemoteData(data);
-        lastRemoteDataSignature = remoteDataSignature(data);
-        state.guardCounts = new Map(Object.entries(data.stats?.counts || {}));
-        state.guardHistory = data.stats?.guardHistory || {};
+        state.referenceText = schedule.files.reference?.text || '';
+        state.referenceName = schedule.files.reference?.name || '';
+        state.untisText = schedule.files.untis?.text || '';
+        state.untisName = schedule.files.untis?.name || '';
+        state.dutiesText = schedule.files.duties?.text || '';
+        state.dutiesName = schedule.files.duties?.name || '';
+        state.excludedTeacherIds = new Set(schedule.excludedTeacherIds || []);
         parseStoredData({ resetSelection: false, renderAfter: false });
+        await watchTeacherStats();
+        if (courseId !== state.courseId) return;
         state.teacherStatsStatus = 'ready';
         state.persistenceStatus = 'ready';
       } catch (error) {
+        if (courseId !== state.courseId) return;
+        releaseTeacherStats();
         state.teacherStatsStatus = 'error';
         showError(`No s'ha pogut carregar el recompte. ${error.message || error}`);
       }
     })().finally(() => { teacherStatsInFlight = null; });
     return teacherStatsInFlight;
+  }
+
+  // Resol amb la primera lectura de recomptes perquè la pantalla no mostri
+  // zeros provisionals. Si l'escolta ja és activa, no en crea cap altra.
+  function watchTeacherStats() {
+    if (state.canWrite || !state.courseId || state.teacherSection !== 'stats' || unsubscribeTeacherStats) {
+      return Promise.resolve();
+    }
+    const courseId = state.courseId;
+    let settle = null;
+    const first = new Promise((resolve, reject) => { settle = { resolve, reject }; });
+    const finishFirst = (error) => {
+      if (!settle) return;
+      const { resolve, reject } = settle;
+      settle = null;
+      if (error) reject(error); else resolve();
+    };
+    let stop = () => {};
+    const release = () => {
+      if (unsubscribeTeacherStats === release) unsubscribeTeacherStats = null;
+      stop();
+      // Sortir de la pestanya abans de la primera lectura no ha de deixar la
+      // càrrega pendent per sempre.
+      finishFirst();
+    };
+    unsubscribeTeacherStats = release;
+    stop = subscribeGuardiesStats(courseId, (stats) => {
+      if (courseId !== state.courseId || unsubscribeTeacherStats !== release) return;
+      state.guardCounts = new Map(Object.entries(stats?.counts || {}));
+      state.guardHistory = stats?.guardHistory || {};
+      state.guardHistoryVersion = Number(stats?.guardHistoryVersion) || 0;
+      finishFirst();
+    }, (error) => {
+      // Una escolta amb error ja no rep canvis: s'allibera perquè es pugui tornar a obrir.
+      if (unsubscribeTeacherStats === release) unsubscribeTeacherStats = null;
+      stop();
+      if (settle) { finishFirst(error); return; }
+      if (courseId === state.courseId) showError(`No s'ha pogut actualitzar el recompte. ${error.message || error}`);
+    });
+    return first;
+  }
+
+  function releaseTeacherStats() {
+    if (unsubscribeTeacherStats) unsubscribeTeacherStats();
   }
 
   function serializableDay() {

@@ -4,14 +4,14 @@ import { expect, test } from '@playwright/test';
 // This covers metadata-only events and failed transactions without writing to
 // the school's database. It is not a Firestore emulator/rules validation.
 const sdk = `
-const f = window.__firestoreTest = { docs: new Map(), listeners: new Map(), commits: [], failPublic: false };
+const f = window.__firestoreTest = { docs: new Map(), listeners: new Map(), commits: [], failPublic: false, reads: [] };
 const snapshot = (path, data, metadata = { fromCache: false, hasPendingWrites: false }) => ({
   id: path.split('/').pop(), exists: () => data != null, data: () => data, metadata,
 });
 export const doc = (_, ...parts) => ({ path: parts.join('/') });
 export const collection = doc;
 export const serverTimestamp = () => 'server-time';
-export const getDoc = async (ref) => snapshot(ref.path, f.docs.get(ref.path));
+export const getDoc = async (ref) => { f.reads.push(ref.path); return snapshot(ref.path, f.docs.get(ref.path)); };
 export const getDocs = async () => ({ docs: [] });
 export const enableNetwork = async () => {};
 export const query = (ref) => ref;
@@ -139,4 +139,40 @@ test('private/public commit together, failure commits neither, and obsolete repa
   expect(result).toMatchObject({ savedRevision: 1, publicRevision: 1, failed: true, failedPrivateRevision: 1,
     staleTransition: 'guardies/conflict', obsoleteRepair: false, finalPrivate: 3, finalPublic: 3, matchingRepair: true, matchingWrites: 0 });
   expect(result.commits.filter((paths) => paths.length).every((paths) => paths.some((p) => p.includes('/guardiesDays/')) && paths.some((p) => p.includes('/guardiesPublicDays/')))).toBe(true);
+});
+
+test('teacher statistics read only the schedule once and listen only to the stats document', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const { loadGuardiesTeacherSchedule, subscribeGuardiesStats } = await import('/src/services/guardiesStorage.js');
+    const f = window.__firestoreTest;
+    const root = 'cursos/test/guardies';
+    f.docs.set(root + '/reference', { text: '<ref/>', name: 'ref.xml' });
+    f.docs.set(root + '/untis', { text: 'untis', name: 'untis.txt' });
+    f.docs.set(root + '/duties', { text: 'duties', name: 'GPU001.TXT' });
+    f.docs.set('cursos/test/config/guardies-exclusions', { excludedTeacherIds: ['AGR1'] });
+    const schedule = await loadGuardiesTeacherSchedule('test');
+    const reads = [...f.reads].sort();
+
+    const events = [];
+    const stop = subscribeGuardiesStats('test', (stats) => events.push(stats.counts));
+    const listened = [...f.listeners.keys()];
+    const stats = { counts: { 2: { guard: 1 } } };
+    await f.emit(root + '/stats', stats, { fromCache: true, hasPendingWrites: false });
+    await f.emit(root + '/stats', stats);
+    await f.emit(root + '/stats', { counts: { 2: { guard: 2 } } });
+    stop();
+    const active = [...f.listeners.values()].reduce((n, set) => n + set.size, 0);
+    return { reads, files: Object.values(schedule.files).map((file) => file?.name), excluded: schedule.excludedTeacherIds, listened, events, active };
+  });
+  expect(result.reads).toEqual([
+    'cursos/test/config/guardies-exclusions',
+    'cursos/test/guardies/duties',
+    'cursos/test/guardies/reference',
+    'cursos/test/guardies/untis',
+  ]);
+  expect(result.files).toEqual(['ref.xml', 'untis.txt', 'GPU001.TXT']);
+  expect(result.excluded).toEqual(['AGR1']);
+  expect(result.listened).toEqual(['cursos/test/guardies/stats']);
+  expect(result.events).toEqual([{ 2: { guard: 1 } }, { 2: { guard: 2 } }]);
+  expect(result.active).toBe(0);
 });

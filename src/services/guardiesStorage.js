@@ -679,6 +679,69 @@ export async function loadGuardiesStats(cursId) {
   return snapshot.exists() ? snapshot.data() : { counts: {} };
 }
 
+// Horari mínim per al recompte del professorat: els tres fitxers i les
+// exclusions, llegits una sola vegada. Convivència, pati i observacions no hi
+// intervenen, i els fitxers canvien poques vegades per curs.
+export async function loadGuardiesTeacherSchedule(cursId) {
+  if (E2E_AUTH_BYPASS) {
+    const data = getE2EData(cursId);
+    return {
+      files: {
+        reference: data.files?.reference || null,
+        untis: data.files?.untis || null,
+        duties: data.files?.duties || null,
+      },
+      excludedTeacherIds: normalizeExcludedTeacherIds({ teacherIds: data.excludedTeacherIds }),
+    };
+  }
+  const [reference, untis, duties, exclusions] = await withNetworkRetry(() => Promise.all([
+    readDoc(guardiesRef(cursId, 'reference')),
+    readDoc(guardiesRef(cursId, 'untis')),
+    readDoc(guardiesRef(cursId, 'duties')),
+    readDoc(guardiesExclusionsRef(cursId)),
+  ]));
+  trackReads('teacherScheduleLoad', 4);
+  return {
+    files: {
+      reference: reference.exists() ? await loadStoredFile(reference.data()) : null,
+      untis: untis.exists() ? await loadStoredFile(untis.data()) : null,
+      duties: duties.exists() ? await loadStoredFile(duties.data()) : null,
+    },
+    excludedTeacherIds: exclusions.exists() ? normalizeExcludedTeacherIds({ teacherIds: exclusions.data().excludedTeacherIds }) : [],
+  };
+}
+
+// Només el document de recomptes. Les confirmacions de caché/servidor sense
+// canvis de contingut no es notifiquen.
+export function subscribeGuardiesStats(cursId, onChange, onError = () => {}, { iosPollInterval = 5 * 60 * 1000 } = {}) {
+  if (E2E_AUTH_BYPASS) {
+    let signature;
+    return subscribeE2E(cursId, (data) => {
+      const stats = data.stats || { counts: {} };
+      const next = JSON.stringify(stats);
+      if (next === signature) return;
+      signature = next;
+      onChange(stats);
+    });
+  }
+  if (isIOSWebKit) {
+    let signature;
+    return subscribeWithPolling(() => loadGuardiesStats(cursId), (stats) => {
+      const next = JSON.stringify(stats);
+      if (next === signature) return;
+      signature = next;
+      onChange(stats);
+    }, onError, iosPollInterval);
+  }
+  const observe = createSnapshotState();
+  return onSnapshot(guardiesStatsRef(cursId), { includeMetadataChanges: true }, (snapshot) => {
+    const metadata = observe(snapshot);
+    if (metadata.reads) trackReads('statsSnapshot', metadata.reads, '', metadata.fromCache);
+    if (metadata.metadataOnly) return;
+    onChange(snapshot.exists() ? snapshot.data() : { counts: {} });
+  }, onError);
+}
+
 export async function setGuardiesTeacherCount(cursId, teacherId, source, value, slot = '') {
   const cleanTeacherId = String(teacherId || '').trim();
   if (!['released', 'guard'].includes(source)) throw new Error('Tipus de recompte no vàlid.');
