@@ -57,7 +57,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   const DRAFT_CACHE_PREFIX = 'guardies_pending_day:';
   const UNCLOSED_CACHE_PREFIX = 'quota_guardies_unclosed_days:';
   const UNCLOSED_CACHE_TTL = 15 * 60 * 1000;
-  const HISTORY_MIGRATION_FAILED_PREFIX = 'quota_guardies_history_migration_failed:';
+  const HISTORY_MIGRATION_FAILED_PREFIX = 'quota_guardies_history_migration_failed_v2:';
   const HISTORY_MIGRATION_RETRY_DELAY = 6 * 60 * 60 * 1000;
   const VISIBILITY_LISTENER_GRACE = 5 * 60 * 1000;
   const state = useGuardiesStore();
