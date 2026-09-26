@@ -287,23 +287,23 @@ test.describe('Guàrdies: comportament existent', () => {
       const data = JSON.parse(localStorage.getItem(key)) || {};
       data.stats = { counts: {}, guardHistoryVersion: 0 };
       data.days = { '2026-09-07': {
-        status: 'closed', cancelledAssignments: ['c'],
+        status: 'closed', cancelledAssignments: ['P|1|9:50|c'],
         assignments: {
-          a: { teacherId: '2', source: 'guard' },
-          b: { teacherId: '2', source: 'guard' },
-          c: { teacherId: '2', source: 'guard' },
-          d: { teacherId: '3', source: 'released' },
+          'P|1|8:00|a': { teacherId: '2', source: 'guard' },
+          'P|1|8:55|b': { teacherId: '2', source: 'guard' },
+          'P|1|9:50|c': { teacherId: '2', source: 'guard' },
+          'P|1|8:00|d': { teacherId: '3', source: 'released' },
         },
       } };
       localStorage.setItem(key, JSON.stringify(data));
       const { rebuildGuardiesGuardHistory } = await import('/src/services/guardiesStorage.js');
       const result = await rebuildGuardiesGuardHistory('e2e-2026', {
-        a: { groups: ['1ESO-A'] }, b: { groups: ['2ESO-B'] }, c: { groups: ['3ESO-C'] },
+        'P|1|8:00|a': { groups: ['1ESO-A'] }, 'P|1|8:55|b': { groups: ['2ESO-B'] }, 'P|1|9:50|c': { groups: ['3ESO-C'] },
       });
       const repeated = await rebuildGuardiesGuardHistory('e2e-2026', {});
       return { first: result.guardHistory, repeated: repeated.guardHistory };
     });
-    expect(history.first).toEqual({ 2: { '2026-09-07': ['1ESO-A', '2ESO-B'] } });
+    expect(history.first).toEqual({ 2: { '2026-09-07': { '1|8:00': ['1ESO-A'], '1|8:55': ['2ESO-B'] } } });
     expect(history.repeated).toEqual(history.first);
   });
 
@@ -350,26 +350,35 @@ test.describe('Guàrdies: comportament existent', () => {
   test('mostra les dates G del professor en passar-hi per damunt', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
-    await page.evaluate(() => {
+    await page.goto('/?data=2026-09-07&vista=professor');
+    await page.getByRole('tab', { name: 'Recompte de guàrdies' }).click();
+    const slot = await page.locator('[data-roster-teacher="2"]').first()
+      .locator('xpath=ancestor::*[@data-roster-slot]').getAttribute('data-roster-slot');
+    await page.evaluate((slotKey) => {
       const key = 'quota-e2e-guardies:e2e-2026';
       const data = JSON.parse(localStorage.getItem(key));
       data.stats = {
         ...(data.stats || {}),
-        guardHistoryVersion: 1,
-        guardHistory: { 2: { '2026-09-18': ['1ESO-A', '1ESO', '662663', '94'] } },
+        guardHistoryVersion: 2,
+        guardHistory: { 2: {
+          '2026-09-18': { [slotKey]: ['1ESO-A', '1ESO', '662663', '94'], '9|altra-franja': ['9ESO-Z'] },
+          '2026-09-11': { '9|altra-franja': ['8ESO-Y'] },
+          '2026-09-04': ['7ESO-X'],
+        } },
       };
       localStorage.setItem(key, JSON.stringify(data));
-    });
+    }, slot);
     await page.reload();
     await page.goto('/?data=2026-09-07&vista=professor');
     await page.getByRole('tab', { name: 'Recompte de guàrdies' }).click();
-    const teacher = page.locator('[data-roster-teacher="2"]').first();
+    const teacher = page.locator(`[data-roster-slot="${slot}"] [data-roster-teacher="2"]`);
     await teacher.hover();
     await expect(teacher.locator('.guard-history-tooltip')).toBeVisible();
     await expect(teacher.locator('.guard-history-tooltip')).toContainText('1 guàrdia');
     await expect(teacher.locator('.guard-history-tooltip')).toContainText('18/09/2026');
     await expect(teacher.locator('.guard-history-tooltip')).toContainText('1ESO-A');
     await expect(teacher.locator('.guard-history-tooltip')).toHaveText('1 guàrdia\n18/09/2026 · 1ESO-A');
+    await expect(teacher.locator('.guard-history-tooltip')).not.toContainText('9ESO-Z');
     await expect(teacher).not.toHaveAttribute('title', /.+/);
   });
 

@@ -164,9 +164,9 @@ test('history rebuild ignores representation-only differences and retries once o
     const second = await rebuildGuardiesGuardHistory('test', details);
     return { first: first.guardHistory, attemptsFirst, second: second.guardHistory, secondCounts: second.counts, secondCommits: f.commits.length };
   });
-  expect(result.first).toEqual({ 2: { '2026-09-07': ['1ESO-A'] } });
+  expect(result.first).toEqual({ 2: { '2026-09-07': { '1|h': ['1ESO-A'] } } });
   expect(result.attemptsFirst).toBe(1);
-  expect(result.second).toEqual({ 2: { '2026-09-07': ['1ESO-A'] } });
+  expect(result.second).toEqual({ 2: { '2026-09-07': { '1|h': ['1ESO-A'] } } });
   expect(result.secondCounts).toEqual({ 2: { guard: 9 } });
   expect(result.secondCommits).toBe(1);
 });

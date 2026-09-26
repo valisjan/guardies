@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { guardCountForSlot, guardSlotKey } from '../../../src/modules/guardies/domain/workflow.js';
-import { displayHistoryGroups } from '../../../src/modules/guardies/domain/guard-history.js';
+import { displayHistoryGroups, slotHistoryEntries } from '../../../src/modules/guardies/domain/guard-history.js';
 import { useGuardiesStore } from '../stores/guardies.js';
 
 const store = useGuardiesStore();
@@ -123,8 +123,8 @@ const historyIndex = computed(() => {
   return index;
 });
 
+// Historial (data -> { "dia|hora": [grups] }) fusionat entre els àlies del professor.
 function historyForTeacher(teacher, index) {
-  if (!teacher) return [];
   const aliases = new Set([
     teacher.placa,
     teacher.short,
@@ -133,36 +133,53 @@ function historyForTeacher(teacher, index) {
     teacher.name,
     teacher.label,
   ].map(normalize).filter(Boolean));
-  const merged = new Map();
   const matches = new Set();
   aliases.forEach((alias) => {
     (index.get(alias) || []).forEach((entry) => matches.add(entry));
   });
+  const merged = {};
   Array.from(matches).sort((left, right) => left.order - right.order).forEach(({ dates }) => {
-    Object.entries(dates).forEach(([date, groups]) => {
-      const current = merged.get(date) || [];
-      merged.set(date, Array.from(new Set([...current, ...(Array.isArray(groups) ? groups : [])])));
+    Object.entries(dates).forEach(([date, bySlot]) => {
+      if (!bySlot || typeof bySlot !== 'object' || Array.isArray(bySlot)) return;
+      merged[date] ||= {};
+      Object.entries(bySlot).forEach(([slot, groups]) => {
+        merged[date][slot] = Array.from(new Set([...(merged[date][slot] || []), ...(Array.isArray(groups) ? groups : [])]));
+      });
     });
   });
-  return Array.from(merged.entries())
-    .sort(([left], [right]) => right.localeCompare(left))
-    .map(([date, groups]) => ({ date, groups: displayHistoryGroups(groups) }));
+  return merged;
 }
 
-function historyText(teacher, index) {
-  const entries = historyForTeacher(teacher, index);
-  if (!entries.length) return '';
+function slotHistoryText(entries) {
   const lines = entries.map(({ date, groups }) => {
     const formatted = dateFormatter.format(new Date(`${date}T12:00:00`));
-    return `${formatted} · ${groups.length ? groups.join(' · ') : '—'}`;
+    const clean = displayHistoryGroups(groups);
+    return `${formatted} · ${clean.length ? clean.join(' · ') : '—'}`;
   });
   return [`${entries.length} ${entries.length === 1 ? 'guàrdia' : 'guàrdies'}`, ...lines].join('\n');
 }
 
-const historyTextByTeacher = computed(() => {
+const historyKey = (teacherId, slot) => `${teacherId}|${slot}`;
+
+// Text del tooltip per professor i franja: només les guàrdies d'aquella
+// franja, igual que el recompte que es mostra a la cel·la.
+const historyTextBySlot = computed(() => {
   const index = historyIndex.value;
-  return new Map(professorOptions.value.map((teacher) => [teacher.placa, historyText(teacher, index)]));
+  const texts = new Map();
+  professorOptions.value.forEach((teacher) => {
+    const merged = historyForTeacher(teacher, index);
+    const slots = new Set(Object.values(merged).flatMap((bySlot) => Object.keys(bySlot)));
+    slots.forEach((slot) => {
+      const entries = slotHistoryEntries(merged, slot);
+      if (entries.length) texts.set(historyKey(teacher.placa, slot), slotHistoryText(entries));
+    });
+  });
+  return texts;
 });
+
+function historyTextFor(teacherId, slot) {
+  return historyTextBySlot.value.get(historyKey(teacherId, slot)) || '';
+}
 </script>
 
 <template>
@@ -201,13 +218,13 @@ const historyTextByTeacher = computed(() => {
               class="guard-roster-teacher"
               :class="[`heat-${teacher.heat}`, { 'is-mine': teacher.mine }]"
               :data-roster-teacher="teacher.teacherId"
-              :aria-label="`${teacher.label}${historyTextByTeacher.get(teacher.teacherId) ? ` · ${historyTextByTeacher.get(teacher.teacherId)}` : ''}`"
+              :aria-label="`${teacher.label}${historyTextFor(teacher.teacherId, cell.key) ? ` · ${historyTextFor(teacher.teacherId, cell.key)}` : ''}`"
               role="button"
               tabindex="0"
             >
               <span>{{ teacher.label }}</span>
               <b data-roster-count :aria-label="`${teacher.count} guàrdies realitzades en aquesta hora`">{{ teacher.count }}</b>
-              <span v-if="historyTextByTeacher.get(teacher.teacherId)" class="guard-history-tooltip" role="tooltip">{{ historyTextByTeacher.get(teacher.teacherId) }}</span>
+              <span v-if="historyTextFor(teacher.teacherId, cell.key)" class="guard-history-tooltip" role="tooltip">{{ historyTextFor(teacher.teacherId, cell.key) }}</span>
             </article>
             <span v-if="!cell.teachers.length" class="guard-matrix-empty">—</span>
           </div>

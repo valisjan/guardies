@@ -1,7 +1,7 @@
 import * as parser from './horariXmlParser.js';
 import { renderPublicCoverage, renderPublicOutings } from './publicDayRenderer.js';
 import { createScheduleIndex } from '../../src/modules/guardies/domain/schedule-index.js';
-import { guardHistoryGroups } from '../../src/modules/guardies/domain/guard-history.js';
+import { GUARD_HISTORY_VERSION, guardHistoryGroups, guardSlotFromAssignment } from '../../src/modules/guardies/domain/guard-history.js';
 import { createKeyedRenderer } from '../../src/utils/keyedDom.js';
 import { GUARD_CODES_STORAGE, useGuardiesStore } from './stores/guardies.js';
 import {
@@ -410,7 +410,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.guardHistory = stats.guardHistory || {};
       state.guardHistoryVersion = Number(stats.guardHistoryVersion) || 0;
     }
-    if (state.canWrite && Number(stats.guardHistoryVersion) !== 1 && state.sessions.length && canRetryGuardHistoryMigration(courseId)) {
+    if (state.canWrite && Number(stats.guardHistoryVersion) !== GUARD_HISTORY_VERSION && state.sessions.length && canRetryGuardHistoryMigration(courseId)) {
       const absenceDetails = Object.fromEntries(
         parser.agruparSessionsCobertura(state.sessions.filter(isMeaningfulSession))
           .map((item) => [item.id, { groups: guardHistoryGroups(item) }]),
@@ -419,7 +419,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         .then((result) => {
           if (courseId !== state.courseId) return;
           state.guardHistory = result.guardHistory || {};
-          state.guardHistoryVersion = 1;
+          state.guardHistoryVersion = GUARD_HISTORY_VERSION;
           render();
         })
         .catch((error) => {
@@ -1322,7 +1322,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           if (state.assignmentSources.get(absenceId) !== 'guard' || state.cancelledAssignments.has(absenceId)) return;
           const item = state.absencies.get(absenceId);
           if (!item || item.dia !== xmlDayForDate(state.date)) return;
-          guardHistoryEntries.push({ teacherId, groups: guardHistoryGroups(item) });
+          guardHistoryEntries.push({ teacherId, slot: guardSlotFromAssignment(absenceId), groups: guardHistoryGroups(item) });
         });
       }
       const projection = publicGuardiesDay();

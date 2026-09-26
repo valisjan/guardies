@@ -34,6 +34,7 @@ import {
   normalizeCountedAssignment,
   updateGuardCounts,
 } from '../modules/guardies/domain/workflow';
+import { GUARD_HISTORY_VERSION, guardHistoryFromClosedDays } from '../modules/guardies/domain/guard-history.js';
 
 const FILE_KINDS = new Set(['reference', 'untis', 'duties']);
 const DELETABLE_FILE_KINDS = new Set([...FILE_KINDS, 'schedule']);
@@ -83,13 +84,27 @@ function guardiesStatsRef(cursId) {
   return guardiesRef(cursId, 'stats');
 }
 
+function cleanGuardGroups(groups) {
+  return Array.from(new Set(groups.map((group) => String(group || '').trim()).filter(Boolean)));
+}
+
+// Accepta el format v1 (data -> [grups]) i el v2 (data -> { "dia|hora": [grups] }).
 function cleanGuardHistory(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value).map(([teacherId, dates]) => [
     String(teacherId),
     Object.fromEntries(Object.entries(dates && typeof dates === 'object' ? dates : {})
-      .filter(([date, groups]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && Array.isArray(groups))
-      .map(([date, groups]) => [date, Array.from(new Set(groups.map((group) => String(group || '').trim()).filter(Boolean)))])),
+      .filter(([date]) => /^\d{4}-\d{2}-\d{2}$/.test(date))
+      .map(([date, entry]) => {
+        if (Array.isArray(entry)) return [date, cleanGuardGroups(entry)];
+        if (entry && typeof entry === 'object') {
+          return [date, Object.fromEntries(Object.entries(entry)
+            .filter(([slot, groups]) => String(slot || '').trim() && Array.isArray(groups))
+            .map(([slot, groups]) => [String(slot).trim(), cleanGuardGroups(groups)]))];
+        }
+        return null;
+      })
+      .filter(Boolean)),
   ]));
 }
 
@@ -102,7 +117,7 @@ function stableStringify(value) {
 }
 
 // Només el contingut que la reconstrucció pot invalidar. Ignora updatedAt i
-// l'ordre de claves, que varien segons la lectura (SDK, REST o caché).
+// l'ordre de claus, que varien segons la lectura (SDK, REST o caché).
 function statsContentSignature(stats) {
   return stableStringify({ counts: stats?.counts || {}, guardHistory: stats?.guardHistory || {} });
 }
@@ -113,13 +128,15 @@ function changeGuardHistoryDate(history, date, entries = [], remove = false) {
     delete next[teacherId][date];
     if (!Object.keys(next[teacherId]).length) delete next[teacherId];
   });
-  if (!remove) entries.forEach(({ teacherId, groups }) => {
-    if (!teacherId) return;
+  if (!remove) entries.forEach(({ teacherId, slot, groups }) => {
+    const cleanSlot = String(slot || '').trim();
+    if (!teacherId || !cleanSlot) return;
     next[teacherId] ||= {};
-    next[teacherId][date] = Array.from(new Set([
-      ...(next[teacherId][date] || []),
-      ...(groups || []).map((group) => String(group || '').trim()).filter(Boolean),
-    ]));
+    next[teacherId][date] ||= {};
+    next[teacherId][date][cleanSlot] = cleanGuardGroups([
+      ...(next[teacherId][date][cleanSlot] || []),
+      ...(groups || []),
+    ]);
   });
   return next;
 }
@@ -682,7 +699,7 @@ export async function saveGuardiesGuardHistory(cursId, history, expectedStats = 
     const data = getE2EData(cursId);
     data.stats ||= { counts: {} };
     data.stats.guardHistory = cleanHistory;
-    data.stats.guardHistoryVersion = 1;
+    data.stats.guardHistoryVersion = GUARD_HISTORY_VERSION;
     setE2EData(cursId, data);
     return data.stats;
   }
@@ -690,14 +707,14 @@ export async function saveGuardiesGuardHistory(cursId, history, expectedStats = 
     const reference = guardiesStatsRef(cursId);
     const snapshot = await transaction.get(reference);
     const stats = snapshot.exists() ? snapshot.data() : { counts: {} };
-    if (Number(stats.guardHistoryVersion) === 1) return stats;
+    if (Number(stats.guardHistoryVersion) === GUARD_HISTORY_VERSION) return stats;
     if (expectedStats && statsContentSignature(stats) !== statsContentSignature(expectedStats)) {
       throw Object.assign(new Error('El recompte ha canviat durant la reconstrucció de l’historial.'), { code: 'guardies/stats-changed' });
     }
     const next = {
       counts: stats.counts || {},
       guardHistory: cleanHistory,
-      guardHistoryVersion: 1,
+      guardHistoryVersion: GUARD_HISTORY_VERSION,
       updatedAt: serverTimestamp(),
     };
     transaction.set(reference, next);
@@ -719,40 +736,17 @@ export async function rebuildGuardiesGuardHistory(cursId, absenceDetails = {}) {
 
 async function rebuildGuardHistoryOnce(cursId, absenceDetails) {
   const initialStats = await loadGuardiesStats(cursId);
-  if (Number(initialStats.guardHistoryVersion) === 1) return initialStats;
+  if (Number(initialStats.guardHistoryVersion) === GUARD_HISTORY_VERSION) return initialStats;
   if (E2E_AUTH_BYPASS) {
     const data = getE2EData(cursId);
-    const history = {};
-    Object.entries(data.days || {}).forEach(([date, day]) => {
-      if (day?.status !== 'closed') return;
-      Object.entries(day.assignments || {}).forEach(([absenceId, assignment]) => {
-        const raw = typeof assignment === 'string' ? { teacherId: assignment } : assignment;
-        if (raw?.source !== 'guard' || !raw.teacherId || day.cancelledAssignments?.includes(absenceId)) return;
-        history[raw.teacherId] ||= {};
-        history[raw.teacherId][date] = Array.from(new Set([
-          ...(history[raw.teacherId][date] || []), ...(absenceDetails[absenceId]?.groups || []),
-        ]));
-      });
-    });
+    const history = guardHistoryFromClosedDays(Object.entries(data.days || {}), absenceDetails);
     return saveGuardiesGuardHistory(cursId, history);
   }
   const snapshot = await getDocs(query(
     collection(db, 'cursos', cursId, 'guardiesDays'), where('status', '==', 'closed'),
   ));
   trackReads('guardHistoryMigration', snapshot.docs.length, `total:${snapshot.docs.length}`);
-  const history = {};
-  snapshot.docs.forEach((item) => {
-    const day = item.data();
-    if (day?.status !== 'closed') return;
-    Object.entries(day.assignments || {}).forEach(([absenceId, assignment]) => {
-      const raw = typeof assignment === 'string' ? { teacherId: assignment } : assignment;
-      if (raw?.source !== 'guard' || !raw.teacherId || day.cancelledAssignments?.includes(absenceId)) return;
-      history[raw.teacherId] ||= {};
-      history[raw.teacherId][item.id] = Array.from(new Set([
-        ...(history[raw.teacherId][item.id] || []), ...(absenceDetails[absenceId]?.groups || []),
-      ]));
-    });
-  });
+  const history = guardHistoryFromClosedDays(snapshot.docs.map((item) => [item.id, item.data()]), absenceDetails);
   return saveGuardiesGuardHistory(cursId, history, initialStats);
 }
 
@@ -844,7 +838,7 @@ export async function resetGuardiesCourseData(cursId) {
     updatedAt: serverTimestamp(),
   }));
   publicDays.docs.forEach((snapshot) => batch.delete(snapshot.ref));
-  batch.set(guardiesStatsRef(cursId), { counts: {}, guardHistory: {}, guardHistoryVersion: 1, updatedAt: serverTimestamp() });
+  batch.set(guardiesStatsRef(cursId), { counts: {}, guardHistory: {}, guardHistoryVersion: GUARD_HISTORY_VERSION, updatedAt: serverTimestamp() });
   await batch.commit();
   return { deletedDays: days.size };
 }
