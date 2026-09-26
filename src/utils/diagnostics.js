@@ -69,7 +69,7 @@ function publish() {
       // eslint-disable-next-line no-console
       console.table(rows);
       // eslint-disable-next-line no-console
-      console.log(`Network reads (facturable): ${totalNetwork} | Cache reads: ${totalCache}`);
+      console.log(`Network reads (estimadas): ${totalNetwork} | Cache reads: ${totalCache}`);
     },
     reset() {
       Object.keys(state.network).forEach((k) => { state.network[k] = 0; });

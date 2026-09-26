@@ -143,7 +143,7 @@ function clearDay() {
   if (!window.confirm('Vols netejar totes les absències i sortides d’aquest dia?')) return;
   store.clearAbsencePlan();
   store.clearGroupsOut();
-  window.dispatchEvent(new CustomEvent('guardies:legacy-render'));
+  window.dispatchEvent(new CustomEvent('guardies:day-edited'));
 }
 
 const statusAction = computed(() => {

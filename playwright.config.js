@@ -24,5 +24,8 @@ export default defineConfig({
   projects: [
     { name: 'chromium-desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } } },
     { name: 'chromium-mobile', use: { ...devices['iPhone 13'], browserName: 'chromium' } },
+    ...(process.env.GUARDIES_WEBKIT === '1'
+      ? [{ name: 'webkit-mobile', use: { ...devices['iPhone 13'], browserName: 'webkit' } }]
+      : []),
   ],
 });

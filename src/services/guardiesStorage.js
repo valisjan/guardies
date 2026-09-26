@@ -23,9 +23,11 @@ import { auth, authPersistenceReady, db, isIOSWebKit } from '../firebase';
 import { BatchSplit } from '../utils/firestoreBatch';
 import { getRestCollection, getRestDocument } from './firestoreRest';
 import { E2E_AUTH_BYPASS, E2E_CURS_ID, getE2ECollection } from './e2e';
-import { subscribePublicGuardiesDay } from './pantallesStorage';
+import { subscribePublicGuardiesDay, writePublicGuardiesDay } from './pantallesStorage';
+import { publicProjectionForDay } from '../modules/guardies/domain/publication.js';
 import { selectDefaultAcademicCourse } from '../utils/academicCourse';
 import { trackReads } from '../utils/diagnostics';
+import { createSnapshotState } from '../utils/snapshotState.js';
 import { normalizePatioConfig } from '../modules/guardies/domain/patio';
 import {
   normalizeGuardCount,
@@ -410,7 +412,7 @@ export async function loadGuardiesData(cursId) {
   };
 }
 
-export function subscribeGuardiesData(cursId, onChange, onError = () => {}, { iosPollInterval = 5 * 60 * 1000 } = {}) {
+export function subscribeGuardiesData(cursId, onChange, onError = () => {}, { iosPollInterval = 5 * 60 * 1000, onMetadata = () => {} } = {}) {
   if (E2E_AUTH_BYPASS) {
     return subscribeE2E(cursId, (data) => {
       Promise.resolve(onChange({
@@ -449,6 +451,12 @@ export function subscribeGuardiesData(cursId, onChange, onError = () => {}, { io
   let observationPresets = [];
   let active = true;
   let emission = 0;
+  const sources = new Map();
+  const confirmSource = (key, snapshot) => {
+    sources.set(key, snapshot.metadata);
+    onMetadata({ fromCache: sources.size < 3 || [...sources.values()].some((s) => s.fromCache),
+      hasPendingWrites: [...sources.values()].some((s) => s.hasPendingWrites) });
+  };
   const emit = async () => {
     if (!guardiesReady || !exclusionsReady || !observationsReady) return;
     const currentEmission = ++emission;
@@ -473,32 +481,45 @@ export function subscribeGuardiesData(cursId, onChange, onError = () => {}, { io
     }
   };
   let configSnapshotCount = 0;
-  const unsubscribeGuardies = onSnapshot(collection(db, 'cursos', cursId, 'guardies'), (snapshot) => {
+  let configServerSeen = false;
+  const unsubscribeGuardies = onSnapshot(collection(db, 'cursos', cursId, 'guardies'), { includeMetadataChanges: true }, (snapshot) => {
+    confirmSource('guardies', snapshot);
     const relevantDocs = snapshot.docs.filter((item) => item.id !== 'directoriVersion');
     const relevantChanges = snapshot.docChanges().filter((change) => change.doc.id !== 'directoriVersion');
     const versionChanges = snapshot.docChanges().filter((change) => change.doc.id === 'directoriVersion');
-    if (versionChanges.length > 0 || (configSnapshotCount === 0 && snapshot.docs.some((d) => d.id === 'directoriVersion'))) {
-      const versionReads = configSnapshotCount === 0 ? 1 : versionChanges.length;
+    const firstServer = !snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites && !configServerSeen;
+    if (firstServer) configServerSeen = true;
+    if (!snapshot.metadata.hasPendingWrites && (versionChanges.length > 0 || ((configSnapshotCount === 0 || firstServer) && snapshot.docs.some((d) => d.id === 'directoriVersion')))) {
+      const versionReads = configSnapshotCount === 0 || firstServer ? 1 : versionChanges.length;
       trackReads('directoryVersionCollectionSnapshot', versionReads, '', snapshot.metadata.fromCache);
     }
+    const reads = snapshot.metadata.hasPendingWrites ? 0
+      : configSnapshotCount === 0 || firstServer ? relevantDocs.length : relevantChanges.length;
+    if (reads) trackReads('configSnapshot', reads, configSnapshotCount === 0 || firstServer ? 'initial' : 'update', snapshot.metadata.fromCache);
     if (configSnapshotCount > 0 && relevantChanges.length === 0) return;
     configSnapshotCount += 1;
-    const reads = configSnapshotCount === 1 ? relevantDocs.length : relevantChanges.length;
-    trackReads('configSnapshot', reads, configSnapshotCount === 1 ? 'initial' : 'update', snapshot.metadata.fromCache);
     documents = new Map(relevantDocs.map((item) => [item.id, item.data()]));
     guardiesReady = true;
     emit();
   }, onError);
-  const unsubscribeExclusions = onSnapshot(guardiesExclusionsRef(cursId), (snapshot) => {
-    trackReads('configSnapshot', 1, 'exclusions', snapshot.metadata.fromCache);
+  const observeExclusions = createSnapshotState();
+  const observeObservations = createSnapshotState();
+  const unsubscribeExclusions = onSnapshot(guardiesExclusionsRef(cursId), { includeMetadataChanges: true }, (snapshot) => {
+    confirmSource('exclusions', snapshot);
+    const metadata = observeExclusions(snapshot);
+    if (metadata.reads) trackReads('configSnapshot', metadata.reads, 'exclusions', metadata.fromCache);
+    if (metadata.metadataOnly) return;
     excludedTeacherIds = snapshot.exists()
       ? normalizeExcludedTeacherIds({ teacherIds: snapshot.data().excludedTeacherIds })
       : [];
     exclusionsReady = true;
     emit();
   }, onError);
-  const unsubscribeObservations = onSnapshot(guardiesObservationsRef(cursId), (snapshot) => {
-    trackReads('configSnapshot', 1, 'observations', snapshot.metadata.fromCache);
+  const unsubscribeObservations = onSnapshot(guardiesObservationsRef(cursId), { includeMetadataChanges: true }, (snapshot) => {
+    confirmSource('observations', snapshot);
+    const metadata = observeObservations(snapshot);
+    if (metadata.reads) trackReads('configSnapshot', metadata.reads, 'observations', metadata.fromCache);
+    if (metadata.metadataOnly) return;
     observationPresets = snapshot.exists()
       ? normalizeGuardiesObservationPresets(snapshot.data())
       : [];
@@ -590,9 +611,11 @@ export async function loadGuardiesTeacherDirectory(cursId) {
 
 export function subscribeDirectoryVersion(cursId, onOutdated, onError = () => {}) {
   if (E2E_AUTH_BYPASS || isIOSWebKit) return () => {};
-  return onSnapshot(directoryVersionRef(cursId), (snapshot) => {
-    if (!snapshot.exists() || snapshot.metadata.fromCache) return;
-    trackReads('directoryVersionSnapshot', 1, 'server', false);
+  const observe = createSnapshotState();
+  return onSnapshot(directoryVersionRef(cursId), { includeMetadataChanges: true }, (snapshot) => {
+    const metadata = observe(snapshot);
+    if (!snapshot.exists() || metadata.fromCache || metadata.hasPendingWrites) return;
+    if (metadata.reads) trackReads('directoryVersionSnapshot', metadata.reads, 'server', false);
     const remoteVersion = Number(snapshot.data()?.version) || 0;
     if (!remoteVersion) return;
     const cached = loadCachedTeacherDirectory(cursId);
@@ -963,7 +986,7 @@ export function subscribeGuardiesDay(
       privateActive = false;
     };
     const unsubscribePublic = subscribePublicGuardiesDay(cursId, date, (publicDay, metadata = {}) => {
-      trackReads('dayPublicSignalSnapshot', 1, publicDay ? 'published' : 'not-published', metadata.fromCache);
+      if (metadata.reads ?? 1) trackReads('dayPublicSignalSnapshot', metadata.reads ?? 1, publicDay ? 'published' : 'not-published', metadata.fromCache);
       if (!publicDay) {
         // Despublication: stop the private subscription before reporting null.
         stopPrivate();
@@ -972,15 +995,14 @@ export function subscribeGuardiesDay(
       }
       if (privateActive) return;
       privateActive = true;
-      unsubscribePrivate = onSnapshot(guardiesDayRef(cursId, date), (snapshot) => {
-        trackReads('daySnapshot', 1, 'published-document', snapshot.metadata.fromCache);
+      const observe = createSnapshotState();
+      unsubscribePrivate = onSnapshot(guardiesDayRef(cursId, date), { includeMetadataChanges: true }, (snapshot) => {
+        const metadata = observe(snapshot);
+        if (metadata.reads) trackReads('daySnapshot', metadata.reads, 'published-document', metadata.fromCache);
         const day = snapshot.exists() && ['published', 'closed'].includes(snapshot.data()?.status)
           ? snapshot.data()
           : null;
-        onChange(day, {
-          fromCache: snapshot.metadata.fromCache,
-          hasPendingWrites: snapshot.metadata.hasPendingWrites,
-        });
+        onChange(day, metadata);
       }, (error) => {
         stopPrivate();
         onError(error);
@@ -992,19 +1014,18 @@ export function subscribeGuardiesDay(
     };
   }
 
-  return onSnapshot(guardiesDayRef(cursId, date), (snapshot) => {
-    trackReads('daySnapshot', 1, '', snapshot.metadata.fromCache);
-    onChange(snapshot.exists() ? snapshot.data() : null, {
-      fromCache: snapshot.metadata.fromCache,
-      hasPendingWrites: snapshot.metadata.hasPendingWrites,
-    });
+  const observe = createSnapshotState();
+  return onSnapshot(guardiesDayRef(cursId, date), { includeMetadataChanges: true }, (snapshot) => {
+    const metadata = observe(snapshot);
+    if (metadata.reads) trackReads('daySnapshot', metadata.reads, '', metadata.fromCache);
+    onChange(snapshot.exists() ? snapshot.data() : null, metadata);
   }, onError);
 }
 
 export function subscribeGuardiesPublicView(cursId, date, onChange, onError = () => {}) {
   if (!isIOSWebKit || E2E_AUTH_BYPASS) {
     return subscribePublicGuardiesDay(cursId, date, (day, metadata) => {
-      trackReads('publicDaySnapshot', 1, date, metadata?.fromCache);
+      if (metadata?.reads ?? 1) trackReads('publicDaySnapshot', metadata?.reads ?? 1, date, metadata?.fromCache);
       onChange(day, metadata);
     }, onError);
   }
@@ -1016,7 +1037,7 @@ export function subscribeGuardiesPublicView(cursId, date, onChange, onError = ()
   }, (day) => onChange(day, { fromCache: false }), onError, 60 * 1000);
 }
 
-export async function saveGuardiesDay(cursId, date, payload, expectedRevision = 0) {
+export async function saveGuardiesDay(cursId, date, payload, expectedRevision = 0, { publicProjection } = {}) {
   const clean = {
     schemaVersion: 1,
     date,
@@ -1041,6 +1062,12 @@ export async function saveGuardiesDay(cursId, date, payload, expectedRevision = 
     const currentRevision = Number(data.days[date]?.revision) || 0;
     if (currentRevision !== expectedRevision) throw Object.assign(new Error('La jornada ha canviat en una altra pestanya.'), { code: 'guardies/conflict' });
     data.days[date] = { ...clean, revision: currentRevision + 1, clientUpdatedAt: new Date().toISOString() };
+    if (publicProjection !== undefined) {
+      data.publicDays ||= {};
+      const next = publicProjectionForDay(publicProjection, data.days[date], cursId, date);
+      if (next) data.publicDays[date] = next;
+      else delete data.publicDays[date];
+    }
     setE2EData(cursId, data);
     return data.days[date];
   }
@@ -1058,7 +1085,10 @@ export async function saveGuardiesDay(cursId, date, payload, expectedRevision = 
       updatedAt: serverTimestamp(),
     };
     transaction.set(reference, next);
-    return { ...clean, revision: currentRevision + 1 };
+    if (publicProjection !== undefined && (publicProjection || ['published', 'closed'].includes(snapshot.exists() ? snapshot.data().status : ''))) {
+      writePublicGuardiesDay(transaction, cursId, date, publicProjection, next);
+    }
+    return { ...clean, revision: next.revision, clientUpdatedAt: next.clientUpdatedAt };
   });
 }
 
@@ -1078,7 +1108,7 @@ function countedAssignmentsForDay(day) {
     .filter(Boolean);
 }
 
-export async function transitionGuardiesDay(cursId, date, action, { guardHistoryEntries = [] } = {}) {
+export async function transitionGuardiesDay(cursId, date, action, { guardHistoryEntries = [], publicProjection, expectedRevision } = {}) {
   if (!['publish', 'unpublish', 'close', 'reopen'].includes(action)) throw new Error('Acció de jornada no reconeguda.');
   const now = new Date().toISOString();
   if (E2E_AUTH_BYPASS) {
@@ -1086,6 +1116,9 @@ export async function transitionGuardiesDay(cursId, date, action, { guardHistory
     data.days ||= {};
     const day = data.days[date];
     if (!day) throw new Error('La jornada encara no existeix.');
+    if (expectedRevision !== undefined && (Number(day.revision) || 0) !== expectedRevision) {
+      throw Object.assign(new Error('La jornada ha canviat en una altra pestanya.'), { code: 'guardies/conflict' });
+    }
     const previousCounted = day.countedAssignments || [];
     if (action === 'publish') Object.assign(day, { status: 'published', publishedAt: day.publishedAt || now, closedAt: '' });
     if (action === 'unpublish') {
@@ -1112,6 +1145,12 @@ export async function transitionGuardiesDay(cursId, date, action, { guardHistory
     }
     day.clientUpdatedAt = now;
     day.revision = (Number(day.revision) || 0) + 1;
+    if (publicProjection !== undefined) {
+      data.publicDays ||= {};
+      const next = publicProjectionForDay(publicProjection, day, cursId, date);
+      if (next) data.publicDays[date] = next;
+      else delete data.publicDays[date];
+    }
     setE2EData(cursId, data);
     return { day, stats: data.stats || { counts: {} } };
   }
@@ -1125,6 +1164,9 @@ export async function transitionGuardiesDay(cursId, date, action, { guardHistory
     ]);
     if (!daySnapshot.exists()) throw new Error('La jornada encara no existeix.');
     const day = daySnapshot.data();
+    if (expectedRevision !== undefined && (Number(day.revision) || 0) !== expectedRevision) {
+      throw Object.assign(new Error('La jornada ha canviat en una altra pestanya.'), { code: 'guardies/conflict' });
+    }
     const update = {
       revision: (Number(day.revision) || 0) + 1,
       clientUpdatedAt: now,
@@ -1152,6 +1194,7 @@ export async function transitionGuardiesDay(cursId, date, action, { guardHistory
       transaction.set(statsReference, stats);
     }
     transaction.update(dayReference, update);
+    if (publicProjection !== undefined) writePublicGuardiesDay(transaction, cursId, date, publicProjection, { ...day, ...update });
     return { day: { ...day, ...update }, stats };
   });
 }

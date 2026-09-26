@@ -1,5 +1,7 @@
 import * as parser from './horariXmlParser.js';
 import { renderPublicCoverage, renderPublicOutings } from './publicDayRenderer.js';
+import { createScheduleIndex } from '../../src/modules/guardies/domain/schedule-index.js';
+import { createKeyedRenderer } from '../../src/utils/keyedDom.js';
 import { GUARD_CODES_STORAGE, useGuardiesStore } from './stores/guardies.js';
 import {
   classroomPartnerForAbsence,
@@ -64,6 +66,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let lastRemoteDataSignature = '';
   let lastAppliedConfiguration = null;
   let remoteStatsRevision = 0;
+  let remoteConfigurationFromCache = false;
   let unsubscribeGuardiesData = () => {};
   let unsubscribeGuardiesDay = () => {};
   let unsubscribeDirectoryVersion = () => {};
@@ -76,6 +79,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let teacherAliasesById = new Map();
   const professorInfoCache = new Map();
   const occupationCache = new Map();
+  const occupationByTeacherCache = new Map();
+  let parsedScheduleCache = null;
+  let scheduleIndex = createScheduleIndex([]);
+  let cachedAllProfessorIds = null;
+  let coverageDerived = null;
+  let lastCoverageView = null;
   let teacherStatsInFlight = null;
   let professorResultIndex = -1;
   let bootstrapInFlight = null;
@@ -86,6 +95,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let remoteListenersSuspended = false;
   let lastPublicDaySignature = '';
   let publicDaySavePending = false;
+  let publicRepairInFlight = null;
 
   function handleOnline() {
     if (['error', 'stale'].includes(state.persistenceStatus) || ['error', 'stale'].includes(state.dayPersistenceStatus)) bootstrap();
@@ -127,6 +137,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     releasedList: document.getElementById('released-list'),
     clearGroups: document.getElementById('clear-groups'),
   };
+  const patchCoverage = createKeyedRenderer(el.coverageList);
+  const boundCoverageControls = new WeakSet();
 
   window.addEventListener('guardies:upload-file', (event) => {
     onUploadFile(event.detail?.file, event.detail?.kind);
@@ -145,7 +157,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.convivencia.clear();
     await saveConvivencia();
     renderConvivenciaAdmin();
-    renderCoverage();
+    commitCoverageEdit();
   });
   window.addEventListener('guardies:exclusions-updated', async () => {
     parseStoredData({ resetSelection: false });
@@ -195,12 +207,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   el.addAllHours.addEventListener('click', () => {
     if (state.dayStatus === 'closed') return;
     addAllCurrentProfessorAbsences();
-    render();
+    commitCoverageEdit({ renderAll: true });
   });
   el.clearMissing.addEventListener('click', () => {
     if (state.dayStatus === 'closed') return;
     clearCurrentProfessorAbsences();
-    render();
+    commitCoverageEdit({ renderAll: true });
   });
   el.groupSearch.addEventListener('change', () => {
     const codi = el.groupSearch.value;
@@ -215,7 +227,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.outingAbsenceIds.forEach((id) => state.absencies.delete(id));
     state.outingAbsenceIds.clear();
     renderGroupPicker();
-    renderCoverage();
+    commitCoverageEdit();
     renderReleasedList();
   });
 
@@ -224,6 +236,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (event.detail?.reloadDay) await activateGuardiesDay(state.date);
     render();
   });
+  window.addEventListener('guardies:day-edited', () => commitCoverageEdit({ renderAll: true }));
   window.addEventListener('guardies:change-date', (event) => navigateToDate(event.detail?.date));
   window.addEventListener('guardies:load-teacher-stats', ensureTeacherStatistics);
   window.addEventListener('guardies:resolve-conflict', (event) => resolveDayConflict(event.detail?.choice));
@@ -346,7 +359,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.guardCounts = new Map(Object.entries(remoteData.stats?.counts || {}));
       state.guardHistory = remoteData.stats?.guardHistory || {};
       state.guardHistoryVersion = Number(remoteData.stats?.guardHistoryVersion) || 0;
-      state.persistenceStatus = usingCachedData ? 'stale' : 'ready';
+      state.persistenceStatus = usingCachedData || remoteConfigurationFromCache ? 'stale' : 'ready';
       const adminPanel = document.getElementById('admin-panel');
       if (adminPanel) adminPanel.open = false;
       parseStoredData({ resetSelection: true });
@@ -618,6 +631,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function subscribeToRemoteData({ initial = false } = {}) {
     const courseId = state.courseId;
+    remoteConfigurationFromCache = false;
     let resolveInitial;
     let rejectInitial;
     let initialPending = initial;
@@ -642,7 +656,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       }
       const signature = remoteDataSignature(remoteData);
       if (signature === lastRemoteDataSignature) {
-        if (['stale', 'error'].includes(state.persistenceStatus)) {
+        if (!remoteConfigurationFromCache && ['stale', 'error'].includes(state.persistenceStatus)) {
           state.persistenceStatus = 'ready';
           showError('');
           render();
@@ -673,14 +687,19 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       if (state.canWrite && filesChanged && daySignature() === lastDaySignature) {
         await hydrateGuardiesDay(state.date);
       }
-      state.persistenceStatus = 'ready';
-      if (configurationChanged) render();
+      state.persistenceStatus = remoteConfigurationFromCache ? 'stale' : 'ready';
+      if (configurationChanged) commitCoverageEdit({ renderAll: true });
       else if (state.canWrite && state.contextReady && state.dayLoaded) renderCoverage();
     }, (error) => {
       if (initialPending) { initialPending = false; rejectInitial(error); }
       state.persistenceStatus = 'error';
       showError(`No s'han pogut sincronitzar les dades. ${error.message || error}`);
-    }, { iosPollInterval: 5 * 60 * 1000 });
+    }, { iosPollInterval: 5 * 60 * 1000, onMetadata: (metadata) => {
+      if (courseId !== state.courseId) return;
+      remoteConfigurationFromCache = metadata.fromCache || metadata.hasPendingWrites;
+      if (remoteConfigurationFromCache) return;
+      if (state.persistenceStatus === 'stale') state.persistenceStatus = 'ready';
+    } });
     return ready;
   }
 
@@ -746,7 +765,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   function publicGuardiesDay() {
     const selected = selectedAbsenceItems();
     const coverageItems = mergeSharedClassroomAbsences({ sessions: state.sessions, absences: selected });
-    consolidateMergedCoverageState(coverageItems);
     const byHour = new Map(groupBySession(coverageItems).map((group) => [group.hora, group.items]));
     const patioAssignments = state.patiConfig && !nonTeachingReason(state.date, state.patiConfig)
       ? patioAssignmentsForDate(state.date, state.patiConfig)
@@ -824,14 +842,27 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const projection = published ? publicGuardiesDay() : null;
     const signature = JSON.stringify(projection);
     if (signature === lastPublicDaySignature) return;
-    await savePublicGuardiesDay(
+    const synced = await savePublicGuardiesDay(
       courseId,
       date,
       projection,
     );
-    if (courseId !== state.courseId || date !== state.date) return;
+    if (!synced || courseId !== state.courseId || date !== state.date) return;
     lastPublicDaySignature = signature;
     publicDaySavePending = false;
+  }
+
+  function repairPublicDay() {
+    if (publicRepairInFlight || !state.canWrite || !state.dayLoaded || hasUnsavedDay()
+      || state.dayConflict || !['published', 'closed'].includes(state.dayStatus)) return;
+    const courseId = state.courseId;
+    const date = state.date;
+    publicRepairInFlight = syncPublicGuardiesDay()
+      .catch(() => { publicDaySavePending = true; })
+      .finally(() => {
+        publicRepairInFlight = null;
+        if (courseId !== state.courseId || date !== state.date) repairPublicDay();
+      });
   }
 
   function daySignature(payload = serializableDay()) {
@@ -882,7 +913,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       pendingRemoteDay = null;
       applyGuardiesDay(saved, date);
       showError('');
-      render();
+      commitCoverageEdit({ renderAll: true });
       return;
     }
     if (choice !== 'local' || saved?.status === 'closed') return;
@@ -964,7 +995,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.dayLoaded = true;
   }
 
-  async function hydrateGuardiesDay(date, { preserveCurrent = false, read = loadGuardiesDay } = {}) {
+  async function hydrateGuardiesDay(date, { preserveCurrent = false, read = loadGuardiesDay, isConfirmed = () => true } = {}) {
     if (!state.courseId || !date) return;
     const generation = ++dayLoadGeneration;
     const courseId = state.courseId;
@@ -984,11 +1015,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     }
     if (!preserveCurrent) restoreDayDraft(date);
     render();
+    let synchronized = false;
     try {
       const saved = await read(courseId, date, {
         publishedOnly: state.teacherView || !state.isAdmin,
       });
       if (date !== state.date || courseId !== state.courseId || generation !== dayLoadGeneration) return;
+      synchronized = true;
       if (saved) cacheGuardiesDay(date, saved);
       if (hasUnsavedDay() || daySaveInFlight || state.dayConflict) {
         if ((Number(saved?.revision) || 0) !== state.dayRevision) markDayConflict(saved, date);
@@ -1007,7 +1040,15 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         showError(`No s'ha pogut carregar la jornada. ${error.message || error}`);
       }
     } finally {
-      if (date === state.date && courseId === state.courseId && generation === dayLoadGeneration) state.dayLoaded = true;
+      if (date === state.date && courseId === state.courseId && generation === dayLoadGeneration) {
+        state.dayLoaded = true;
+        // Normalize confirmed data (or a restored local draft), never a stale
+        // cache before the server has supplied the current revision.
+        if (synchronized && isConfirmed()) {
+          reconcileCoverageState();
+          scheduleDaySave();
+        }
+      }
     }
   }
 
@@ -1017,19 +1058,36 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     watchedDate = date;
     if (!hasUnsavedDay() && !state.dayConflict) pendingRemoteDay = null;
     let first = true;
+    let latestMetadata = {};
+    let normalizationPending = false;
     let resolveFirst;
     let rejectFirst;
     const initialDay = new Promise((resolve, reject) => { resolveFirst = resolve; rejectFirst = reject; });
     unsubscribeGuardiesDay = subscribeGuardiesDay(state.courseId, date, (saved, metadata) => {
-      if (first) { first = false; resolveFirst(saved); return; }
+      latestMetadata = metadata || {};
+      if (first) {
+        first = false;
+        normalizationPending = Boolean(metadata?.fromCache || metadata?.hasPendingWrites);
+        resolveFirst(saved);
+        return;
+      }
       if (date !== state.date || date !== watchedDate || !state.dayLoaded) return;
-      if (!state.dayConflict && ['stale', 'error', 'refreshing'].includes(state.dayPersistenceStatus) && !metadata?.fromCache && daySignature() === lastDaySignature) {
+      if (!state.dayConflict && ['stale', 'error', 'refreshing'].includes(state.dayPersistenceStatus) && !metadata?.fromCache && !metadata?.hasPendingWrites && daySignature() === lastDaySignature) {
         state.dayPersistenceStatus = 'ready';
         showError('');
       }
       const remoteRevision = Number(saved?.revision) || 0;
       const isDeletion = !saved;
-      if ((!isDeletion && remoteRevision <= state.dayRevision) || (isDeletion && state.dayRevision === 0)) return;
+      if ((!isDeletion && remoteRevision <= state.dayRevision) || (isDeletion && state.dayRevision === 0)) {
+        if (!metadata?.fromCache && !metadata?.hasPendingWrites) {
+          if (normalizationPending) {
+            normalizationPending = false;
+            commitCoverageEdit({ renderAll: true });
+          }
+          repairPublicDay();
+        }
+        return;
+      }
       if (state.dayPersistenceStatus === 'saving' || daySignature() !== lastDaySignature) {
         pendingRemoteDay = { saved, date };
         if (!daySaveInFlight) markDayConflict(saved, date);
@@ -1038,7 +1096,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       applyGuardiesDay(saved, date);
       if (saved) cacheGuardiesDay(date, saved);
       showError('');
-      render();
+      normalizationPending = Boolean(metadata?.fromCache || metadata?.hasPendingWrites);
+      if (normalizationPending) render();
+      else commitCoverageEdit({ renderAll: true });
     }, (error) => {
       if (first) { first = false; rejectFirst(error); }
       state.dayPersistenceStatus = 'error';
@@ -1047,11 +1107,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       publishedOnly: state.teacherView || !state.isAdmin,
       iosPollInterval: state.canWrite ? 30 * 1000 : 60 * 1000,
     });
-    await hydrateGuardiesDay(date, { preserveCurrent, read: () => initialDay });
+    await hydrateGuardiesDay(date, { preserveCurrent, read: () => initialDay,
+      isConfirmed: () => !latestMetadata.fromCache && !latestMetadata.hasPendingWrites });
     if (date !== state.date || date !== watchedDate) return;
-    if (state.isAdmin && ['published', 'closed'].includes(state.dayStatus)) {
-      lastPublicDaySignature = '';
-      syncPublicGuardiesDay().catch(() => {});
+    if (latestMetadata.fromCache && state.dayPersistenceStatus === 'ready') state.dayPersistenceStatus = 'refreshing';
+    if (!latestMetadata.fromCache && !latestMetadata.hasPendingWrites) {
+      normalizationPending = false;
+      repairPublicDay();
     }
   }
 
@@ -1066,6 +1128,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     return new Promise((resolve, reject) => {
       unsubscribeGuardiesDay = subscribeGuardiesPublicView(courseId, date, (day, metadata = {}) => {
         if (courseId !== state.courseId || date !== state.date || date !== watchedDate) return;
+        if (metadata.metadataOnly) {
+          state.dayPersistenceStatus = metadata.hasPendingWrites ? 'refreshing' : metadata.fromCache ? 'stale' : 'ready';
+          resolve();
+          return;
+        }
         state.publicDay = ['published', 'closed'].includes(day?.status) ? day : null;
         state.dayStatus = state.publicDay?.status || 'unpublished';
         state.updatedAt = state.publicDay?.clientUpdatedAt || '';
@@ -1108,7 +1175,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const remoteRevision = Number(saved?.revision) || 0;
     if ((saved && remoteRevision <= state.dayRevision) || (!saved && state.dayRevision === 0)) return false;
     applyGuardiesDay(saved, date);
-    render();
+    commitCoverageEdit({ renderAll: true });
     return true;
   }
 
@@ -1149,17 +1216,16 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         const signature = daySignature(payload);
         if (signature === lastDaySignature) break;
         state.dayPersistenceStatus = 'saving';
-        const saved = await saveGuardiesDay(courseId, date, payload, state.dayRevision);
+        const projection = ['published', 'closed'].includes(payload.status) ? publicGuardiesDay() : null;
+        const saved = await saveGuardiesDay(courseId, date, payload, state.dayRevision, { publicProjection: projection });
         if (courseId !== state.courseId || date !== state.date) return;
         state.dayRevision = saved.revision;
         state.updatedAt = saved.clientUpdatedAt || new Date().toISOString();
         lastDaySignature = signature;
         if (daySignature() === signature) storageRemove([draftKey()]);
         else stashDayDraft();
-        if (['published', 'closed'].includes(state.dayStatus)) {
-          publicDaySavePending = true;
-          await syncPublicGuardiesDay();
-        }
+        lastPublicDaySignature = JSON.stringify(projection ? { ...projection, revision: saved.revision, clientUpdatedAt: saved.clientUpdatedAt } : null);
+        publicDaySavePending = false;
       }
       state.dayPersistenceStatus = 'ready';
       flushPendingRemoteDay();
@@ -1203,7 +1269,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           guardHistoryEntries.push({ teacherId, groups });
         });
       }
-      const result = await transitionGuardiesDay(state.courseId, state.date, action, { guardHistoryEntries });
+      const projection = publicGuardiesDay();
+      const result = await transitionGuardiesDay(state.courseId, state.date, action, {
+        guardHistoryEntries, publicProjection: projection, expectedRevision: state.dayRevision,
+      });
       state.dayStatus = result.day.status;
       state.publishedAt = result.day.publishedAt || '';
       state.closedAt = result.day.closedAt || '';
@@ -1217,7 +1286,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         state.guardHistory = result.stats?.guardHistory || state.guardHistory;
         state.guardHistoryVersion = Number(result.stats?.guardHistoryVersion) || state.guardHistoryVersion;
       }
-      await syncPublicGuardiesDay();
+      lastPublicDaySignature = JSON.stringify(['published', 'closed'].includes(result.day.status)
+        ? { ...projection, status: result.day.status, revision: result.day.revision, publishedAt: result.day.publishedAt || '', clientUpdatedAt: result.day.clientUpdatedAt }
+        : null);
+      publicDaySavePending = false;
       state.unclosedDays = await loadUnclosedGuardiesDays(
         state.courseId,
         localDateString(new Date()),
@@ -1374,6 +1446,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function saveGuardCodes() {
     occupationCache.clear();
+    occupationByTeacherCache.clear();
     storageSet(GUARD_CODES_STORAGE, JSON.stringify(Array.from(state.guardiaCodes)));
   }
 
@@ -1523,12 +1596,22 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   function parseStoredData({ resetSelection, renderAfter = true }) {
     professorInfoCache.clear();
     occupationCache.clear();
+    occupationByTeacherCache.clear();
+    cachedAllProfessorIds = null;
+    const sameFiles = parsedScheduleCache
+      && parsedScheduleCache.referenceText === state.referenceText
+      && parsedScheduleCache.untisText === state.untisText
+      && parsedScheduleCache.dutiesText === state.dutiesText;
     let referenceError = '';
     let untisError = '';
-    state.referencia = null;
-    state.professoratUntis = null;
+    state.referencia = sameFiles ? parsedScheduleCache.referencia : null;
+    state.professoratUntis = sameFiles ? parsedScheduleCache.professoratUntis : null;
+    if (sameFiles) {
+      referenceError = parsedScheduleCache.referenceError;
+      untisError = parsedScheduleCache.untisError;
+    }
 
-    if (state.referenceText) {
+    if (!sameFiles && state.referenceText) {
       try {
         state.referencia = parser.parseGestibReference(state.referenceText);
       } catch (error) {
@@ -1536,7 +1619,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       }
     }
 
-    if (state.untisText) {
+    if (!sameFiles && state.untisText) {
       try {
         state.professoratUntis = parser.parseUntisProfessorat(state.untisText);
         if (!state.professoratUntis.professors.size) {
@@ -1549,25 +1632,35 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
     try {
       if (state.dutiesText) {
-        const result = parser.parseUntisHorari(state.dutiesText, {
+        const result = sameFiles ? parsedScheduleCache.result : parser.parseUntisHorari(state.dutiesText, {
           referencia: state.referencia,
           professoratUntis: state.professoratUntis,
         });
-        state.allSessions = mergeSessions(result.sessions, []);
-        teacherAliasesById = new Map();
-        state.allSessions.forEach((session) => {
-          if (!session.placa) return;
-          const aliases = teacherAliasesById.get(session.placa) || new Set([session.placa]);
-          if (session.professorCurta) aliases.add(session.professorCurta);
-          teacherAliasesById.set(session.placa, aliases);
-        });
-        state.referencia?.places?.forEach((place) => {
-          if (!place.codi) return;
-          const aliases = teacherAliasesById.get(place.codi) || new Set([place.codi]);
-          if (place.curta) aliases.add(place.curta);
-          teacherAliasesById.set(place.codi, aliases);
-        });
+        if (!sameFiles) {
+          state.allSessions = mergeSessions(result.sessions, []);
+          parsedScheduleCache = {
+            referenceText: state.referenceText, untisText: state.untisText, dutiesText: state.dutiesText,
+            referencia: state.referencia, professoratUntis: state.professoratUntis,
+            referenceError, untisError, result, allSessions: state.allSessions,
+          };
+          teacherAliasesById = new Map();
+          state.allSessions.forEach((session) => {
+            if (!session.placa) return;
+            const aliases = teacherAliasesById.get(session.placa) || new Set([session.placa]);
+            if (session.professorCurta) aliases.add(session.professorCurta);
+            teacherAliasesById.set(session.placa, aliases);
+          });
+          state.referencia?.places?.forEach((place) => {
+            if (!place.codi) return;
+            const aliases = teacherAliasesById.get(place.codi) || new Set([place.codi]);
+            if (place.curta) aliases.add(place.curta);
+            teacherAliasesById.set(place.codi, aliases);
+          });
+        } else {
+          state.allSessions = parsedScheduleCache.allSessions;
+        }
         state.sessions = state.allSessions.filter((session) => !isExcludedTeacher(session.placa));
+        scheduleIndex = createScheduleIndex(state.sessions);
         state.allProfessorOptions = professorsOrdenatsAmbLabel(state.allSessions);
         state.resum = {
           ...result.resum,
@@ -1578,7 +1671,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         };
         state.resum.franges = state.resum.dies.flatMap((dia) => (
           state.resum.hores
-            .filter((hora) => state.sessions.some((sessio) => sessio.dia === dia && sessio.hora === hora))
+            .filter((hora) => scheduleIndex.slots.has(`${dia}|${hora}`))
             .map((hora) => ({ key: parser.franjaKey(dia, hora), dia, hora, diaLabel: parser.diaLabel(dia), total: 0 }))
         ));
         applyDefaultGuardiaCodes(result.defaultGuardiaCodes);
@@ -1596,11 +1689,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         }
         renderInitialData();
       } else {
+        parsedScheduleCache = null;
         state.sessions = [];
         state.allSessions = [];
         state.allProfessorOptions = [];
         teacherAliasesById = new Map();
         state.resum = null;
+        scheduleIndex = createScheduleIndex([]);
       }
 
       const warnings = [];
@@ -1608,11 +1703,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       if (untisError) warnings.push(`El professorat d'Untis no s'ha pogut llegir: ${untisError}`);
       showError(warnings.join(' '));
     } catch (error) {
+      parsedScheduleCache = null;
       state.sessions = [];
       state.allSessions = [];
       state.allProfessorOptions = [];
       teacherAliasesById = new Map();
       state.resum = null;
+      scheduleIndex = createScheduleIndex([]);
       state.professor = '';
       state.absencies.clear();
       state.assignacions.clear();
@@ -1659,6 +1756,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.dutiesName = '';
       state.referencia = null;
       state.professoratUntis = null;
+      parsedScheduleCache = null;
+      scheduleIndex = createScheduleIndex([]);
+      cachedAllProfessorIds = null;
+      occupationCache.clear();
+      occupationByTeacherCache.clear();
       state.sessions = [];
       state.allSessions = [];
       state.allProfessorOptions = [];
@@ -2030,9 +2132,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     }
     refreshAutomaticReleasedSelections(exclusions);
     renderGroupPicker();
-    renderCoverage();
+    commitCoverageEdit();
     renderReleasedList();
-    scheduleDaySave();
   }
 
   function addGroupOut(codi) {
@@ -2045,7 +2146,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     refreshAutomaticReleasedSelections(exclusions);
     el.groupSearch.value = '';
     renderGroupPicker();
-    renderCoverage();
+    commitCoverageEdit();
     renderReleasedList();
   }
 
@@ -2056,9 +2157,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     else state.partialGroups.add(codi);
     refreshAutomaticReleasedSelections(exclusions);
     renderGroupPicker();
-    renderCoverage();
+    commitCoverageEdit();
     renderReleasedList();
-    scheduleDaySave();
   }
 
   function groupTeachingBlocksForGroup(codi) {
@@ -2110,7 +2210,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     refreshAutomaticReleasedSelections(exclusions);
     syncOutingAbsences();
     renderGroupPicker();
-    renderCoverage();
+    commitCoverageEdit();
     renderReleasedList();
   }
 
@@ -2125,7 +2225,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     refreshAutomaticReleasedSelections(exclusions);
     syncOutingAbsences();
     renderGroupPicker();
-    renderCoverage();
+    commitCoverageEdit();
     renderReleasedList();
   }
 
@@ -2145,9 +2245,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const selected = state.grupProfessorsAlliberats.get(codi);
     if (enabled) selected.add(key);
     else selected.delete(key);
-    renderCoverage();
+    commitCoverageEdit();
     renderReleasedList();
-    scheduleDaySave();
   }
 
   function releasedSelectionExclusions() {
@@ -2232,7 +2331,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         if (select.value) state.convivencia.set(key, new Set([select.value]));
         else state.convivencia.set(key, new Set());
         renderConvivenciaAdmin();
-        renderCoverage();
+        commitCoverageEdit();
         await saveConvivencia();
       });
     });
@@ -2240,10 +2339,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function render() {
     if (state.contextReady && !state.canWrite) {
+      lastCoverageView = null;
       const visibleDay = state.dayLoaded && Boolean(state.publicDay) && state.dayPersistenceStatus !== 'loading';
       el.workspace.classList.toggle('hidden', !visibleDay);
       el.empty.classList.toggle('hidden', visibleDay);
-      el.coverageList.innerHTML = renderPublicCoverage(state.publicDay);
+      patchCoverage(renderPublicCoverage(state.publicDay), `public:${state.courseId}:${state.date}`);
       el.printDateLabel.textContent = formatData(state.date);
       const outings = document.getElementById('public-outing-list');
       if (outings) outings.innerHTML = renderPublicOutings(state.publicDay);
@@ -2306,7 +2406,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const items = currentProfessorDayItems();
     const selectableItems = items.filter(isAbsenceSelectable);
 
-    trimCurrentProfessorAbsences(items);
     el.scheduleTitle.textContent = `${professorLabel} · ${parser.diaLabel(dia)}`;
     el.addAllHours.disabled = state.dayStatus === 'closed' || !selectableItems.length;
     el.clearMissing.disabled = state.dayStatus === 'closed' || !selectableItems.some((item) => state.absencies.has(item.id));
@@ -2344,7 +2443,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           state.assignmentSources.delete(input.dataset.absence);
           state.comentaris.delete(input.dataset.absence);
         }
-        renderCoverage();
+        commitCoverageEdit();
       });
     });
   }
@@ -2387,7 +2486,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     });
   }
 
-  function renderCoverage() {
+  // Domain normalization runs at edit/load boundaries, never while drawing.
+  function reconcileCoverageState() {
+    if (!state.canWrite || !state.dayLoaded || state.dayStatus === 'closed') return;
+    if (state.professor) trimCurrentProfessorAbsences(currentProfessorDayItems());
+    // Share immutable inputs within this pass; availability always reads
+    // the current absences/assignments, including changes made in this pass.
+    coverageDerived = { releasedBySlot: new Map(), convivenciaBySlot: new Map() };
     const selected = selectedAbsenceItems();
     selected.forEach((item) => {
       const classroomPartner = isGuardiaItem(item)
@@ -2425,6 +2530,35 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     });
     const coverageItems = mergeSharedClassroomAbsences({ sessions: state.sessions, absences: selected });
     consolidateMergedCoverageState(coverageItems);
+    coverageDerived = null;
+  }
+
+  function commitCoverageEdit({ renderAll = false } = {}) {
+    if (state.contextReady && state.dayLoaded) reconcileCoverageState();
+    if (renderAll) render();
+    else renderCoverage();
+    if (state.contextReady) scheduleDaySave();
+  }
+
+  function renderCoverage() {
+    // A metadata refresh or an unrelated UI action must not recalculate every
+    // candidate list. Small mutable inputs are compared by value; parsed
+    // schedule inputs are replaced/reindexed together at configuration loads.
+    const view = {
+      index: scheduleIndex, reference: state.referencia, teachers: state.professoratUntis, summary: state.resum,
+      signature: JSON.stringify({
+        course: state.courseId, date: state.date, day: serializableDay(),
+        canWrite: state.canWrite, teacherView: state.teacherView,
+        codes: Array.from(state.guardiaCodes), exclusions: Array.from(state.excludedTeacherIds),
+        counts: Array.from(state.guardCounts),
+        convivencia: Array.from(state.convivencia, ([slot, teachers]) => [slot, Array.from(teachers)]),
+        patio: state.patiConfig, presets: state.observationPresets,
+        directory: state.teacherDirectory.map(({ id, codiUntis, name }) => [id, codiUntis, name]),
+      }),
+    };
+    if (lastCoverageView && Object.keys(view).every((key) => view[key] === lastCoverageView[key])) return;
+    coverageDerived = { releasedBySlot: new Map(), convivenciaBySlot: new Map() };
+    const coverageItems = mergeSharedClassroomAbsences({ sessions: state.sessions, absences: selectedAbsenceItems() });
     el.printDateLabel.textContent = formatData(state.date);
 
     const warning = hasGuardiaCandidates()
@@ -2435,11 +2569,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const dayHours = hoursForSelectedDay();
     const teachingHours = dayHours.filter((hora) => hora !== 'PATI');
     const seventhHour = teachingHours.length >= 7 ? teachingHours[6] : '';
-    el.coverageList.innerHTML = warning + dayHours.map((hora) => {
+    const html = warning + dayHours.map((hora) => {
       const items = selectedByHour.get(hora) || [];
       const visibleItems = hora === 'PATI' ? [] : items;
       return `
-      <section class="coverage-session ${hora === 'PATI' ? 'pati-session' : ''} ${hora === seventhHour ? 'seventh-session' : ''}">
+      <section data-coverage-session="${escapeHtml(hora)}" class="coverage-session ${hora === 'PATI' ? 'pati-session' : ''} ${hora === seventhHour ? 'seventh-session' : ''}">
         <div class="coverage-session-head">
           <h3>${escapeHtml(horaLabel(hora))}</h3>
           <span>${items.length ? `${items.length} ${items.length === 1 ? 'absència' : 'absències'}` : 'Sense absències'}</span>
@@ -2462,8 +2596,21 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       </section>
     `;
     }).join('');
+    patchCoverage(html, `admin:${state.courseId}:${state.date}`);
+    bindCoverageControls();
+    coverageDerived = null;
+    lastCoverageView = view;
+  }
+
+  function bindCoverageControls() {
+    const bindOnce = (node) => {
+      if (boundCoverageControls.has(node)) return false;
+      boundCoverageControls.add(node);
+      return true;
+    };
 
     el.coverageList.querySelectorAll('[data-assignacio]').forEach((select) => {
+      if (!bindOnce(select)) return;
       select.addEventListener('change', () => {
         if (state.dayStatus === 'closed') return;
         state.cancelledAssignments.delete(select.dataset.assignacio);
@@ -2490,19 +2637,22 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           state.assignacions.delete(select.dataset.assignacio);
           state.assignmentSources.delete(select.dataset.assignacio);
         }
-        renderCoverage();
+        commitCoverageEdit();
       });
     });
 
     el.coverageList.querySelectorAll('[data-clear-assignacio]').forEach((button) => {
+      if (!bindOnce(button)) return;
       button.addEventListener('click', () => {
+        if (!state.canWrite || state.dayStatus === 'closed') return;
         state.assignacions.delete(button.dataset.clearAssignacio);
         state.assignmentSources.delete(button.dataset.clearAssignacio);
-        renderCoverage();
+        commitCoverageEdit();
       });
     });
 
     el.coverageList.querySelectorAll('[data-comment]').forEach((input) => {
+      if (!bindOnce(input)) return;
       input.addEventListener('input', () => {
         if (state.dayStatus === 'closed') return;
         updateComment(input.dataset.comment, input.value);
@@ -2513,6 +2663,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     });
 
     el.coverageList.querySelectorAll('[data-comment-preset]').forEach((select) => {
+      if (!bindOnce(select)) return;
       select.addEventListener('change', () => {
         if (state.dayStatus === 'closed' || !select.value) return;
         const input = Array.from(el.coverageList.querySelectorAll('[data-comment]'))
@@ -2529,6 +2680,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     });
 
     el.coverageList.querySelectorAll('[data-remove-absence]').forEach((button) => {
+      if (!bindOnce(button)) return;
       button.addEventListener('click', () => {
         if (state.dayStatus === 'closed') return;
         const absenceIds = (button.dataset.removeAbsences || button.dataset.removeAbsence).split(',').filter(Boolean);
@@ -2541,22 +2693,23 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           state.overriddenCoTeacherAssignments.delete(absenceId);
         });
         renderSchedule();
-        renderCoverage();
+        commitCoverageEdit();
       });
     });
 
     el.coverageList.querySelectorAll('[data-pati-zone-override]').forEach((select) => {
+      if (!bindOnce(select)) return;
       select.addEventListener('change', () => updatePatiZoneOverride(select));
     });
     el.coverageList.querySelectorAll('[data-cancel-assignment]').forEach((input) => {
+      if (!bindOnce(input)) return;
       input.addEventListener('change', () => {
         if (state.dayStatus === 'closed') return;
         if (input.checked) state.cancelledAssignments.add(input.dataset.cancelAssignment);
         else state.cancelledAssignments.delete(input.dataset.cancelAssignment);
-        renderCoverage();
+        commitCoverageEdit();
       });
     });
-    scheduleDaySave();
   }
 
   function updateComment(id, rawValue) {
@@ -2630,7 +2783,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       assigned += 1;
     });
 
-    renderCoverage();
+    commitCoverageEdit();
     const uncovered = pending.length - assigned;
     const message = `${assigned} ${assigned === 1 ? 'assignada' : 'assignades'}${uncovered ? ` · ${uncovered} sense cobrir` : ''}`;
     reportResult(assigned > 0, message);
@@ -2799,7 +2952,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
 
   function sessionsProfessorDia(placa, dia) {
-    return state.sessions.filter((sessio) => sessio.placa === placa && sessio.dia === dia && isMeaningfulSession(sessio));
+    return (scheduleIndex.byTeacherDay.get(`${placa}|${dia}`) || []).filter(isMeaningfulSession);
   }
 
   function allProfessorWeekItems() {
@@ -2926,13 +3079,16 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function convivenciaProfessors(dia, hora) {
     const key = convivenciaKey(dia, hora);
+    if (coverageDerived?.convivenciaBySlot.has(key)) return coverageDerived.convivenciaBySlot.get(key);
     const professors = state.convivencia.get(key);
     const effective = state.convivencia.has(key)
       ? Array.from(professors || [])
       : detectedConvivenciaProfessors(dia, hora);
-    return effective
+    const result = effective
       .filter((teacherId) => teacherId && !isExcludedTeacher(teacherId))
       .sort((a, b) => labelProfessor(a).localeCompare(labelProfessor(b), 'ca', { numeric: true }));
+    coverageDerived?.convivenciaBySlot.set(key, result);
+    return result;
   }
 
   function isConvivenciaProfessor(dia, hora, placa) {
@@ -2947,7 +3103,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const key = `${dia}|${hora}`;
     if (!occupationCache.has(key)) occupationCache.set(key, parser.ocupacioFranja(state.sessions, dia, hora, state.guardiaCodes));
     const ocupacio = occupationCache.get(key);
-    const ocupacioByPlaca = new Map(ocupacio.map((professor) => [professor.placa, professor]));
+    if (!occupationByTeacherCache.has(key)) occupationByTeacherCache.set(key, new Map(ocupacio.map((professor) => [professor.placa, professor])));
+    const ocupacioByPlaca = occupationByTeacherCache.get(key);
     const candidates = new Map();
 
     ocupacio
@@ -3048,6 +3205,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   function allProfessorIds() {
+    if (cachedAllProfessorIds) return cachedAllProfessorIds;
     const ids = new Set(state.sessions.map((session) => session.placa).filter(Boolean));
     const sessionsByShort = new Map();
     state.sessions.forEach((session) => {
@@ -3064,7 +3222,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       const placa = sessionsByShort.get(normalized) || placesByShort.get(normalized) || professor.codi;
       if (placa && !isExcludedTeacher(placa)) ids.add(placa);
     });
-    return Array.from(ids).filter((teacherId) => !isExcludedTeacher(teacherId));
+    cachedAllProfessorIds = Array.from(ids).filter((teacherId) => !isExcludedTeacher(teacherId));
+    return cachedAllProfessorIds;
   }
 
   function isProfessorAbsentAtHour(dia, hora, placa) {
@@ -3142,7 +3301,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   function releasedItemsForSlot(dia, hora) {
-    return releasedItemsForDay().filter((item) => item.dia === dia && item.hora === hora);
+    const key = `${dia}|${hora}`;
+    if (coverageDerived?.releasedBySlot.has(key)) return coverageDerived.releasedBySlot.get(key);
+    const items = releasedItemsForDay().filter((item) => item.dia === dia && item.hora === hora);
+    coverageDerived?.releasedBySlot.set(key, items);
+    return items;
   }
 
   function trimCurrentProfessorAbsences(items) {
@@ -3329,7 +3492,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       : `<span class="readonly-comment">${escapeHtml(comentari || 'Sense observacions')}</span>`;
 
     return `
-      <article class="coverage-item coverage-row ${assignat ? 'covered' : ''} ${cancelled ? 'not-completed' : ''} ${isPati ? 'informational' : ''}">
+      <article data-coverage-row="${escapeHtml(item.id)}" class="coverage-item coverage-row ${assignat ? 'covered' : ''} ${cancelled ? 'not-completed' : ''} ${isPati ? 'informational' : ''}">
         <div class="coverage-professor-cell">
           <span class="cell-kicker">Absència</span>
           <strong class="no-print">${escapeHtml(absentTeacherIds.map((teacherId) => labelProfessor(teacherId)).join(' · '))}</strong>

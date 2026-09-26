@@ -92,6 +92,89 @@ async function uploadConfiguration(page) {
 }
 
 test.describe('Guàrdies: comportament existent', () => {
+  test('dibuixar la cobertura no modifica assignacions ni programa guardats', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await expect.poll(() => page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      return useGuardiesStore().dayRevision;
+    })).toBeGreaterThan(0);
+    const before = await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      const store = useGuardiesStore();
+      const id = Array.from(store.absencies.keys())[0];
+      // An uncommitted edit makes both hidden mutation and autosave observable.
+      store.assignacions.set(id, 'invalid-candidate');
+      store.assignmentSources.set(id, 'other');
+      store.comentaris.set(id, 'Encara no confirmat');
+      for (let i = 0; i < 3; i++) {
+        window.dispatchEvent(new CustomEvent('guardies:legacy-render'));
+        window.dispatchEvent(new CustomEvent('guardies:pati-updated'));
+      }
+      return { id, revision: store.dayRevision };
+    });
+    await page.waitForTimeout(400); // Cross the existing 250 ms debounce.
+    expect(await page.evaluate(async ({ id }) => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      const store = useGuardiesStore();
+      const saved = JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days['2026-09-07'];
+      return { assignment: store.assignacions.get(id), comment: store.comentaris.get(id), revision: saved.revision };
+    }, before)).toEqual({ assignment: 'invalid-candidate', comment: 'Encara no confirmat', revision: before.revision });
+  });
+
+  test('netejar el dia continua guardant encara que dibuixar no guardi', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07']?.absenceIds.length)).toBe(3);
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: 'Neteja dia', exact: true }).click();
+    await expect(page.locator('[data-remove-absence]')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days['2026-09-07'].absenceIds)).toEqual([]);
+    await page.reload();
+    await expect(page.locator('#workspace')).toBeVisible();
+    await expect(page.locator('[data-remove-absence]')).toHaveCount(0);
+  });
+
+  test('els recomptes remots no interrompen una observació ni dupliquen guardats', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    const editor = page.locator('[data-comment]').first();
+    await editor.fill('Observació amb espais  ');
+    await expect.poll(() => page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07']?.comments || {}))).toContain('Observació amb espais');
+    const revision = await editor.evaluate((input) => {
+      window.editorBeforeUpdate = input;
+      input.focus();
+      input.setSelectionRange(5, 10);
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const data = JSON.parse(localStorage.getItem(key));
+      data.stats.counts['2'] = { guard: 8 };
+      localStorage.setItem(key, JSON.stringify(data));
+      window.dispatchEvent(new StorageEvent('storage', { key }));
+      return data.days['2026-09-07'].revision;
+    });
+    await expect.poll(() => page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      return useGuardiesStore().guardCounts.get('2')?.guard;
+    })).toBe(8);
+    await page.evaluate(() => {
+      for (let i = 0; i < 12; i++) window.dispatchEvent(new CustomEvent('guardies:pati-updated'));
+    });
+    expect(await editor.evaluate((input) => ({ same: input === window.editorBeforeUpdate, active: input === document.activeElement,
+      value: input.value, selection: [input.selectionStart, input.selectionEnd] }))).toEqual({ same: true, active: true,
+      value: 'Observació amb espais  ', selection: [5, 10] });
+    await page.waitForTimeout(350);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days['2026-09-07'].revision)).toBe(revision);
+  });
+
   test('mostra la jornada pública sense carregar horaris ni recompte', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('quota-e2e-guardies:e2e-2026', JSON.stringify({ publicDays: {
@@ -863,6 +946,15 @@ test.describe('Guàrdies: comportament existent', () => {
     await page.getByRole('tab', { name: 'Gestió diària' }).click();
     await expect(page.locator('#coverage-list .pati-info-strip')).toContainText('Pista');
 
+    // The previous "Desat" message can still be visible while the new holiday
+    // is waiting in the debounce. Wait for the actual payload before reload.
+    await expect.poll(() => page.evaluate(() => {
+      const patio = JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).pati;
+      return {
+        zone: patio?.weekdayTeachers?.['1']?.find((teacher) => teacher.teacherId === '2')?.zoneOverrides?.['2026-09-14'],
+        holiday: patio?.customHolidays?.some((item) => item.date === '2026-09-21') || false,
+      };
+    })).toEqual({ zone: 'zona-2', holiday: true });
     await page.reload();
     await page.locator('#date-input').fill('2026-09-14');
     await page.locator('#date-input').press('Tab');
