@@ -1375,7 +1375,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     return true;
   }
 
-  function scheduleDaySave() {
+  // Les edicions puntuals es desen de seguida; el text d'una observació espera
+  // una pausa real (o sortir del camp) perquè cada paraula no sigui una escriptura.
+  const DAY_SAVE_DELAY = 250;
+  const TEXT_SAVE_DELAY = 1500;
+
+  function scheduleDaySave({ delay = DAY_SAVE_DELAY } = {}) {
     if (!state.canWrite || !state.courseId || !state.date || !state.dayLoaded || state.dayStatus === 'closed') return;
     if (hasInvalidManagedDay()) {
       discardInvalidLocalDay();
@@ -1396,7 +1401,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         if (pendingRemoteDay) markDayConflict(pendingRemoteDay.saved, pendingRemoteDay.date);
         else showError(`No s'ha pogut guardar la jornada. ${error.message || error}`);
       }
-    }, 250);
+    }, delay);
   }
 
   async function persistDayNow() {
@@ -2886,10 +2891,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       if (!bindOnce(input)) return;
       input.addEventListener('input', () => {
         if (state.dayStatus === 'closed') return;
-        updateComment(input.dataset.comment, input.value);
+        updateComment(input.dataset.comment, input.value, { typing: true });
         const preset = Array.from(el.coverageList.querySelectorAll('[data-comment-preset]'))
           .find((node) => node.dataset.commentPreset === input.dataset.comment);
         if (preset) preset.value = '';
+      });
+      // En sortir del camp, el text ja és definitiu: es desa sense esperar.
+      input.addEventListener('change', () => {
+        if (state.dayStatus !== 'closed') scheduleDaySave();
       });
     });
 
@@ -2943,7 +2952,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     });
   }
 
-  function updateComment(id, rawValue) {
+  function updateComment(id, rawValue, { typing = false } = {}) {
     const value = String(rawValue || '').trim();
     if (value) state.comentaris.set(id, value);
     else state.comentaris.delete(id);
@@ -2957,7 +2966,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           : 'Comentari';
       printComment.textContent = value ? `${prefix}: ${value}` : '';
     }
-    scheduleDaySave();
+    scheduleDaySave({ delay: typing ? TEXT_SAVE_DELAY : DAY_SAVE_DELAY });
   }
 
   function autoAssignCoverage() {

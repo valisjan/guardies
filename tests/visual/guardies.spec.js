@@ -513,6 +513,30 @@ test.describe('Guàrdies: comportament existent', () => {
     expect(await stored()).toEqual(before);
   });
 
+  test('escriure una observació no desa a cada paraula, però la desa en sortir del camp', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    const day = () => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07'] || null);
+    await expect.poll(async () => (await day())?.revision || 0).toBeGreaterThan(0);
+    await page.waitForTimeout(600);
+    const before = (await day()).revision;
+    const editor = page.locator('[data-comment]').first();
+    await editor.click();
+    // Mateixa frase i ritme que la mesura: abans eren 11 escriptures.
+    for (const word of 'Feina penjada a Classroom i material al calaix de la taula'.split(' ')) {
+      await editor.pressSequentially(`${word} `, { delay: 110 });
+      await page.waitForTimeout(350);
+    }
+    await page.waitForTimeout(200);
+    expect((await day()).revision - before).toBeLessThanOrEqual(1);
+    await page.locator('#professor-search').click();
+    await expect.poll(async () => Object.values((await day()).comments || {})).toContain('Feina penjada a Classroom i material al calaix de la taula');
+    expect((await day()).revision - before).toBeLessThanOrEqual(2);
+  });
+
   test('dos canvis de vista seguits acaben a l\'últim triat', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
