@@ -215,7 +215,7 @@ const heatLevels = [0, 1, 2, 3, 4, 5];
     <header class="teacher-stats-head">
       <div class="teacher-stats-title">
         <h2 id="teacher-stats-title">Recompte de guàrdies</h2>
-        <p>Curs {{ courseName }} · guàrdies de G fetes a cada franja. Passa per sobre d'un nom per veure'n les dates.</p>
+        <p>Curs {{ courseName }} · Guàrdies realitzades a cada sessió. Passa per sobre d'un nom per veure'n les dates.</p>
       </div>
       <div class="teacher-stats-tools">
         <label class="stats-search">
@@ -238,7 +238,7 @@ const heatLevels = [0, 1, 2, 3, 4, 5];
     </header>
 
     <div v-if="guardMatrix.length" class="guard-matrix-frame">
-      <div class="guard-matrix" role="table" aria-label="Professorat de G i cobertures realitzades per dia i hora">
+      <div class="guard-matrix" role="table" aria-label="Guàrdies realitzades a cada sessió, per dia i hora">
         <div class="guard-matrix-row guard-matrix-columns" role="row">
           <span class="guard-matrix-corner" role="columnheader">Hora</span>
           <strong v-for="day in days" :key="day.key" role="columnheader">{{ day.label }}</strong>
