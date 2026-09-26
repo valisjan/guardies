@@ -956,13 +956,12 @@ test.describe('Guàrdies: comportament existent', () => {
       const style = getComputedStyle(node);
       return {
         minHeight: Number.parseFloat(style.minHeight),
-        backgroundImage: style.backgroundImage,
-        boxShadow: style.boxShadow,
+        titleFont: getComputedStyle(node.querySelector('h3')).fontFamily,
       };
     });
+    // Redisseny: capçalera d'hora sobria, amb el títol en la tipografia de titulars.
     expect(sessionHeaderStyle.minHeight).toBeGreaterThanOrEqual(40);
-    expect(sessionHeaderStyle.backgroundImage).not.toBe('none');
-    expect(sessionHeaderStyle.boxShadow).not.toBe('none');
+    expect(sessionHeaderStyle.titleFont).toContain('Bricolage Grotesque');
     await page.setViewportSize({ width: 1080, height: 800 });
     await expect(page.locator('.day-command-bar button')).toHaveCount(3);
     expect(await page.locator('.work-header').evaluate((header) => header.scrollWidth <= header.clientWidth)).toBe(true);

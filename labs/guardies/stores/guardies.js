@@ -80,6 +80,8 @@ export const useGuardiesStore = defineStore('guardies', {
     guardHistoryVersion: 0,
     countedAssignments: [],
     unclosedDays: [],
+    // Resum de la jornada per a la capçalera: files que necessiten cobertura.
+    coverageSummary: { open: 0, covered: 0, outings: 0 },
   }),
   actions: {
     clearAbsencePlan() {

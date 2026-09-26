@@ -4366,6 +4366,456 @@ button.ghost {
   }
 }
 
+/* ==========================================================================
+   Redisseny · fase 2: gestió diària. Només pantalla: la impressió A3 no canvia.
+   ========================================================================== */
+@media screen {
+  /* Resum de la jornada a la capçalera */
+  .day-kpis {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-left: auto;
+  }
+
+  .day-kpi {
+    display: grid;
+    min-width: 112px;
+    gap: 2px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 9px 14px;
+  }
+
+  .day-kpi strong {
+    font-family: var(--font-display);
+    font-size: 1.55rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .day-kpi span {
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .day-kpi.is-open {
+    border-color: transparent;
+    background: var(--amber-soft);
+    color: var(--amber);
+  }
+
+  .day-kpi.is-open span { color: var(--amber); }
+
+  .day-kpi.is-covered {
+    border-color: transparent;
+    background: var(--green-soft);
+    color: var(--green);
+  }
+
+  .day-kpi.is-covered span { color: var(--green); }
+
+  .work-header .day-command-bar {
+    align-self: center;
+  }
+
+  /* Distribució: panell d'incidències i full de guàrdies */
+  .guard-layout {
+    grid-template-columns: 340px minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  /* Panell d'incidències */
+  .entry-panel {
+    top: 76px;
+    border-color: var(--border);
+    box-shadow: none;
+  }
+
+  .entry-head {
+    gap: 12px;
+    border-bottom: 0;
+    padding: 16px 16px 4px;
+  }
+
+  .entry-head .kicker {
+    display: none;
+  }
+
+  .entry-head h2 {
+    font-size: 1.1rem;
+  }
+
+  .mode-tabs {
+    gap: 2px;
+    border: 0;
+    border-radius: 11px;
+    background: var(--surface-strong);
+    padding: 3px;
+  }
+
+  .mode-tab {
+    min-height: 34px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.875rem;
+    font-weight: 600;
+    box-shadow: none;
+  }
+
+  .mode-tab:hover {
+    border: 0;
+    background: transparent;
+    color: var(--text);
+  }
+
+  .mode-tab.active {
+    border: 0;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1px 2px rgb(20 24 32 / 0.1);
+  }
+
+  .mode-panel {
+    padding: 12px 16px 16px;
+  }
+
+  .teacher-search input[type="search"],
+  .group-picker select {
+    min-height: 44px;
+    border-radius: var(--radius-small);
+    padding: 0 12px;
+    font-size: 0.95rem;
+  }
+
+  .teacher-search input[type="search"]:focus,
+  .group-picker select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-soft);
+  }
+
+  .mode-panel-head {
+    border-top: 0;
+  }
+
+  .schedule-grid {
+    gap: 2px;
+  }
+
+  .schedule-item {
+    min-height: 48px;
+    border: 0;
+    border-radius: var(--radius-small);
+    background: transparent;
+    padding: 6px 10px;
+  }
+
+  .schedule-item:hover {
+    background: var(--surface-strong);
+  }
+
+  .schedule-item:has(input:checked) {
+    background: var(--primary-soft);
+  }
+
+  .schedule-item input {
+    width: 18px;
+    height: 18px;
+  }
+
+  .schedule-time {
+    color: var(--text);
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+
+  .schedule-item-muted {
+    opacity: 0.6;
+  }
+
+  .range-builder {
+    border-top-color: var(--border);
+  }
+
+  /* Full de guàrdies */
+  .day-panel {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .day-panel-head {
+    min-height: 0;
+    border-bottom: 0;
+    padding: 0 0 12px;
+  }
+
+  .day-panel-head .kicker {
+    display: none;
+  }
+
+  .day-panel-head h2 {
+    font-size: 1.1rem;
+  }
+
+  .coverage-list {
+    gap: 14px;
+    background: transparent;
+    padding: 0;
+  }
+
+  .coverage-session {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: none;
+  }
+
+  .coverage-session-head {
+    min-height: 46px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    padding: 8px 18px;
+    box-shadow: none;
+  }
+
+  .coverage-session-head h3 {
+    color: var(--text);
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .coverage-session-head span {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .coverage-session.pati-session {
+    border: 1px solid var(--border);
+    background: var(--surface-strong);
+    box-shadow: none;
+  }
+
+  .pati-session .coverage-session-head,
+  .coverage-session.pati-session .coverage-session-head {
+    border-bottom-color: var(--border);
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .pati-session .coverage-session-head h3 {
+    color: var(--text);
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    text-transform: none;
+  }
+
+  .pati-session .coverage-session-head span {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+  }
+
+  .coverage-session-list {
+    padding: 0;
+  }
+
+  .coverage-table {
+    gap: 0;
+  }
+
+  .coverage-row-head {
+    display: none;
+  }
+
+  .coverage-row {
+    grid-template-columns: minmax(170px, 0.95fr) minmax(170px, 1fr) minmax(220px, 1.25fr) minmax(190px, 1fr);
+    gap: 16px;
+    align-items: start;
+    padding: 14px 18px;
+  }
+
+  .coverage-item + .coverage-item {
+    border-top: 1px solid var(--border);
+  }
+
+  .coverage-professor-cell,
+  .coverage-detail-cell,
+  .coverage-assignment-cell,
+  .coverage-comment-cell,
+  .covered .coverage-professor-cell {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+  }
+
+  .schedule-actions button {
+    white-space: nowrap;
+  }
+
+  .coverage-professor-cell {
+    align-items: center;
+    row-gap: 4px;
+  }
+
+  .coverage-professor-cell .cell-kicker,
+  .coverage-detail-cell .cell-kicker {
+    display: none;
+  }
+
+  .coverage-professor-cell strong {
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  .coverage-status {
+    display: inline-flex;
+    grid-column: 1;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  .coverage-status::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: currentColor;
+  }
+
+  .status-open .coverage-status { color: var(--amber); }
+  .status-covered .coverage-status { color: var(--green); }
+  .status-not-done .coverage-status { color: var(--coral); }
+
+  .coverage-professor-cell .icon-remove {
+    align-self: center;
+    grid-row: 1 / span 2;
+    width: 32px;
+    min-height: 32px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+  }
+
+  .coverage-professor-cell .icon-remove:hover {
+    background: var(--coral-soft);
+    color: var(--coral);
+  }
+
+  .coverage-detail-cell strong {
+    font-size: 0.9rem;
+  }
+
+  .coverage-detail-cell span:not(.cell-kicker) {
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+
+  .coverage-detail-cell .coverage-room-label {
+    font-size: 0.82rem;
+  }
+
+  .coverage-assignment-cell select,
+  .coverage-comment-cell select {
+    min-height: 44px;
+    border-radius: var(--radius-small);
+    padding: 0 12px;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .status-open .coverage-assignment-cell select {
+    border-color: var(--amber-dot);
+    background: var(--amber-soft);
+    color: var(--amber);
+  }
+
+  .coverage-assignment-cell.has-released-candidates,
+  .coverage-assignment-cell.only-unavailable {
+    border: 0;
+    background: transparent;
+  }
+
+  .coverage-assignment-cell.has-released-candidates select {
+    border-color: var(--green-border);
+  }
+
+  .coverage-comment-cell {
+    gap: 6px;
+  }
+
+  .coverage-comment-cell select {
+    min-height: 36px;
+    font-size: 0.82rem;
+    font-weight: 500;
+  }
+
+  .coverage-comment-cell textarea {
+    min-height: 40px;
+    border-radius: var(--radius-small);
+    background: var(--surface-subtle);
+    padding: 9px 12px;
+    font-size: 0.88rem;
+  }
+
+  .coverage-item.informational {
+    border-left: 0;
+  }
+
+  .coverage-item.not-completed {
+    background: var(--surface-subtle);
+  }
+}
+
+@media screen and (max-width: 1180px) {
+  .guard-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .coverage-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@media screen and (max-width: 620px) {
+  .day-kpis {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .day-kpi {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 10px;
+  }
+
+  .day-kpi strong {
+    font-size: 1.3rem;
+  }
+
+  .coverage-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 14px;
+  }
+}
+
 @media print {
   @page { size: A3 portrait; margin: 6mm; }
   :root {

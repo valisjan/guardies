@@ -7,7 +7,7 @@ const store = useGuardiesStore();
 const {
   date, absencies, dayStatus, dayPersistenceStatus,
   persistenceStatus, canWrite, teacherView, unclosedDays,
-  dayConflict, conflictRemoteClosed,
+  dayConflict, conflictRemoteClosed, coverageSummary,
 } = storeToRefs(store);
 
 const xmlDay = computed(() => {
@@ -135,6 +135,21 @@ function changeStatus(action) {
       <div class="work-title-meta">
         <span class="day-status-badge" :class="`is-${dayStatus}`">{{ dayStatusLabel }}</span>
         <em v-if="nonTeachingDay" class="non-teaching-note">Dia no lectiu</em>
+      </div>
+    </div>
+
+    <div class="day-kpis" role="group" aria-label="Resum de la jornada">
+      <div class="day-kpi" :class="{ 'is-open': coverageSummary.open > 0 }">
+        <strong>{{ coverageSummary.open }}</strong>
+        <span>sense cobrir</span>
+      </div>
+      <div class="day-kpi" :class="{ 'is-covered': coverageSummary.covered > 0 }">
+        <strong>{{ coverageSummary.covered }}</strong>
+        <span>{{ coverageSummary.covered === 1 ? 'coberta' : 'cobertes' }}</span>
+      </div>
+      <div class="day-kpi">
+        <strong>{{ coverageSummary.outings }}</strong>
+        <span>{{ coverageSummary.outings === 1 ? 'sortida' : 'sortides' }}</span>
       </div>
     </div>
 

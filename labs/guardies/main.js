@@ -2751,6 +2751,17 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       ? ''
       : `<div class="empty-small no-print">Marca l'activitat de guàrdia per trobar professorat disponible.</div>`;
     const selectedByHour = new Map(groupBySession(coverageItems).map((group) => [group.hora, group.items]));
+    const summary = { open: 0, covered: 0, outings: state.grupsFora.size };
+    coverageItems.forEach((item) => {
+      if (item.hora === 'PATI') return;
+      const status = coverageStatus(item);
+      if (status === 'open') summary.open += 1;
+      else if (status === 'covered' || status === 'coteacher') summary.covered += 1;
+    });
+    if (summary.open !== state.coverageSummary.open || summary.covered !== state.coverageSummary.covered
+      || summary.outings !== state.coverageSummary.outings) {
+      state.coverageSummary = summary;
+    }
 
     const dayHours = hoursForSelectedDay();
     const teachingHours = dayHours.filter((hora) => hora !== 'PATI');
@@ -3626,8 +3637,27 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     return catalanCompare(String(a || ''), String(b || ''));
   }
 
+  // Estat d'una fila de cobertura. Les guàrdies de pati i les absències en una
+  // guàrdia no necessiten substitució; "No realitzada" no compta com a coberta.
+  function coverageStatus(item) {
+    if (item.sessions?.some(isPatiGuardiaSession) || isGuardiaItem(item)) return 'info';
+    const assignat = state.assignacions.get(item.id) || '';
+    if (!assignat) return 'open';
+    if (state.cancelledAssignments.has(item.id)) return 'not-done';
+    return state.assignmentSources.get(item.id) === 'co-teacher' ? 'coteacher' : 'covered';
+  }
+
+  const COVERAGE_STATUS_LABELS = {
+    open: 'Sense cobrir',
+    covered: 'Coberta',
+    coteacher: 'Queda amb el grup',
+    'not-done': 'No realitzada',
+  };
+
   function renderCoverageRow(item) {
     const isPati = item.sessions?.some(isPatiGuardiaSession);
+    const status = coverageStatus(item);
+    const statusLabel = COVERAGE_STATUS_LABELS[status] || '';
     const candidates = isPati ? [] : guardiesPerFranja(item.dia, item.hora, item.placa, item.id);
     const assignat = state.assignacions.get(item.id) || '';
     const coTeacher = state.assignmentSources.get(item.id) === 'co-teacher' ? assignat : '';
@@ -3688,11 +3718,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       : `<span class="readonly-comment">${escapeHtml(comentari || 'Sense observacions')}</span>`;
 
     return `
-      <article data-coverage-row="${escapeHtml(item.id)}" class="coverage-item coverage-row ${assignat ? 'covered' : ''} ${cancelled ? 'not-completed' : ''} ${isPati ? 'informational' : ''}">
+      <article data-coverage-row="${escapeHtml(item.id)}" class="coverage-item coverage-row status-${status} ${assignat ? 'covered' : ''} ${cancelled ? 'not-completed' : ''} ${isPati ? 'informational' : ''}">
         <div class="coverage-professor-cell">
           <span class="cell-kicker">Absència</span>
           <strong class="no-print">${escapeHtml(absentTeacherIds.map((teacherId) => labelProfessor(teacherId)).join(' · '))}</strong>
           <strong class="print-only">${escapeHtml(absentTeacherIds.map((teacherId) => labelProfessor(teacherId, true)).join(' · '))}</strong>
+          ${statusLabel ? `<span class="coverage-status no-print">${escapeHtml(statusLabel)}</span>` : ''}
           ${state.canWrite ? `<button type="button" class="icon-remove no-print" aria-label="Elimina aquesta absència" data-remove-absence="${escapeHtml(item.id)}" data-remove-absences="${escapeHtml((item.absenceIds || [item.id]).join(','))}" ${locked ? 'disabled' : ''}>X</button>` : ''}
         </div>
         <div class="coverage-detail-cell">
