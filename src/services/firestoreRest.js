@@ -26,24 +26,53 @@ function encodedPath(path) {
   return String(path || '').split('/').filter(Boolean).map(encodeURIComponent).join('/');
 }
 
-async function authenticatedFetch(url) {
+export function abortedError(cause) {
+  const error = new Error('Petició cancel·lada.', { cause });
+  error.name = 'AbortError';
+  error.code = 'aborted';
+  return error;
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw abortedError(signal.reason);
+}
+
+// El temps d'espera de 15 s només limita l'arribada de la resposta, com fins
+// ara: un fitxer gran pot trigar més a descarregar-se en una connexió lenta.
+// La senyal de qui fa la petició, en canvi, també cancel·la la descàrrega.
+async function authenticatedRequest(url, { signal } = {}) {
+  throwIfAborted(signal);
   const user = auth.currentUser;
   if (!user) throw new Error('Inicia sessió per accedir a les dades de guàrdies.');
   const token = await user.getIdToken();
+  throwIfAborted(signal);
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 15000);
+  const forwardAbort = () => controller.abort();
+  signal?.addEventListener('abort', forwardAbort, { once: true });
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
       signal: controller.signal,
     });
+    window.clearTimeout(timeout);
+    if (response.status === 404) return { status: 404, ok: false, payload: null };
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch (cause) {
+      if (controller.signal.aborted) throw cause;
+    }
+    return { status: response.status, ok: response.ok, payload };
   } catch (cause) {
+    if (signal?.aborted) throw abortedError(cause);
     const error = new Error("No s'ha pogut connectar amb Firestore.", { cause });
     error.code = 'unavailable';
     throw error;
   } finally {
     window.clearTimeout(timeout);
+    signal?.removeEventListener('abort', forwardAbort);
   }
 }
 
@@ -63,25 +92,23 @@ function documentSnapshot(document, fallbackPath = '') {
   };
 }
 
-export async function getRestDocument(path) {
-  const response = await authenticatedFetch(`${DOCUMENTS_URL}/${encodedPath(path)}`);
+export async function getRestDocument(path, { signal } = {}) {
+  const response = await authenticatedRequest(`${DOCUMENTS_URL}/${encodedPath(path)}`, { signal });
   if (response.status === 404) return documentSnapshot(null, path);
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw restError(response.status, payload);
-  return documentSnapshot(payload, path);
+  if (!response.ok) throw restError(response.status, response.payload);
+  return documentSnapshot(response.payload, path);
 }
 
-export async function getRestCollection(path) {
+export async function getRestCollection(path, { signal } = {}) {
   const documents = [];
   let pageToken = '';
   do {
     const query = new URLSearchParams({ pageSize: '1000' });
     if (pageToken) query.set('pageToken', pageToken);
-    const response = await authenticatedFetch(`${DOCUMENTS_URL}/${encodedPath(path)}?${query}`);
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw restError(response.status, payload);
-    documents.push(...(payload.documents || []).map((document) => documentSnapshot(document)));
-    pageToken = payload.nextPageToken || '';
+    const response = await authenticatedRequest(`${DOCUMENTS_URL}/${encodedPath(path)}?${query}`, { signal });
+    if (!response.ok) throw restError(response.status, response.payload);
+    documents.push(...(response.payload?.documents || []).map((document) => documentSnapshot(document)));
+    pageToken = response.payload?.nextPageToken || '';
   } while (pageToken);
   return { docs: documents };
 }

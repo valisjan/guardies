@@ -176,3 +176,106 @@ test('teacher statistics read only the schedule once and listen only to the stat
   expect(result.events).toEqual([{ 2: { guard: 1 } }, { 2: { guard: 2 } }]);
   expect(result.active).toBe(0);
 });
+
+test.describe('iOS polling', () => {
+  // Same service code with isIOSWebKit enabled and a controllable REST client.
+  const rest = `
+const r = window.__restTest = { calls: [], pending: [], hold: false, docs: new Map() };
+const snap = (path, data) => ({ id: path.split('/').pop(), exists: () => data != null, data: () => data });
+export async function getRestDocument(path, { signal } = {}) {
+  r.calls.push(path);
+  if (!r.hold) return snap(path, r.docs.get(path));
+  return new Promise((resolve, reject) => {
+    const entry = { path, aborted: false, resolve: () => resolve(snap(path, r.docs.get(path))) };
+    r.pending.push(entry);
+    signal?.addEventListener('abort', () => {
+      entry.aborted = true;
+      reject(Object.assign(new Error('aborted'), { name: 'AbortError', code: 'aborted' }));
+    });
+  });
+}
+export async function getRestCollection() { return { docs: [] }; }
+export function abortedError(cause) { return Object.assign(new Error('aborted', { cause }), { name: 'AbortError', code: 'aborted' }); }
+`;
+
+  test.beforeEach(async ({ page }) => {
+    await page.route('**/src/firebase*', (route) => route.fulfill({ contentType: 'application/javascript', body: 'export const db = {}; export const auth = {}; export const isIOSWebKit = true; export const authPersistenceReady = Promise.resolve();' }));
+    await page.route('**/src/services/firestoreRest*', (route) => route.fulfill({ contentType: 'application/javascript', body: rest }));
+    await page.evaluate(() => {
+      window.__hidden = false;
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => window.__hidden });
+      window.__setHidden = (value) => { window.__hidden = value; document.dispatchEvent(new Event('visibilitychange')); };
+    });
+  });
+
+  test('unsubscribing aborts the in-flight request without reporting an error', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const { subscribeGuardiesStats } = await import('/src/services/guardiesStorage.js');
+      const r = window.__restTest;
+      r.hold = true;
+      const changes = [];
+      const errors = [];
+      const stop = subscribeGuardiesStats('test', (stats) => changes.push(stats), (error) => errors.push(error.message));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const started = r.pending.length;
+      stop();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return { started, aborted: r.pending.map((entry) => entry.aborted), changes: changes.length, errors };
+    });
+    expect(result).toEqual({ started: 1, aborted: [true], changes: 0, errors: [] });
+  });
+
+  test('a poll missed while hidden runs on return; a quick return does not add reads', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const { subscribeGuardiesStats } = await import('/src/services/guardiesStorage.js');
+      const r = window.__restTest;
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const stop = subscribeGuardiesStats('test', () => {}, () => {}, { iosPollInterval: 600 });
+      await wait(50);
+      const afterFirst = r.calls.length;
+
+      // Quick hide/show: nothing was due, so no extra request.
+      window.__setHidden(true);
+      await wait(100);
+      window.__setHidden(false);
+      await wait(50);
+      const afterQuickReturn = r.calls.length;
+
+      // Hidden across a due poll: skipped while hidden, run right after returning.
+      window.__setHidden(true);
+      await wait(900);
+      const whileHidden = r.calls.length;
+      window.__setHidden(false);
+      await wait(50);
+      const afterReturn = r.calls.length;
+      stop();
+      return { afterFirst, afterQuickReturn, whileHidden, afterReturn };
+    });
+    expect(result).toEqual({ afterFirst: 1, afterQuickReturn: 1, whileHidden: 1, afterReturn: 2 });
+  });
+});
+
+test('REST reads report cancellation as aborted, not as a connection failure', async ({ page }) => {
+  await page.route('**/src/firebase*', (route) => route.fulfill({
+    contentType: 'application/javascript',
+    body: 'export const auth = { currentUser: { getIdToken: async () => "token" } }; export const db = {}; export const isIOSWebKit = true; export const authPersistenceReady = Promise.resolve();',
+  }));
+  const result = await page.evaluate(async () => {
+    const seen = [];
+    window.fetch = (url, { signal }) => new Promise((resolve, reject) => {
+      seen.push(signal);
+      signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    });
+    const { getRestDocument } = await import('/src/services/firestoreRest.js');
+    const controller = new AbortController();
+    const pending = getRestDocument('cursos/test/guardies/stats', { signal: controller.signal }).catch((error) => error);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    controller.abort();
+    const aborted = await pending;
+
+    window.fetch = async () => { throw new TypeError('Failed to fetch'); };
+    const offline = await getRestDocument('cursos/test/guardies/stats').catch((error) => error);
+    return { abortedCode: aborted.code, fetchAborted: seen[0].aborted, offlineCode: offline.code };
+  });
+  expect(result).toEqual({ abortedCode: 'aborted', fetchAborted: true, offlineCode: 'unavailable' });
+});

@@ -21,7 +21,7 @@ import {
 } from 'firebase/auth';
 import { auth, authPersistenceReady, db, isIOSWebKit } from '../firebase';
 import { BatchSplit } from '../utils/firestoreBatch';
-import { getRestCollection, getRestDocument } from './firestoreRest';
+import { abortedError, getRestCollection, getRestDocument } from './firestoreRest';
 import { E2E_AUTH_BYPASS, E2E_CURS_ID, getE2ECollection } from './e2e';
 import { subscribePublicGuardiesDay, writePublicGuardiesDay } from './pantallesStorage';
 import { publicProjectionForDay } from '../modules/guardies/domain/publication.js';
@@ -193,11 +193,21 @@ function isOfflineError(error) {
   return error?.code === 'unavailable' || message.includes('client is offline');
 }
 
-async function withNetworkRetry(operation) {
+function abortableDelay(delay, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(abortedError(signal.reason)); return; }
+    const onAbort = () => { clearTimeout(timer); reject(abortedError(signal.reason)); };
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, delay);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+async function withNetworkRetry(operation, { signal } = {}) {
   const delays = [0, 400, 1200, 2500];
   let lastError;
   for (const delay of delays) {
-    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    if (delay) await abortableDelay(delay, signal);
+    if (signal?.aborted) throw abortedError(signal.reason);
     try {
       return await operation();
     } catch (error) {
@@ -209,43 +219,65 @@ async function withNetworkRetry(operation) {
   throw lastError;
 }
 
-function readDoc(reference) {
+// La senyal només s'aplica al client REST d'iOS; el SDK no admet cancel·lar un getDoc.
+function readDoc(reference, { signal } = {}) {
   if (!isIOSWebKit) return getDoc(reference);
-  return getRestDocument(reference.path);
+  return getRestDocument(reference.path, { signal });
 }
 
-function readCollection(reference) {
+function readCollection(reference, { signal } = {}) {
   if (!isIOSWebKit) return getDocs(reference);
-  return getRestCollection(reference.path);
+  return getRestCollection(reference.path, { signal });
 }
 
+// Sondeig per a iOS (sense escoltes en temps real). Amb la pestanya oculta no
+// es consulta res; en tornar, si durant l'ocultació tocava una consulta, es fa
+// de seguida en lloc d'esperar un altre interval sencer. Desubscriure's
+// cancel·la la petició en curs.
 function subscribeWithPolling(load, onChange, onError, interval = 5000) {
   let active = true;
   let timer = null;
   let running = false;
   let firstPoll = true;
+  let lastPollAt = 0;
+  let controller = null;
+  const schedule = (delay) => {
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(poll, delay);
+  };
   const poll = async () => {
+    timer = null;
     if (!active || running) return;
-    if (document.hidden && !firstPoll) {
-      timer = window.setTimeout(poll, interval);
-      return;
-    }
+    if (document.hidden && !firstPoll) return;
     running = true;
     firstPoll = false;
+    lastPollAt = Date.now();
+    controller = new AbortController();
+    const { signal } = controller;
     try {
-      const data = await load();
+      const data = await load(signal);
       if (active) await onChange(data);
     } catch (error) {
-      if (active) onError(error);
+      if (active && !signal.aborted) onError(error);
     } finally {
       running = false;
-      if (active) timer = window.setTimeout(poll, interval);
+      controller = null;
+      if (active) schedule(interval);
     }
   };
-  timer = window.setTimeout(poll, 0);
+  const onVisibilityChange = () => {
+    if (!active || document.hidden || running) return;
+    const due = Math.max(0, interval - (Date.now() - lastPollAt));
+    if (!timer || due === 0) schedule(due);
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  schedule(0);
   return () => {
     active = false;
     if (timer) window.clearTimeout(timer);
+    timer = null;
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    controller?.abort();
   };
 }
 
@@ -390,7 +422,7 @@ export async function getGuardiesContext(requestedCourseId = '', { teacherView =
   };
 }
 
-export async function loadGuardiesData(cursId) {
+export async function loadGuardiesData(cursId, { signal } = {}) {
   if (E2E_AUTH_BYPASS) {
     const data = getE2EData(cursId);
     return {
@@ -407,14 +439,14 @@ export async function loadGuardiesData(cursId) {
   }
 
   const [reference, untis, duties, convivencia, pati, observations, exclusions] = await withNetworkRetry(() => Promise.all([
-    readDoc(guardiesRef(cursId, 'reference')),
-    readDoc(guardiesRef(cursId, 'untis')),
-    readDoc(guardiesRef(cursId, 'duties')),
-    readDoc(guardiesRef(cursId, 'convivencia')),
-    readDoc(guardiesRef(cursId, 'pati')),
-    readDoc(guardiesObservationsRef(cursId)),
-    readDoc(guardiesExclusionsRef(cursId)),
-  ]));
+    readDoc(guardiesRef(cursId, 'reference'), { signal }),
+    readDoc(guardiesRef(cursId, 'untis'), { signal }),
+    readDoc(guardiesRef(cursId, 'duties'), { signal }),
+    readDoc(guardiesRef(cursId, 'convivencia'), { signal }),
+    readDoc(guardiesRef(cursId, 'pati'), { signal }),
+    readDoc(guardiesObservationsRef(cursId), { signal }),
+    readDoc(guardiesExclusionsRef(cursId), { signal }),
+  ]), { signal });
   trackReads('configLoad', 7);
   return {
     files: {
@@ -449,12 +481,12 @@ export function subscribeGuardiesData(cursId, onChange, onError = () => {}, { io
 
   if (isIOSWebKit) {
     let pollCycle = 0;
-    return subscribeWithPolling(async () => {
+    return subscribeWithPolling(async (signal) => {
       pollCycle += 1;
       trackReads('iosPollCycle', 0, `config-poll-#${pollCycle}`);
       const [data, stats] = await Promise.all([
-        loadGuardiesData(cursId),
-        loadGuardiesStats(cursId),
+        loadGuardiesData(cursId, { signal }),
+        loadGuardiesStats(cursId, { signal }),
       ]);
       return { ...data, stats };
     }, onChange, onError, iosPollInterval);
@@ -670,11 +702,11 @@ export async function saveGuardiesExcludedTeachers(cursId, teacherIds) {
   return clean;
 }
 
-export async function loadGuardiesStats(cursId) {
+export async function loadGuardiesStats(cursId, { signal } = {}) {
   if (E2E_AUTH_BYPASS) {
     return getE2EData(cursId).stats || { counts: {} };
   }
-  const snapshot = await withNetworkRetry(() => readDoc(guardiesStatsRef(cursId)));
+  const snapshot = await withNetworkRetry(() => readDoc(guardiesStatsRef(cursId), { signal }), { signal });
   trackReads('statsLoad', 1);
   return snapshot.exists() ? snapshot.data() : { counts: {} };
 }
@@ -726,7 +758,7 @@ export function subscribeGuardiesStats(cursId, onChange, onError = () => {}, { i
   }
   if (isIOSWebKit) {
     let signature;
-    return subscribeWithPolling(() => loadGuardiesStats(cursId), (stats) => {
+    return subscribeWithPolling((signal) => loadGuardiesStats(cursId, { signal }), (stats) => {
       const next = JSON.stringify(stats);
       if (next === signature) return;
       signature = next;
@@ -909,14 +941,14 @@ export async function saveGuardiesObservationPresets(cursId, phrases) {
   return clean;
 }
 
-export async function loadGuardiesDay(cursId, date, { publishedOnly = false } = {}) {
+export async function loadGuardiesDay(cursId, date, { publishedOnly = false, signal } = {}) {
   if (E2E_AUTH_BYPASS) {
     const data = getE2EData(cursId);
     const day = data.days?.[date] || null;
     return publishedOnly && !['published', 'closed'].includes(day?.status) ? null : day;
   }
   try {
-    const snapshot = await withNetworkRetry(() => readDoc(guardiesDayRef(cursId, date)));
+    const snapshot = await withNetworkRetry(() => readDoc(guardiesDayRef(cursId, date), { signal }), { signal });
     trackReads('dayLoad', 1, date);
     const day = snapshot.exists() ? snapshot.data() : null;
     return publishedOnly && !['published', 'closed'].includes(day?.status) ? null : day;
@@ -977,10 +1009,10 @@ export function subscribeGuardiesDay(
   if (isIOSWebKit) {
     let dayPollCycle = 0;
     return subscribeWithPolling(
-      () => {
+      (signal) => {
         dayPollCycle += 1;
         trackReads('iosPollCycle', 0, `day-poll-#${dayPollCycle}`);
-        return loadGuardiesDay(cursId, date, { publishedOnly });
+        return loadGuardiesDay(cursId, date, { publishedOnly, signal });
       },
       (day) => onChange(day, { fromCache: false, hasPendingWrites: false }),
       onError,
@@ -1040,8 +1072,8 @@ export function subscribeGuardiesPublicView(cursId, date, onChange, onError = ()
       onChange(day, metadata);
     }, onError);
   }
-  return subscribeWithPolling(async () => {
-    const snapshot = await readDoc(doc(db, 'cursos', cursId, 'guardiesPublicDays', date));
+  return subscribeWithPolling(async (signal) => {
+    const snapshot = await readDoc(doc(db, 'cursos', cursId, 'guardiesPublicDays', date), { signal });
     trackReads('publicDayPoll', 1, date);
     const day = snapshot.exists() ? snapshot.data() : null;
     return ['published', 'closed'].includes(day?.status) ? day : null;
