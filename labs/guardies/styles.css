@@ -398,18 +398,23 @@ h3 {
 
 .unclosed-day-link {
   border: 0;
+  border-radius: 3px;
   background: transparent;
   color: var(--amber-strong);
   cursor: pointer;
   font: inherit;
   font-weight: 850;
-  padding: 0 2px;
+  padding: 0 3px;
   text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
   text-underline-offset: 2px;
+  transition: background-color 0.15s ease, text-decoration-color 0.15s ease;
 }
 
-.unclosed-day-link:hover {
-  color: var(--primary-strong);
+.unclosed-day-link:hover,
+.unclosed-day-link:focus-visible {
+  background: color-mix(in srgb, var(--amber-strong) 14%, transparent);
+  text-decoration-color: currentColor;
 }
 
 .range-builder,
@@ -618,11 +623,6 @@ h3 {
   font-size: 0.72rem;
 }
 
-.day-count {
-  color: var(--text);
-  font-weight: 850;
-}
-
 .last-sync {
   border-left: 1px solid var(--border);
   padding-left: 8px;
@@ -653,7 +653,6 @@ h3 {
   color: var(--coral);
 }
 
-.day-count,
 .last-sync {
   white-space: nowrap;
 }

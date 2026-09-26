@@ -5,7 +5,7 @@ import { useGuardiesStore } from '../stores/guardies.js';
 
 const store = useGuardiesStore();
 const {
-  date, absencies, assignacions, dayStatus, dayPersistenceStatus,
+  date, absencies, dayStatus, dayPersistenceStatus,
   persistenceStatus, updatedAt, canWrite, teacherView, unclosedDays,
   dayConflict, conflictRemoteClosed,
 } = storeToRefs(store);
@@ -19,9 +19,6 @@ const xmlDay = computed(() => {
 const selectedAbsences = computed(() => (
   Array.from(absencies.value.values()).filter((item) => item.dia === xmlDay.value)
 ));
-
-const assignedAbsences = computed(() => selectedAbsences.value
-  .filter((item) => assignacions.value.has(item.id)).length);
 
 const syncLabel = computed(() => {
   if (persistenceStatus.value === 'loading' || dayPersistenceStatus.value === 'loading') return 'Connectant…';
@@ -208,7 +205,6 @@ function changeStatus(action) {
     <div v-if="!teacherView" class="day-command-bar">
       <div class="day-summary" aria-live="polite">
         <span class="pill sync-pill" :class="syncClass">{{ syncLabel }}</span>
-        <span class="day-count">{{ assignedAbsences }}/{{ selectedAbsences.length }} cobertes</span>
         <span class="last-sync">{{ lastSyncLabel }}</span>
       </div>
       <button v-if="persistenceStatus === 'error'" id="retry-connection" type="button" class="ghost" @click="retryConnection">Reintenta ara</button>
