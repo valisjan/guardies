@@ -962,13 +962,13 @@ test.describe('Guàrdies: comportament existent', () => {
     });
     await page.setViewportSize({ width: 1000, height: 800 });
     await page.goto('/?vista=professor');
-    await expect(page.locator('.teacher-date-header')).toBeVisible();
-    await expect(page.locator('.teacher-date-header #date-input')).toBeVisible();
-    await expect(page.locator('.teacher-date-header .work-title, .teacher-date-header .date-summary-card, .teacher-date-header .day-command-bar')).toHaveCount(0);
+    // La data és a la barra superior; el professorat no té capçalera de gestió.
+    await expect(page.locator('.app-nav #date-input')).toBeVisible();
+    await expect(page.locator('.work-title, .day-command-bar')).toHaveCount(0);
     await expect(page.locator('.teacher-stats-panel')).toBeHidden();
     await page.getByRole('tab', { name: 'Recompte de guàrdies' }).click();
     await expect(page.locator('.teacher-stats-panel')).toBeVisible();
-    await expect(page.locator('.teacher-date-header')).toBeHidden();
+    await expect(page.locator('.app-nav #date-input')).toBeHidden();
     for (const selector of ['#admin-panel', '#pati-panel', '#convivencia-panel']) {
       await expect(page.locator(selector)).toBeHidden();
     }
