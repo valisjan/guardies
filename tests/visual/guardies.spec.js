@@ -449,6 +449,70 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('#error-box')).toBeHidden();
   });
 
+  test('una còpia local amb un estat no vàlid es descarta i no bloqueja la jornada ni el canvi de data', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    const stored = () => page.evaluate(() => {
+      const day = JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07'];
+      return day ? { revision: day.revision, status: day.status, absences: day.absenceIds.length } : null;
+    });
+    await expect.poll(async () => (await stored())?.absences || 0).toBeGreaterThan(0);
+    await page.waitForTimeout(400);
+    const before = await stored();
+
+    // Còpia local creada per l'error anterior: estat de la vista del professorat i sense absències.
+    const draftKey = 'guardies_pending_day:e2e-2026:e2e.admin@iesjosepsuredaiblanes.com:2026-09-07';
+    await page.evaluate(({ key, revision }) => {
+      localStorage.setItem(key, JSON.stringify({
+        payload: {
+          status: 'unpublished', absenceIds: [], assignments: {}, comments: {}, groupsOut: [], groupTeachers: {},
+          groupReleasedTeachers: {}, partialGroups: [], outingAbsenceIds: [], cancelledAssignments: [],
+          overriddenCoTeacherAssignments: [], publishedAt: '', closedAt: '', countedAssignments: [],
+        },
+        revision,
+        baseSignature: 'signatura-anterior',
+        auto: false,
+      }));
+    }, { key: draftKey, revision: before.revision });
+    await page.reload();
+    await expect(page.locator('#workspace')).toBeVisible();
+
+    await expect(page.locator('[data-remove-absence]')).toHaveCount(before.absences);
+    await expect(page.locator('#day-status-action')).toHaveText('Publica');
+    expect(await page.evaluate((key) => localStorage.getItem(key), draftKey)).toBeNull();
+
+    await page.getByRole('button', { name: 'Dia següent' }).click();
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-08');
+    await expect(page.locator('#error-box')).toBeHidden();
+    expect(await stored()).toEqual(before);
+  });
+
+  test('un estat de jornada no vàlid en memòria no bloqueja el canvi de data ni es desa', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    const stored = () => page.evaluate(() => {
+      const day = JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07'];
+      return day ? { revision: day.revision, status: day.status, absences: day.absenceIds.length } : null;
+    });
+    await expect.poll(async () => (await stored())?.absences || 0).toBeGreaterThan(0);
+    await page.waitForTimeout(400);
+    const before = await stored();
+    await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      useGuardiesStore().dayStatus = 'unpublished';
+    });
+    await page.getByRole('button', { name: 'Dia següent' }).click();
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-08');
+    await expect(page.locator('#error-box')).toBeHidden();
+    expect(await stored()).toEqual(before);
+  });
+
   test('dos canvis de vista seguits acaben a l\'últim triat', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

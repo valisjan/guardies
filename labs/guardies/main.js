@@ -1013,8 +1013,30 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     return `${DRAFT_CACHE_PREFIX}${state.courseId}:${state.viewerEmail}:${state.date}`;
   }
 
+  // Estats que la gestió pot desar. 'unpublished' és només de la vista del professorat.
+  const MANAGED_DAY_STATUSES = ['draft', 'published', 'closed'];
+
+  function hasInvalidManagedDay() {
+    return state.canWrite && state.dayLoaded && !MANAGED_DAY_STATUSES.includes(state.dayStatus);
+  }
+
+  // Una jornada amb un estat que no és de gestió només pot venir d'un estat
+  // barrejat (p. ex. una còpia local desada per l'error de canvi de vista). No
+  // s'ha de desar ni bloquejar la feina: es descarta i es torna a carregar la
+  // jornada compartida.
+  function discardInvalidLocalDay() {
+    clearTimeout(daySaveTimer);
+    storageRemove([draftKey()]);
+    loadedDate = '';
+    lastDaySignature = '';
+    autoNormalizedSignature = null;
+    state.dayLoaded = false;
+    state.clearDayContext();
+    activateGuardiesDay(state.date).catch(() => {});
+  }
+
   function stashDayDraft() {
-    if (!hasUnsavedDay()) return;
+    if (!hasUnsavedDay() || !MANAGED_DAY_STATUSES.includes(state.dayStatus)) return;
     storageSet(draftKey(), JSON.stringify({
       payload: serializableDay(), revision: state.dayRevision, baseSignature: lastDaySignature,
       auto: autoNormalizedSignature !== null && daySignature() === autoNormalizedSignature,
@@ -1030,6 +1052,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       return;
     }
     if (!draft?.payload || !draft.baseSignature || date !== state.date) return;
+    if (!MANAGED_DAY_STATUSES.includes(draft.payload.status)) {
+      storageRemove([draftKey()]);
+      return;
+    }
     applyGuardiesDay({ ...draft.payload, revision: draft.revision }, date);
     lastDaySignature = draft.baseSignature;
     state.dayPersistenceStatus = 'refreshing';
@@ -1351,6 +1377,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function scheduleDaySave() {
     if (!state.canWrite || !state.courseId || !state.date || !state.dayLoaded || state.dayStatus === 'closed') return;
+    if (hasInvalidManagedDay()) {
+      discardInvalidLocalDay();
+      return;
+    }
     const payload = serializableDay();
     const signature = daySignature(payload);
     if (signature === lastDaySignature) return;
@@ -1373,6 +1403,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     clearTimeout(daySaveTimer);
     if (daySaveInFlight) await daySaveInFlight;
     if (state.dayConflict) throw new Error('Hi ha canvis en una altra sessió. Tria quina versió vols conservar.');
+    if (hasInvalidManagedDay()) {
+      discardInvalidLocalDay();
+      return;
+    }
     if (!state.canWrite || !state.courseId || !state.dayLoaded || state.dayStatus === 'closed') return;
     const courseId = state.courseId;
     const date = state.date;
@@ -1386,10 +1420,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         const signature = daySignature(payload);
         if (signature === lastDaySignature) break;
         state.dayPersistenceStatus = 'saving';
-        // Xarxa de seguretat: un estat que no és de gestió (p. ex. 'unpublished' de la
-        // vista del professorat) indica un estat barrejat i no s'ha de desar mai.
-        if (!['draft', 'published', 'closed'].includes(payload.status)) {
-          throw new Error('Estat de jornada no vàlid: no es desa per protegir la jornada compartida.');
+        // Xarxa de seguretat: un estat que no és de gestió no es desa mai.
+        if (!MANAGED_DAY_STATUSES.includes(payload.status)) {
+          discardInvalidLocalDay();
+          return;
         }
         const projection = ['published', 'closed'].includes(payload.status) ? publicGuardiesDay() : null;
         const saved = await saveGuardiesDay(courseId, date, payload, state.dayRevision, { publicProjection: projection });
