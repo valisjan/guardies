@@ -1,4 +1,5 @@
 <script setup>
+import { friendlyError } from '../../../src/utils/friendlyError.js';
 import { computed, ref } from 'vue';
 import { saveGuardiesExcludedTeachers } from '../../../src/services/guardiesStorage.js';
 import { useGuardiesStore } from '../stores/guardies.js';
@@ -59,7 +60,7 @@ async function setExcluded(teacher, excluded) {
     state.excludedTeacherIds = new Set(saved);
   } catch (cause) {
     state.excludedTeacherIds = previous;
-    error.value = cause?.message || String(cause);
+    error.value = friendlyError(cause);
     window.dispatchEvent(new CustomEvent('guardies:exclusions-updated'));
   } finally {
     const pending = new Set(saving.value);

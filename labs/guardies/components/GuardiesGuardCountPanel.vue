@@ -1,4 +1,5 @@
 <script setup>
+import { friendlyError } from '../../../src/utils/friendlyError.js';
 import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { guardCountForSlot, guardSlotKey, normalizeGuardCount } from '../../../src/modules/guardies/domain/workflow.js';
@@ -84,7 +85,7 @@ async function updateCount(teacherId, source, rawValue) {
     guardCounts.value = new Map(Object.entries(next.counts || {}));
     saved.value = `${teacherId}:${source}:${source === 'guard' ? selectedSlot.value : ''}`;
   } catch (cause) {
-    error.value = cause?.message || String(cause);
+    error.value = friendlyError(cause);
   } finally {
     const nextSaving = new Set(saving.value);
     nextSaving.delete(teacherId);
@@ -103,7 +104,7 @@ async function resetCourse() {
     await resetGuardiesCourseData(courseId.value);
     window.location.reload();
   } catch (cause) {
-    error.value = cause?.message || String(cause);
+    error.value = friendlyError(cause);
     resetting.value = false;
   }
 }

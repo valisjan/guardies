@@ -592,6 +592,26 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('#date-input')).toHaveValue('2026-09-26');
   });
 
+  test('un error de permisos es mostra en català i amb què cal fer', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.evaluate(() => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function setItem(key, value) {
+        if (key === 'quota-e2e-guardies:e2e-2026' && window.__denyWrites) {
+          throw Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
+        }
+        return original.call(this, key, value);
+      };
+      window.__denyWrites = true;
+    });
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await expect(page.locator('#error-box')).toContainText('No tens permís per fer aquesta acció');
+    await expect(page.locator('#error-box')).not.toContainText('Missing or insufficient');
+  });
+
   test('dos canvis de vista seguits acaben a l\'últim triat', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

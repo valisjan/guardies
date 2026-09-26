@@ -1,4 +1,5 @@
 <script setup>
+import { friendlyError } from '../../../src/utils/friendlyError.js';
 import { ref } from 'vue';
 import { useGuardiesStore } from '../stores/guardies.js';
 import { saveGuardiesObservationPresets } from '../../../src/services/guardiesStorage.js';
@@ -17,7 +18,7 @@ async function persist(next) {
     state.observationPresets = await saveGuardiesObservationPresets(state.courseId, next);
   } catch (saveError) {
     state.observationPresets = previous;
-    error.value = saveError?.message || String(saveError);
+    error.value = friendlyError(saveError);
   } finally {
     saving.value = false;
   }

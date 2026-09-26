@@ -1,4 +1,5 @@
 <script setup>
+import { friendlyError } from '../../../src/utils/friendlyError.js';
 import { computed, defineAsyncComponent, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import GuardiesTopBar from './GuardiesTopBar.vue';
@@ -40,7 +41,7 @@ async function signIn() {
     if (signedIn) window.dispatchEvent(new CustomEvent('guardies:auth-changed'));
     else signingIn.value = false;
   } catch (error) {
-    signInError.value = error?.message || String(error);
+    signInError.value = friendlyError(error);
     signingIn.value = false;
   }
 }

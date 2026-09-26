@@ -1,4 +1,5 @@
 <script setup>
+import { friendlyError } from '../../../src/utils/friendlyError.js';
 import { computed, ref, watch } from 'vue';
 import { useGuardiesStore } from '../stores/guardies';
 import { saveGuardiesPati } from '../../../src/services/guardiesStorage';
@@ -292,7 +293,7 @@ async function saveAutomatically() {
     saveMessage.value = 'Desat automàticament';
     window.dispatchEvent(new CustomEvent('guardies:pati-updated'));
   } catch (error) {
-    saveMessage.value = `No s'ha pogut desar: ${error.message || error}`;
+    saveMessage.value = `No s'ha pogut desar: ${friendlyError(error)}`;
   } finally {
     saving.value = false;
   }

@@ -4,6 +4,7 @@ import { renderPublicCoverage, renderPublicOutings } from './publicDayRenderer.j
 import { createScheduleIndex } from '../../src/modules/guardies/domain/schedule-index.js';
 import { guardHistoryGroups, guardSlotFromAssignment } from '../../src/modules/guardies/domain/guard-history.js';
 import { createKeyedRenderer } from '../../src/utils/keyedDom.js';
+import { friendlyError } from '../../src/utils/friendlyError.js';
 import { GUARD_CODES_STORAGE, useGuardiesStore } from './stores/guardies.js';
 import {
   classroomPartnerForAbsence,
@@ -290,7 +291,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       render();
     } catch (error) {
       state.dayPersistenceStatus = 'error';
-      showError(`No s'ha pogut guardar la jornada. ${error.message || error}`);
+      showError(`No s'ha pogut guardar la jornada. ${friendlyError(error)}`);
     } finally {
       navigationInFlight = false;
     }
@@ -302,7 +303,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       await reloadTeacherDirectory();
       showError('');
     } catch (error) {
-      showError(`No s'ha pogut actualitzar el directori. ${error.message || error}`);
+      showError(`No s'ha pogut actualitzar el directori. ${friendlyError(error)}`);
     }
   });
 
@@ -381,7 +382,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         await persistDayNow();
       } catch (error) {
         state.dayPersistenceStatus = 'error';
-        showError(`No s'ha pogut guardar la jornada. ${error.message || error}`);
+        showError(`No s'ha pogut guardar la jornada. ${friendlyError(error)}`);
         // La vista no canvia per no perdre els canvis: la URL ha de continuar indicant-la.
         syncViewUrl();
         return;
@@ -480,7 +481,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.persistenceStatus = 'error';
       state.contextReady = true;
       state.authRequired = String(error?.message || error).includes('Inicia sessió');
-      showError(state.authRequired ? '' : error.message || String(error));
+      showError(state.authRequired ? '' : friendlyError(error));
       render();
       window.dispatchEvent(new CustomEvent('guardies:auth-ready'));
     }
@@ -605,7 +606,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       localStorage.setItem(key, value);
       return true;
     } catch (error) {
-      showError(`No s'ha pogut guardar la preferència local. ${error.message || error}`);
+      showError(`No s'ha pogut guardar la preferència local. ${friendlyError(error)}`);
       return false;
     }
   }
@@ -785,7 +786,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     }, (error) => {
       if (initialPending) { initialPending = false; rejectInitial(error); }
       state.persistenceStatus = 'error';
-      showError(`No s'han pogut sincronitzar les dades. ${error.message || error}`);
+      showError(`No s'han pogut sincronitzar les dades. ${friendlyError(error)}`);
     }, { iosPollInterval: 5 * 60 * 1000, onMetadata: (metadata) => {
       if (courseId !== state.courseId) return;
       remoteConfigurationFromCache = metadata.fromCache || metadata.hasPendingWrites;
@@ -831,7 +832,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         if (courseId !== state.courseId) return;
         releaseTeacherStats();
         state.teacherStatsStatus = 'error';
-        showError(`No s'ha pogut carregar el recompte. ${error.message || error}`);
+        showError(`No s'ha pogut carregar el recompte. ${friendlyError(error)}`);
       }
     })().finally(() => { teacherStatsInFlight = null; });
     return teacherStatsInFlight;
@@ -872,7 +873,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       if (unsubscribeTeacherStats === release) unsubscribeTeacherStats = null;
       stop();
       if (settle) { finishFirst(error); return; }
-      if (courseId === state.courseId) showError(`No s'ha pogut actualitzar el recompte. ${error.message || error}`);
+      if (courseId === state.courseId) showError(`No s'ha pogut actualitzar el recompte. ${friendlyError(error)}`);
     });
     return first;
   }
@@ -1143,7 +1144,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       showError('');
     } catch (error) {
       state.dayPersistenceStatus = 'error';
-      showError(error.message || String(error));
+      showError(friendlyError(error));
     } finally {
       navigationInFlight = false;
     }
@@ -1250,7 +1251,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         showError('No s\'ha pogut connectar per carregar aquesta jornada. Es mostren les últimes dades guardades i es reintentarà la connexió.');
       } else {
         state.dayPersistenceStatus = 'error';
-        showError(`No s'ha pogut carregar la jornada. ${error.message || error}`);
+        showError(`No s'ha pogut carregar la jornada. ${friendlyError(error)}`);
       }
     } finally {
       if (date === state.date && courseId === state.courseId && generation === dayLoadGeneration) {
@@ -1317,7 +1318,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     }, (error) => {
       if (first) { first = false; rejectFirst(error); }
       state.dayPersistenceStatus = 'error';
-      showError(`No s'ha pogut sincronitzar la jornada. ${error.message || error}`);
+      showError(`No s'ha pogut sincronitzar la jornada. ${friendlyError(error)}`);
     }, {
       publishedOnly: state.teacherView || !state.isAdmin,
       iosPollInterval: state.canWrite ? 30 * 1000 : 60 * 1000,
@@ -1358,7 +1359,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       }, (error) => {
         if (courseId !== state.courseId || date !== state.date) return;
         state.dayPersistenceStatus = 'error';
-        showError(`No s'ha pogut carregar la jornada. ${error.message || error}`);
+        showError(`No s'ha pogut carregar la jornada. ${friendlyError(error)}`);
         reject(error);
       });
     });
@@ -1448,7 +1449,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         state.dayPersistenceStatus = 'error';
         stashDayDraft();
         if (pendingRemoteDay) markDayConflict(pendingRemoteDay.saved, pendingRemoteDay.date);
-        else showError(`No s'ha pogut guardar la jornada. ${error.message || error}`);
+        else showError(`No s'ha pogut guardar la jornada. ${friendlyError(error)}`);
       }
     }, delay);
   }
@@ -1575,7 +1576,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       render();
     } catch (error) {
       state.dayPersistenceStatus = 'error';
-      showError(`No s'ha pogut canviar l'estat de la jornada. ${error.message || error}`);
+      showError(`No s'ha pogut canviar l'estat de la jornada. ${friendlyError(error)}`);
     } finally {
       navigationInFlight = false;
     }
@@ -1637,7 +1638,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       render();
     } catch (error) {
       state.dayPersistenceStatus = 'error';
-      const message = `No s'ha pogut aplicar l'interval. ${error.message || error}`;
+      const message = `No s'ha pogut aplicar l'interval. ${friendlyError(error)}`;
       showError(message);
       reportResult(false, message);
     }
@@ -1682,7 +1683,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       render();
     } catch (error) {
       state.dayPersistenceStatus = 'error';
-      const message = `No s'ha pogut copiar la sortida. ${error.message || error}`;
+      const message = `No s'ha pogut copiar la sortida. ${friendlyError(error)}`;
       showError(message);
       reportResult(false, message);
     }
@@ -1737,7 +1738,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       showError('');
     } catch (error) {
       state.persistenceStatus = 'error';
-      showError(`No s'ha pogut guardar la setmana. ${error.message || error}`);
+      showError(`No s'ha pogut guardar la setmana. ${friendlyError(error)}`);
     }
     render();
   }
@@ -1785,7 +1786,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       parseStoredData({ resetSelection: detectedKind === 'duties' });
     } catch (error) {
       state.persistenceStatus = 'error';
-      showError(error.message || String(error));
+      showError(friendlyError(error));
       render();
     }
   }
@@ -1861,7 +1862,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       parseStoredData({ resetSelection: true });
     } catch (error) {
       state.persistenceStatus = 'error';
-      showError(`No s'ha pogut eliminar el fitxer. ${error.message || error}`);
+      showError(`No s'ha pogut eliminar el fitxer. ${friendlyError(error)}`);
       render();
     }
   }
@@ -1888,7 +1889,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       try {
         state.referencia = markRaw(parser.parseGestibReference(state.referenceText));
       } catch (error) {
-        referenceError = error.message || String(error);
+        referenceError = friendlyError(error);
       }
     }
 
@@ -1899,7 +1900,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           untisError = 'No s\'ha trobat professorat reconeixible al fitxer d\'Untis.';
         }
       } catch (error) {
-        untisError = error.message || String(error);
+        untisError = friendlyError(error);
       }
     }
 
@@ -1995,7 +1996,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.grupProfessorsAlliberats.clear();
       state.partialGroups.clear();
       state.outingAbsenceIds.clear();
-      showError(error.message || String(error));
+      showError(friendlyError(error));
     }
 
     if (renderAfter) render();
@@ -2056,7 +2057,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       render();
     } catch (error) {
       state.persistenceStatus = 'error';
-      showError(`No s'han pogut eliminar els fitxers. ${error.message || error}`);
+      showError(`No s'han pogut eliminar els fitxers. ${friendlyError(error)}`);
       render();
     }
   }
@@ -3213,7 +3214,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     } catch (error) {
       state.patiConfig = previous;
       state.persistenceStatus = 'error';
-      showError(`No s'ha pogut canviar la zona del pati. ${error.message || error}`);
+      showError(`No s'ha pogut canviar la zona del pati. ${friendlyError(error)}`);
       renderCoverage();
     }
   }
