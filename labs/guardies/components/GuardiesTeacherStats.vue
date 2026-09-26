@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { storeToRefs } from 'pinia';
 import { guardCountForSlot, guardSlotKey } from '../../../src/modules/guardies/domain/workflow.js';
+import { displayHistoryGroups } from '../../../src/modules/guardies/domain/guard-history.js';
 import { useGuardiesStore } from '../stores/guardies.js';
 
 const store = useGuardiesStore();
@@ -145,7 +146,7 @@ function historyForTeacher(teacher, index) {
   });
   return Array.from(merged.entries())
     .sort(([left], [right]) => right.localeCompare(left))
-    .map(([date, groups]) => ({ date, groups }));
+    .map(([date, groups]) => ({ date, groups: displayHistoryGroups(groups) }));
 }
 
 function historyText(teacher, index) {
@@ -200,7 +201,6 @@ const historyTextByTeacher = computed(() => {
               class="guard-roster-teacher"
               :class="[`heat-${teacher.heat}`, { 'is-mine': teacher.mine }]"
               :data-roster-teacher="teacher.teacherId"
-              :title="historyTextByTeacher.get(teacher.teacherId) || ''"
               :aria-label="`${teacher.label}${historyTextByTeacher.get(teacher.teacherId) ? ` · ${historyTextByTeacher.get(teacher.teacherId)}` : ''}`"
               role="button"
               tabindex="0"

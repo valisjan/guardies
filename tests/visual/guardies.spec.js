@@ -356,7 +356,7 @@ test.describe('Guàrdies: comportament existent', () => {
       data.stats = {
         ...(data.stats || {}),
         guardHistoryVersion: 1,
-        guardHistory: { 2: { '2026-09-18': ['1ESO-A'] } },
+        guardHistory: { 2: { '2026-09-18': ['1ESO-A', '1ESO', '662663', '94'] } },
       };
       localStorage.setItem(key, JSON.stringify(data));
     });
@@ -369,6 +369,8 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(teacher.locator('.guard-history-tooltip')).toContainText('1 guàrdia');
     await expect(teacher.locator('.guard-history-tooltip')).toContainText('18/09/2026');
     await expect(teacher.locator('.guard-history-tooltip')).toContainText('1ESO-A');
+    await expect(teacher.locator('.guard-history-tooltip')).toHaveText('1 guàrdia\n18/09/2026 · 1ESO-A');
+    await expect(teacher).not.toHaveAttribute('title', /.+/);
   });
 
   test('arrenca buit i obliga a carregar els fitxers en ordre', async ({ page }) => {

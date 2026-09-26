@@ -1,6 +1,7 @@
 import * as parser from './horariXmlParser.js';
 import { renderPublicCoverage, renderPublicOutings } from './publicDayRenderer.js';
 import { createScheduleIndex } from '../../src/modules/guardies/domain/schedule-index.js';
+import { guardHistoryGroups } from '../../src/modules/guardies/domain/guard-history.js';
 import { createKeyedRenderer } from '../../src/utils/keyedDom.js';
 import { GUARD_CODES_STORAGE, useGuardiesStore } from './stores/guardies.js';
 import {
@@ -406,14 +407,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (state.canWrite && Number(stats.guardHistoryVersion) !== 1 && state.sessions.length && canRetryGuardHistoryMigration(courseId)) {
       const absenceDetails = Object.fromEntries(
         parser.agruparSessionsCobertura(state.sessions.filter(isMeaningfulSession))
-          .map((item) => [item.id, {
-            groups: Array.from(new Set([
-              ...(item.grupsVisibles || []),
-              ...(item.cursosVisibles || []),
-              ...(item.grups || []),
-              ...(item.cursos || []),
-            ].filter(Boolean))),
-          }]),
+          .map((item) => [item.id, { groups: guardHistoryGroups(item) }]),
       );
       rebuildGuardiesGuardHistory(courseId, absenceDetails)
         .then((result) => {
@@ -1288,11 +1282,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           if (state.assignmentSources.get(absenceId) !== 'guard' || state.cancelledAssignments.has(absenceId)) return;
           const item = state.absencies.get(absenceId);
           if (!item || item.dia !== xmlDayForDate(state.date)) return;
-          const groups = Array.from(new Set([
-            ...(item.grupsVisibles || []), ...(item.cursosVisibles || []),
-            ...(item.grups || []), ...(item.cursos || []),
-          ].filter(Boolean)));
-          guardHistoryEntries.push({ teacherId, groups });
+          guardHistoryEntries.push({ teacherId, groups: guardHistoryGroups(item) });
         });
       }
       const projection = publicGuardiesDay();
