@@ -112,6 +112,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let viewNavigationPending = false;
   // Sense data a la URL, la primera càrrega obre el primer dia lectiu.
   let automaticInitialDate = true;
+  // Declarades aquí perquè l'arrencada (síncrona al començament) ja les fa servir.
+  let pendingUndo = null;
+  let undoCounter = 0;
+  let recentDaySaves = [];
   // Curs dels fitxers d'horari que hi ha a l'estat, per reutilitzar-los entre vistes.
   let scheduleTextsCourseId = '';
   let visibilityResumeInFlight = null;
@@ -280,12 +284,15 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   window.addEventListener('guardies:release-teacher-stats', releaseTeacherStats);
   window.addEventListener('guardies:resolve-conflict', (event) => resolveDayConflict(event.detail?.choice));
   window.addEventListener('guardies:resume-autosave', resumeAutoSave);
+  window.addEventListener('guardies:undo', applyUndo);
+  window.addEventListener('guardies:dismiss-undo', clearUndo);
 
   async function navigateToDate(date) {
     if (!date || date === state.date || navigationInFlight) return;
     navigationInFlight = true;
     try {
       await persistDayNow();
+      clearUndo();
       state.changeDate(date);
       await activateGuardiesDay(date);
       render();
@@ -399,6 +406,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     // jornada pública del professorat) no es pot prendre per canvis locals i
     // desar-se sobre la jornada compartida. Els canvis reals ja s'han desat a dalt.
     clearTimeout(daySaveTimer);
+    clearUndo();
     state.dayLoaded = false;
     loadedDate = '';
     lastDaySignature = '';
@@ -1405,8 +1413,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   const SAVE_RATE_WINDOW = 60 * 1000;
   const SAVE_RATE_LIMIT = 40;
   const AUTO_SAVE_PAUSED_MESSAGE = "S'ha aturat el guardat automàtic: aquesta pestanya ha desat la jornada massa vegades en un minut, cosa que indica un bucle amb una altra sessió. Els canvis es conserven en aquest dispositiu. Revisa la jornada i prem «Reprèn el guardat».";
-  let recentDaySaves = [];
-
   function saveRateExceeded() {
     const now = Date.now();
     recentDaySaves = recentDaySaves.filter((time) => now - time < SAVE_RATE_WINDOW);
@@ -2809,6 +2815,52 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     coverageDerived = null;
   }
 
+  // Desfer: instantània de la jornada abans d'una acció destructiva o massiva.
+  // Restaurar-la és una edició més (es desa amb la comprovació de conflictes).
+  const UNDO_TIMEOUT = 8000;
+
+  function captureDayEdits() {
+    return {
+      date: state.date,
+      absencies: new Map(state.absencies),
+      assignacions: new Map(state.assignacions),
+      assignmentSources: new Map(state.assignmentSources),
+      comentaris: new Map(state.comentaris),
+      cancelledAssignments: new Set(state.cancelledAssignments),
+      overriddenCoTeacherAssignments: new Set(state.overriddenCoTeacherAssignments),
+    };
+  }
+
+  function offerUndo(message, snapshot) {
+    undoCounter += 1;
+    const id = undoCounter;
+    pendingUndo = { id, snapshot, timer: setTimeout(() => { if (pendingUndo?.id === id) clearUndo(); }, UNDO_TIMEOUT) };
+    state.undoToast = { id, message };
+  }
+
+  function clearUndo() {
+    if (pendingUndo) clearTimeout(pendingUndo.timer);
+    pendingUndo = null;
+    state.undoToast = null;
+  }
+
+  function applyUndo() {
+    const undo = pendingUndo;
+    clearUndo();
+    if (!undo || !state.canWrite || undo.snapshot.date !== state.date || state.dayStatus === 'closed') return;
+    const { snapshot } = undo;
+    ['absencies', 'assignacions', 'assignmentSources', 'comentaris'].forEach((key) => {
+      state[key].clear();
+      snapshot[key].forEach((value, entry) => state[key].set(entry, value));
+    });
+    ['cancelledAssignments', 'overriddenCoTeacherAssignments'].forEach((key) => {
+      state[key].clear();
+      snapshot[key].forEach((value) => state[key].add(value));
+    });
+    renderSchedule();
+    commitCoverageEdit({ renderAll: true });
+  }
+
   function commitCoverageEdit({ renderAll = false } = {}) {
     if (state.contextReady && state.dayLoaded) reconcileCoverageState();
     if (renderAll) render();
@@ -2987,6 +3039,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       if (!bindOnce(button)) return;
       button.addEventListener('click', () => {
         if (state.dayStatus === 'closed') return;
+        const snapshot = captureDayEdits();
         const absenceIds = (button.dataset.removeAbsences || button.dataset.removeAbsence).split(',').filter(Boolean);
         absenceIds.forEach((absenceId) => {
           state.absencies.delete(absenceId);
@@ -2998,6 +3051,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         });
         renderSchedule();
         commitCoverageEdit();
+        offerUndo(absenceIds.length === 1 ? "S'ha eliminat l'absència." : `S'han eliminat ${absenceIds.length} absències.`, snapshot);
       });
     });
 
@@ -3049,6 +3103,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       reportResult(false, 'No hi ha guàrdies pendents.');
       return;
     }
+    const snapshot = captureDayEdits();
 
     const projectedCounts = new Map();
     state.assignacions.forEach((teacherId, absenceId) => {
@@ -3091,6 +3146,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const uncovered = pending.length - assigned;
     const message = `${assigned} ${assigned === 1 ? 'assignada' : 'assignades'}${uncovered ? ` · ${uncovered} sense cobrir` : ''}`;
     reportResult(assigned > 0, message);
+    if (assigned) offerUndo(`S'han assignat ${assigned} ${assigned === 1 ? 'guàrdia' : 'guàrdies'} automàticament.`, snapshot);
   }
 
 

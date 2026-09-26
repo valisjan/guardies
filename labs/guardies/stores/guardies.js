@@ -84,6 +84,8 @@ export const useGuardiesStore = defineStore('guardies', {
     coverageSummary: { open: 0, covered: 0, outings: 0 },
     // Guardat automàtic aturat per un ritme d'escriptures impropi d'una persona.
     autoSavePaused: false,
+    // Avís amb "Desfés" després d'una acció que esborra o canvia molt: { id, message }.
+    undoToast: null,
   }),
   actions: {
     clearAbsencePlan() {

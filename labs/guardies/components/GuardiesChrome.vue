@@ -8,6 +8,7 @@ const GuardiesSetupPanel = defineAsyncComponent(() => import('./GuardiesSetupPan
 const GuardiesPatiPanel = defineAsyncComponent(() => import('./GuardiesPatiPanel.vue'));
 const GuardiesConvivenciaPanel = defineAsyncComponent(() => import('./GuardiesConvivenciaPanel.vue'));
 import GuardiesWorkspace from './GuardiesWorkspace.vue';
+import GuardiesUndoToast from './GuardiesUndoToast.vue';
 const GuardiesTeacherStats = defineAsyncComponent(() => import('./GuardiesTeacherStats.vue'));
 const GuardiesGuardCountPanel = defineAsyncComponent(() => import('./GuardiesGuardCountPanel.vue'));
 const GuardiesTeacherExclusionsPanel = defineAsyncComponent(() => import('./GuardiesTeacherExclusionsPanel.vue'));
@@ -53,6 +54,7 @@ window.addEventListener('guardies:auth-ready', () => {
 
 <template>
   <GuardiesTopBar />
+  <GuardiesUndoToast />
   <Teleport to="#guardies-work-header-root">
     <nav v-if="contextReady && canWrite" class="admin-view-tabs no-print" aria-label="Seccions de guàrdies" role="tablist">
       <button type="button" role="tab" :aria-selected="adminSection === 'daily'" :class="{ active: adminSection === 'daily' }" @click="store.adminSection = 'daily'">Gestió diària</button>

@@ -5141,6 +5141,86 @@ button.ghost {
   }
 }
 
+/* Avís amb "Desfés" */
+@media screen {
+  .undo-toast-region {
+    position: fixed;
+    z-index: 80;
+    left: 50%;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    pointer-events: none;
+  }
+
+  .undo-toast {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-radius: 14px;
+    background: #15171c;
+    padding: 8px 8px 8px 18px;
+    color: #f5f4f0;
+    box-shadow: 0 16px 40px rgb(20 24 32 / 0.3);
+    font-size: 0.9rem;
+    font-weight: 500;
+    pointer-events: auto;
+    animation: undo-toast-in 180ms ease-out;
+  }
+
+  .dark .undo-toast {
+    background: #f5f4f0;
+    color: #15171c;
+  }
+
+  .undo-toast-action {
+    min-height: 36px;
+    border: 0;
+    border-radius: var(--radius-small);
+    background: transparent;
+    padding: 0 12px;
+    color: #b3bcff;
+    font-weight: 700;
+  }
+
+  .dark .undo-toast-action {
+    color: #3346b8;
+  }
+
+  .undo-toast-action:hover {
+    border: 0;
+    background: rgb(255 255 255 / 0.1);
+  }
+
+  .undo-toast-close {
+    display: grid;
+    width: 36px;
+    min-height: 36px;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: inherit;
+    opacity: 0.7;
+  }
+
+  .undo-toast-close:hover {
+    border: 0;
+    background: transparent;
+    opacity: 1;
+  }
+
+  @keyframes undo-toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .undo-toast { animation: none; }
+  }
+}
+
 @media print {
   @page { size: A3 portrait; margin: 6mm; }
   :root {

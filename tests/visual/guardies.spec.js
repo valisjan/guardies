@@ -612,6 +612,41 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('#error-box')).not.toContainText('Missing or insufficient');
   });
 
+  test('eliminar una absència i assignar automàticament es poden desfer', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    const stored = () => page.evaluate(() => {
+      const day = JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07'];
+      return day ? { absences: day.absenceIds.length, assignments: Object.keys(day.assignments || {}).length } : null;
+    });
+    await expect.poll(async () => (await stored())?.absences || 0).toBeGreaterThan(1);
+    await page.waitForTimeout(400);
+    const before = await stored();
+
+    await page.locator('[data-remove-absence]').first().click();
+    await expect(page.locator('.undo-toast')).toContainText("S'ha eliminat l'absència.");
+    await expect.poll(async () => (await stored()).absences).toBe(before.absences - 1);
+    await page.getByRole('button', { name: 'Desfés' }).click();
+    await expect(page.locator('.undo-toast')).toHaveCount(0);
+    await expect(page.locator('[data-remove-absence]')).toHaveCount(before.absences);
+    await expect.poll(async () => (await stored()).absences).toBe(before.absences);
+
+    await page.getByRole('button', { name: 'Assigna automàticament' }).click();
+    await expect(page.locator('.undo-toast')).toContainText('automàticament');
+    await expect.poll(async () => (await stored()).assignments).toBeGreaterThan(before.assignments);
+    await page.getByRole('button', { name: 'Desfés' }).click();
+    await expect.poll(async () => (await stored()).assignments).toBe(before.assignments);
+
+    // L'avís desapareix sol i no se'n pot desfer res més.
+    await page.locator('[data-remove-absence]').first().click();
+    await expect(page.locator('.undo-toast')).toBeVisible();
+    await page.getByRole('button', { name: "Tanca l'avís" }).click();
+    await expect(page.locator('.undo-toast')).toHaveCount(0);
+  });
+
   test('dos canvis de vista seguits acaben a l\'últim triat', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
