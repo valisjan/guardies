@@ -17,6 +17,7 @@ import {
 } from '../../src/modules/guardies/domain/day.js';
 import { guardCountForSlot, normalizeGuardCount, teachingDatesBetween } from '../../src/modules/guardies/domain/workflow.js';
 import {
+  nextTeachingDate,
   nonTeachingReason,
   patioAssignmentsForDate,
 } from '../../src/modules/guardies/domain/patio.js';
@@ -108,6 +109,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let bootstrapDeferredUntilVisible = false;
   // Canvi de vista demanat mentre una arrencada encara és en curs.
   let viewNavigationPending = false;
+  // Sense data a la URL, la primera càrrega obre el primer dia lectiu.
+  let automaticInitialDate = true;
   // Curs dels fitxers d'horari que hi ha a l'estat, per reutilitzar-los entre vistes.
   let scheduleTextsCourseId = '';
   let visibilityResumeInFlight = null;
@@ -330,6 +333,16 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
   }
 
+  // Un dissabte o un festiu, el dia d'avui no té guàrdies: el professorat veuria
+  // "Jornada encara no publicada". Només s'aplica a la primera càrrega sense
+  // data a la URL; el botó Avui continua portant al dia d'avui.
+  function applyAutomaticInitialDate() {
+    if (!automaticInitialDate) return;
+    automaticInitialDate = false;
+    const next = nextTeachingDate(localDateString(new Date()), state.patiConfig);
+    if (next && next !== state.date) state.changeDate(next);
+  }
+
   function handlePopState() {
     const search = new URLSearchParams(window.location.search);
     const teacherView = search.get('vista') === 'professor' || !state.isAdmin;
@@ -406,7 +419,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     try {
       const requestedCourseId = search.get('curs') || '';
       const requestedDate = search.get('data') || '';
-      if (/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) state.changeDate(requestedDate);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+        state.changeDate(requestedDate);
+        automaticInitialDate = false;
+      }
       const context = await getGuardiesContext(requestedCourseId, {
         teacherView: search.get('vista') === 'professor',
       });
@@ -424,6 +440,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         state.professorOptions = [];
         state.teacherStatsStatus = 'idle';
         state.persistenceStatus = 'ready';
+        applyAutomaticInitialDate();
         await activateGuardiesDay(state.date);
         state.contextReady = true;
         bootstrapRetryAttempt = 0;
@@ -452,6 +469,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       const adminPanel = document.getElementById('admin-panel');
       if (adminPanel) adminPanel.open = false;
       parseStoredData({ resetSelection: true });
+      applyAutomaticInitialDate();
       await activateGuardiesDay(state.date);
       state.contextReady = true;
       bootstrapRetryAttempt = 0;

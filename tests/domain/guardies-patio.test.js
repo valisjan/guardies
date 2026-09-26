@@ -75,3 +75,14 @@ test('la previsualització sempre retorna de dilluns a divendres', () => {
     '2026-09-14', '2026-09-15', '2026-09-16', '2026-09-17', '2026-09-18',
   ]);
 });
+
+test('obre el primer dia lectiu: salta caps de setmana, festius oficials i dies del centre', async () => {
+  const { nextTeachingDate } = await import('../../src/modules/guardies/domain/patio.js');
+  assert.equal(nextTeachingDate('2026-09-28'), '2026-09-28');
+  assert.equal(nextTeachingDate('2026-09-26'), '2026-09-28');
+  assert.equal(nextTeachingDate('2026-09-27'), '2026-09-28');
+  assert.equal(nextTeachingDate('2026-10-10'), '2026-10-13');
+  assert.equal(nextTeachingDate('2026-12-23'), '2027-01-07');
+  assert.equal(nextTeachingDate('2026-09-28', { startYear: 2026, customHolidays: [{ date: '2026-09-28', label: 'Festa local' }] }), '2026-09-29');
+  assert.equal(nextTeachingDate('no-data'), 'no-data');
+});

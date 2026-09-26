@@ -161,6 +161,22 @@ export function nonTeachingDates(config) {
   return result;
 }
 
+// Primer dia lectiu a partir de `value` (inclòs): salta caps de setmana, el
+// calendari escolar oficial i, si hi ha configuració, els dies no lectius del
+// centre. Si no en troba cap en 45 dies (estiu), torna `value`.
+export function nextTeachingDate(value, config = null) {
+  const date = parseDate(value);
+  if (!date) return value;
+  const startYear = date.getMonth() >= 7 ? date.getFullYear() : date.getFullYear() - 1;
+  const blocked = nonTeachingDates(config ? { ...config, startYear: config.startYear || startYear } : { startYear });
+  let cursor = value;
+  for (let step = 0; step < 45; step += 1) {
+    if (weekdayIdForDate(cursor) && !blocked.has(cursor)) return cursor;
+    cursor = addDays(cursor, 1);
+  }
+  return value;
+}
+
 export function weekdayIdForDate(value) {
   const date = parseDate(value);
   if (!date) return '';

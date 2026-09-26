@@ -575,6 +575,23 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect.poll(() => page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days['2026-09-07'].comments))).toContain('bucle 44');
   });
 
+  test('en cap de setmana obre el primer dia lectiu si la URL no porta data', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-09-26T10:00:00'));
+    await page.goto('/?vista=professor');
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-28');
+    await expect(page).toHaveURL(/data=2026-09-28/);
+    await page.goto('/');
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-28');
+    // Una data explícita es respecta, encara que sigui dissabte.
+    await page.goto('/?data=2026-09-26');
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-26');
+    // El botó Avui continua portant al dia d'avui.
+    await page.goto('/');
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-28');
+    await page.getByRole('button', { name: 'Avui' }).click();
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-26');
+  });
+
   test('dos canvis de vista seguits acaben a l\'últim triat', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
