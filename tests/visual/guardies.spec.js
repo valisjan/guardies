@@ -156,6 +156,7 @@ test.describe('Guàrdies: comportament existent', () => {
       input.setSelectionRange(5, 10);
       const key = 'quota-e2e-guardies:e2e-2026';
       const data = JSON.parse(localStorage.getItem(key));
+      data.stats ||= { counts: {} };
       data.stats.counts['2'] = { guard: 8 };
       localStorage.setItem(key, JSON.stringify(data));
       window.dispatchEvent(new StorageEvent('storage', { key }));
