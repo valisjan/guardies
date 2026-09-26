@@ -82,6 +82,8 @@ export const useGuardiesStore = defineStore('guardies', {
     unclosedDays: [],
     // Resum de la jornada per a la capçalera: files que necessiten cobertura.
     coverageSummary: { open: 0, covered: 0, outings: 0 },
+    // Guardat automàtic aturat per un ritme d'escriptures impropi d'una persona.
+    autoSavePaused: false,
   }),
   actions: {
     clearAbsencePlan() {

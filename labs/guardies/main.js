@@ -275,6 +275,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   window.addEventListener('guardies:load-teacher-stats', ensureTeacherStatistics);
   window.addEventListener('guardies:release-teacher-stats', releaseTeacherStats);
   window.addEventListener('guardies:resolve-conflict', (event) => resolveDayConflict(event.detail?.choice));
+  window.addEventListener('guardies:resume-autosave', resumeAutoSave);
 
   async function navigateToDate(date) {
     if (!date || date === state.date || navigationInFlight) return;
@@ -1380,6 +1381,36 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   const DAY_SAVE_DELAY = 250;
   const TEXT_SAVE_DELAY = 1500;
 
+  // Fre contra bucles d'escriptura (p. ex. dues sessions que es corregeixen
+  // mútuament): cap persona desa la jornada 40 vegades en un minut.
+  const SAVE_RATE_WINDOW = 60 * 1000;
+  const SAVE_RATE_LIMIT = 40;
+  const AUTO_SAVE_PAUSED_MESSAGE = "S'ha aturat el guardat automàtic: aquesta pestanya ha desat la jornada massa vegades en un minut, cosa que indica un bucle amb una altra sessió. Els canvis es conserven en aquest dispositiu. Revisa la jornada i prem «Reprèn el guardat».";
+  let recentDaySaves = [];
+
+  function saveRateExceeded() {
+    const now = Date.now();
+    recentDaySaves = recentDaySaves.filter((time) => now - time < SAVE_RATE_WINDOW);
+    return recentDaySaves.length >= SAVE_RATE_LIMIT;
+  }
+
+  function pauseAutoSave() {
+    clearTimeout(daySaveTimer);
+    state.autoSavePaused = true;
+    state.dayPersistenceStatus = 'error';
+    stashDayDraft();
+    showError(AUTO_SAVE_PAUSED_MESSAGE);
+  }
+
+  function resumeAutoSave() {
+    if (!state.autoSavePaused) return;
+    state.autoSavePaused = false;
+    recentDaySaves = [];
+    showError('');
+    state.dayPersistenceStatus = 'ready';
+    scheduleDaySave();
+  }
+
   function scheduleDaySave({ delay = DAY_SAVE_DELAY } = {}) {
     if (!state.canWrite || !state.courseId || !state.date || !state.dayLoaded || state.dayStatus === 'closed') return;
     if (hasInvalidManagedDay()) {
@@ -1390,7 +1421,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const signature = daySignature(payload);
     if (signature === lastDaySignature) return;
     stashDayDraft();
-    if (state.dayConflict) return;
+    if (state.dayConflict || state.autoSavePaused) return;
     clearTimeout(daySaveTimer);
     daySaveTimer = setTimeout(async () => {
       try {
@@ -1412,6 +1443,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       discardInvalidLocalDay();
       return;
     }
+    // En pausa, els canvis queden a la còpia local i es pot continuar navegant.
+    if (state.autoSavePaused) {
+      stashDayDraft();
+      return;
+    }
     if (!state.canWrite || !state.courseId || !state.dayLoaded || state.dayStatus === 'closed') return;
     const courseId = state.courseId;
     const date = state.date;
@@ -1430,6 +1466,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           discardInvalidLocalDay();
           return;
         }
+        if (saveRateExceeded()) {
+          pauseAutoSave();
+          return;
+        }
+        recentDaySaves.push(Date.now());
         const projection = ['published', 'closed'].includes(payload.status) ? publicGuardiesDay() : null;
         const saved = await saveGuardiesDay(courseId, date, payload, state.dayRevision, { publicProjection: projection });
         if (courseId !== state.courseId || date !== state.date) return;
@@ -1460,6 +1501,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   async function changeDayStatus(action) {
     if (navigationInFlight || !state.canWrite || !['publish', 'unpublish', 'close', 'reopen'].includes(action)) return;
+    if (state.autoSavePaused) {
+      showError(AUTO_SAVE_PAUSED_MESSAGE);
+      return;
+    }
     if (action === 'close') {
       const day = xmlDayForDate(state.date);
       const pending = Array.from(state.absencies.values())

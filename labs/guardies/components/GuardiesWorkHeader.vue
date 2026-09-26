@@ -7,7 +7,7 @@ const store = useGuardiesStore();
 const {
   date, absencies, dayStatus, dayPersistenceStatus,
   persistenceStatus, canWrite, teacherView, unclosedDays,
-  dayConflict, conflictRemoteClosed, coverageSummary,
+  dayConflict, conflictRemoteClosed, coverageSummary, autoSavePaused,
 } = storeToRefs(store);
 
 const xmlDay = computed(() => {
@@ -51,6 +51,10 @@ function requestDate(value) {
 
 function retryConnection() {
   window.dispatchEvent(new CustomEvent('guardies:retry-connection'));
+}
+
+function resumeAutoSave() {
+  window.dispatchEvent(new CustomEvent('guardies:resume-autosave'));
 }
 
 function resolveConflict(choice) {
@@ -117,6 +121,10 @@ function changeStatus(action) {
       <span>Canvis pendents de resoldre</span>
       <button type="button" :disabled="conflictRemoteClosed" @click="resolveConflict('local')">Conserva la meva versió</button>
       <button type="button" class="ghost" @click="resolveConflict('remote')">Carrega la compartida</button>
+    </div>
+    <div v-if="canWrite && autoSavePaused" class="day-conflict autosave-paused" role="alert">
+      <span>Guardat automàtic aturat</span>
+      <button type="button" @click="resumeAutoSave">Reprèn el guardat</button>
     </div>
     <p v-if="!teacherView && canWrite && unclosedDays.length" class="unclosed-days-warning" role="status">
       <strong>Dies no tancats:</strong>

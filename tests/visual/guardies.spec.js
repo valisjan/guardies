@@ -537,6 +537,44 @@ test.describe('Guàrdies: comportament existent', () => {
     expect((await day()).revision - before).toBeLessThanOrEqual(2);
   });
 
+  test('un bucle de guardats s\'atura sol i es pot reprendre', async ({ page }) => {
+    test.setTimeout(60_000);
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    const revision = () => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07']?.revision || 0);
+    await expect.poll(revision).toBeGreaterThan(0);
+    await page.waitForTimeout(600);
+    const before = await revision();
+    // Simula dues sessions que es corregeixen: una edició nova cada ~300 ms.
+    for (let i = 0; i < 45; i += 1) {
+      await page.evaluate(async (n) => {
+        const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+        const store = useGuardiesStore();
+        const id = Array.from(store.absencies.keys())[0];
+        store.comentaris.set(id, `bucle ${n}`);
+        window.dispatchEvent(new CustomEvent('guardies:day-edited'));
+      }, i);
+      await page.waitForTimeout(300);
+    }
+    await page.waitForTimeout(400);
+    const written = (await revision()) - before;
+    expect(written).toBeLessThanOrEqual(40);
+    await expect(page.getByRole('button', { name: 'Reprèn el guardat' })).toBeVisible();
+    await expect(page.locator('#error-box')).toContainText("S'ha aturat el guardat automàtic");
+
+    // En pausa es pot canviar de data; en tornar-hi, els canvis locals hi són.
+    await page.getByRole('button', { name: 'Dia següent' }).click();
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-08');
+    await page.getByRole('button', { name: 'Dia anterior' }).click();
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-07');
+    await page.getByRole('button', { name: 'Reprèn el guardat' }).click();
+    await expect(page.getByRole('button', { name: 'Reprèn el guardat' })).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days['2026-09-07'].comments))).toContain('bucle 44');
+  });
+
   test('dos canvis de vista seguits acaben a l\'últim triat', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
