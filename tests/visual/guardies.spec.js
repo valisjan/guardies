@@ -647,6 +647,28 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('.undo-toast')).toHaveCount(0);
   });
 
+  test('la vista del professorat cap a la pantalla i mostra qui cobreix en mòbil i tauleta', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await page.getByRole('button', { name: 'Publica' }).click();
+    await expect(page.locator('#day-status-action')).toHaveText('Tanca jornada');
+    await page.getByRole('link', { name: 'Professorat', exact: true }).click();
+    for (const width of [390, 700]) {
+      await page.setViewportSize({ width, height: 844 });
+      const cell = page.locator('.coverage-assignment-cell').first();
+      await expect(cell).toBeVisible();
+      const layout = await page.evaluate(() => {
+        const box = document.querySelector('.coverage-assignment-cell').getBoundingClientRect();
+        return { overflow: document.documentElement.scrollWidth - window.innerWidth, right: box.right, width: window.innerWidth };
+      });
+      expect(layout.overflow).toBeLessThanOrEqual(0);
+      expect(layout.right).toBeLessThanOrEqual(layout.width);
+    }
+  });
+
   test('dos canvis de vista seguits acaben a l\'últim triat', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

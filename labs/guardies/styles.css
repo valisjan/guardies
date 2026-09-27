@@ -5242,6 +5242,24 @@ button.ghost {
   }
 }
 
+/* Vista del professorat (només lectura): la regla antiga de 4 columnes amb
+   mínims fixos desbordava la pantalla del mòbil i tallava qui cobreix. */
+@media screen and (max-width: 820px) {
+  .guard-layout.is-readonly .coverage-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .guard-layout.is-readonly .coverage-comment-cell {
+    grid-column: 1 / -1;
+  }
+}
+
+@media screen and (max-width: 620px) {
+  .guard-layout.is-readonly .coverage-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media print {
   @page { size: A3 portrait; margin: 6mm; }
   :root {
