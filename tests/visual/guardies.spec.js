@@ -669,6 +669,14 @@ test.describe('Guàrdies: comportament existent', () => {
     }
   });
 
+  test('avisa només els navegadors que no admeten capes CSS', async ({ page }) => {
+    await page.goto('/?data=2026-09-07');
+    await expect(page.locator('#outdated-browser')).toHaveCount(0);
+    await page.addInitScript(() => { delete window.CSSLayerBlockRule; });
+    await page.reload();
+    await expect(page.locator('#outdated-browser')).toContainText('massa antic');
+  });
+
   test('dos canvis de vista seguits acaben a l\'últim triat', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

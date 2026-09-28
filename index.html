@@ -22,6 +22,20 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..700&amp;family=Figtree:wght@400..900&amp;display=swap" />
     <link rel="stylesheet" href="/labs/guardies/styles.css" />
+    <script>
+      // Els estils fan servir capes CSS (@layer), disponibles des del 2022. Un navegador
+      // sense suport mostraria la pàgina sense estils: se li avisa de manera clara.
+      if (!('CSSLayerBlockRule' in window)) {
+        document.addEventListener('DOMContentLoaded', function () {
+          var box = document.createElement('div');
+          box.id = 'outdated-browser';
+          box.setAttribute('role', 'alert');
+          box.style.cssText = 'margin:16px;padding:16px;border:2px solid #8a4300;border-radius:10px;background:#fff0dd;color:#15171c;font:16px/1.4 system-ui,sans-serif';
+          box.textContent = 'Aquest navegador és massa antic per mostrar Guàrdies correctament. Actualitza el sistema o el navegador (Safari 15.4, Chrome 99, Firefox 97 o posteriors).';
+          document.body.insertBefore(box, document.body.firstChild);
+        });
+      }
+    </script>
     <script type="module" src="/labs/guardies/entry.js"></script>
   </head>
   <body class="guardies-app">
