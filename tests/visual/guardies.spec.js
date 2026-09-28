@@ -1216,6 +1216,55 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('#coverage-list')).toContainText('Adell Domènech');
   });
 
+  test('en copiar un interval, les jornades ja publicades actualitzen la vista del professorat', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    const data = () => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')));
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#duties-file').setInputFiles({
+      name: 'GPU001.TXT',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(`${dutiesText}\n41,"1ESO-B","FUEN","MAT","AUL14",2,1,,`),
+    });
+    await expect(page.locator('[data-upload-status="duties"]')).toHaveText('OK');
+    await page.getByRole('tab', { name: 'Gestió diària' }).click();
+
+    // Dimarts publicat amb una altra absència (el clic no compta fins que el dia ha carregat).
+    await page.locator('#date-input').fill('2026-09-08');
+    await page.locator('#date-input').press('Tab');
+    await page.locator('#professor-search').fill('Fuentes');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await expect.poll(async () => (await data()).days?.['2026-09-08']?.absenceIds?.length || 0).toBe(1);
+    await expect(async () => {
+      await page.getByRole('button', { name: 'Publica' }).click();
+      await expect(page.locator('#day-status-action')).toHaveText('Tanca jornada', { timeout: 1_000 });
+    }).toPass();
+    await expect.poll(async () => (await data()).publicDays?.['2026-09-08']?.status).toBe('published');
+
+    // Des del dilluns, l'absència de tot el dia es copia fins dimarts.
+    await page.locator('#date-input').fill('2026-09-07');
+    await page.locator('#date-input').press('Tab');
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await expect(page.locator('#coverage-list .coverage-item')).toHaveCount(3);
+    await page.locator('.range-builder input[type="date"]').nth(1).fill('2026-09-08');
+    await page.getByRole('button', { name: 'Aplica interval' }).click();
+    await expect(page.locator('.range-builder .range-feedback')).toHaveText('Totes les hores aplicades a 2 dies lectius · 4 sessions.');
+
+    // Sense obrir el dimarts, la seva vista pública ja inclou l'absència amb la revisió desada.
+    const stored = await data();
+    const tuesday = stored.publicDays['2026-09-08'];
+    const absent = tuesday.hours.flatMap((hour) => hour.rows || []).map((row) => row.absent).join(' ');
+    expect(absent).toContain('Adell');
+    expect(absent).toContain('Fuentes');
+    expect(tuesday.revision).toBe(stored.days['2026-09-08'].revision);
+    // El càlcul de l'altra jornada no ha tocat la visible.
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-07');
+    await expect(page.locator('#coverage-list .coverage-item')).toHaveCount(3);
+  });
+
   test('assigna automàticament primer alliberats i després professorat de G', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

@@ -1034,6 +1034,106 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     publicDaySavePending = false;
   }
 
+  // Camps de la jornada visible: els que canvien en passar d'un dia a un altre.
+  const DAY_STATE_FIELDS = [
+    'date', 'absencies', 'assignacions', 'assignmentSources', 'comentaris', 'grupsFora',
+    'grupProfessorsFora', 'grupProfessorsAlliberats', 'partialGroups', 'outingAbsenceIds',
+    'cancelledAssignments', 'overriddenCoTeacherAssignments', 'countedAssignments',
+    'dayStatus', 'publishedAt', 'updatedAt', 'closedAt', 'dayRevision',
+  ];
+
+  // Vista pública d'una altra jornada a partir del seu document desat, sense
+  // tocar la visible. Es calcula amb el mateix codi que la jornada visible:
+  // s'hi posa l'altra jornada, es calcula i es restaura tot de seguida. És
+  // síncron, de manera que cap render, desament ni watcher no veu l'intercanvi.
+  function publicProjectionForSavedDay(saved, date) {
+    const visible = Object.fromEntries(DAY_STATE_FIELDS.map((field) => [field, state[field]]));
+    const visibleDerived = coverageDerived;
+    try {
+      state.date = date;
+      state.absencies = new Map();
+      state.assignacions = new Map();
+      state.assignmentSources = new Map();
+      state.comentaris = new Map();
+      state.grupsFora = new Set();
+      state.grupProfessorsFora = new Map();
+      state.grupProfessorsAlliberats = new Map();
+      state.partialGroups = new Set();
+      state.outingAbsenceIds = new Set();
+      state.cancelledAssignments = new Set();
+      state.overriddenCoTeacherAssignments = new Set();
+      coverageDerived = null;
+      fillDayFromSaved(saved, date);
+      // Com en obrir la jornada: el company de codocència queda preassignat.
+      const selected = selectedAbsenceItems();
+      selected.forEach((item) => {
+        if (isGuardiaItem(item) || state.assignacions.has(item.id)
+          || state.overriddenCoTeacherAssignments.has(item.id)) return;
+        const partner = classroomPartnerForAbsence({ sessions: state.sessions, absence: item, absences: state.absencies });
+        if (!partner) return;
+        state.assignacions.set(item.id, partner);
+        state.assignmentSources.set(item.id, 'co-teacher');
+      });
+      consolidateMergedCoverageState(mergeSharedClassroomAbsences({ sessions: state.sessions, absences: selected }));
+      return publicGuardiesDay();
+    } finally {
+      DAY_STATE_FIELDS.forEach((field) => { state[field] = visible[field]; });
+      coverageDerived = visibleDerived;
+    }
+  }
+
+  // Aplica un canvi a altres jornades, unes quantes alhora, i regenera la vista
+  // pública de les que ja eren publicades. Retorna el resultat de cada data
+  // perquè un error en un dia no amagui quins s'han desat.
+  async function applyPlanToOtherDays(plans, concurrency = 3) {
+    const courseId = state.courseId;
+    const queue = [...plans];
+    const results = [];
+    async function worker() {
+      while (queue.length) {
+        const { date, patch } = queue.shift();
+        let saved;
+        try {
+          saved = await mergeGuardiesDayPlan(courseId, date, patch);
+        } catch (error) {
+          results.push({ date, ok: false, error });
+          continue;
+        }
+        let publicError = null;
+        if (saved?.status === 'published' && courseId === state.courseId) {
+          try {
+            // Si una altra sessió ha canviat el dia mentrestant, el desament no
+            // escriu res: aquella sessió ja publicarà la seva versió.
+            await savePublicGuardiesDay(courseId, date, publicProjectionForSavedDay(saved, date));
+          } catch (error) {
+            publicError = error;
+          }
+        }
+        results.push({ date, ok: true, publicError });
+      }
+    }
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, plans.length)) }, worker));
+    return results.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  function shortDateLabel(date) {
+    return new Intl.DateTimeFormat('ca-ES', { day: '2-digit', month: '2-digit' }).format(new Date(`${date}T12:00:00`));
+  }
+
+  // Resum dels dies que no s'han pogut desar o publicar, per afegir al missatge.
+  function otherDaysIssues(results) {
+    const failed = results.filter((result) => !result.ok);
+    const unpublished = results.filter((result) => result.ok && result.publicError);
+    const parts = [];
+    if (failed.length) {
+      parts.push(`No s'ha pogut desar ${failed.map((result) => shortDateLabel(result.date)).join(', ')}: ${friendlyError(failed[0].error)}`);
+    }
+    if (unpublished.length) {
+      parts.push(`La vista del professorat de ${unpublished.map((result) => shortDateLabel(result.date)).join(', ')} s'actualitzarà en obrir aquell dia.`);
+    }
+    return { failed, text: parts.join(' ') };
+  }
+
   function repairPublicDay() {
     if (publicRepairInFlight || !state.canWrite || !state.dayLoaded || hasUnsavedDay()
       || state.dayConflict || !['published', 'closed'].includes(state.dayStatus)) return;
@@ -1181,6 +1281,16 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     loadedDate = date;
     state.dayConflict = false;
     state.conflictRemoteClosed = false;
+    fillDayFromSaved(saved, date);
+    lastDaySignature = daySignature();
+    autoNormalizedSignature = null;
+    state.dayPersistenceStatus = 'ready';
+    state.dayLoaded = true;
+  }
+
+  // Omple només els camps de la jornada a partir del document desat. No toca
+  // cap altre estat, i per això serveix també per calcular una altra jornada.
+  function fillDayFromSaved(saved, date) {
     state.clearDayContext();
     const day = xmlDayForDate(date);
     const items = parser.agruparSessionsCobertura(
@@ -1229,10 +1339,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.overriddenCoTeacherAssignments = new Set(saved?.overriddenCoTeacherAssignments || []);
     state.countedAssignments = Array.isArray(saved?.countedAssignments) ? saved.countedAssignments : [];
     state.dayRevision = Number(saved?.revision) || 0;
-    lastDaySignature = daySignature();
-    autoNormalizedSignature = null;
-    state.dayPersistenceStatus = 'ready';
-    state.dayLoaded = true;
   }
 
   async function hydrateGuardiesDay(date, { preserveCurrent = false, read = loadGuardiesDay, isConfirmed = () => true } = {}) {
@@ -1696,17 +1802,24 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     try {
       state.dayPersistenceStatus = 'saving';
       await persistDayNow();
-      await Promise.all(plans
+      const results = await applyPlanToOtherDays(plans
         .filter(({ date }) => date !== state.date)
-        .map(({ date, ids }) => mergeGuardiesDayPlan(state.courseId, date, { absenceIds: ids })));
+        .map(({ date, ids }) => ({ date, patch: { absenceIds: ids } })));
       await hydrateGuardiesDay(state.date);
-      state.dayPersistenceStatus = 'ready';
-      showError('');
-      const sessions = plans.reduce((total, plan) => total + plan.ids.length, 0);
-      const message = wholeDay
-        ? `Totes les hores aplicades a ${dates.length} ${dates.length === 1 ? 'dia lectiu' : 'dies lectius'} · ${sessions} ${sessions === 1 ? 'sessió' : 'sessions'}.`
-        : `Sessions marcades aplicades a ${dates.length} ${dates.length === 1 ? 'dia lectiu' : 'dies lectius'} · ${sessions} ${sessions === 1 ? 'sessió' : 'sessions'}.`;
-      reportResult(true, message, sessions);
+      const issues = otherDaysIssues(results);
+      const failedDates = new Set(issues.failed.map((result) => result.date));
+      const applied = plans.filter((plan) => !failedDates.has(plan.date));
+      state.dayPersistenceStatus = issues.failed.length ? 'error' : 'ready';
+      const sessions = applied.reduce((total, plan) => total + plan.ids.length, 0);
+      const days = `${applied.length} ${applied.length === 1 ? 'dia lectiu' : 'dies lectius'}`;
+      const message = [
+        wholeDay
+          ? `Totes les hores aplicades a ${days} · ${sessions} ${sessions === 1 ? 'sessió' : 'sessions'}.`
+          : `Sessions marcades aplicades a ${days} · ${sessions} ${sessions === 1 ? 'sessió' : 'sessions'}.`,
+        issues.text,
+      ].filter(Boolean).join(' ');
+      showError(issues.failed.length ? message : '');
+      reportResult(!issues.failed.length, message, sessions);
       render();
     } catch (error) {
       state.dayPersistenceStatus = 'error';
@@ -1741,17 +1854,24 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.grupProfessorsAlliberats.forEach((teachers, groupId) => {
       groupReleasedTeachers[groupId] = Array.from(teachers);
     });
+    const patch = {
+      groupsOut: Array.from(state.grupsFora), groupTeachers, groupReleasedTeachers,
+      partialGroups: Array.from(state.partialGroups),
+      completeGroups: Array.from(state.grupsFora).filter((groupId) => !state.partialGroups.has(groupId)),
+    };
     try {
       state.dayPersistenceStatus = 'saving';
-      await Promise.all(dates.map((date) => mergeGuardiesDayPlan(state.courseId, date, {
-        groupsOut: Array.from(state.grupsFora), groupTeachers, groupReleasedTeachers,
-        partialGroups: Array.from(state.partialGroups),
-        completeGroups: Array.from(state.grupsFora).filter((groupId) => !state.partialGroups.has(groupId)),
-      })));
+      const results = await applyPlanToOtherDays(dates.map((date) => ({ date, patch })));
       await hydrateGuardiesDay(state.date);
-      state.dayPersistenceStatus = 'ready';
-      showError('');
-      reportResult(true, `Sortida copiada a ${dates.length} ${dates.length === 1 ? 'dia lectiu' : 'dies lectius'}.`, dates.length);
+      const issues = otherDaysIssues(results);
+      const copied = results.length - issues.failed.length;
+      state.dayPersistenceStatus = issues.failed.length ? 'error' : 'ready';
+      const message = [
+        `Sortida copiada a ${copied} ${copied === 1 ? 'dia lectiu' : 'dies lectius'}.`,
+        issues.text,
+      ].filter(Boolean).join(' ');
+      showError(issues.failed.length ? message : '');
+      reportResult(!issues.failed.length, message, copied);
       render();
     } catch (error) {
       state.dayPersistenceStatus = 'error';
