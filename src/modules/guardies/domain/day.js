@@ -138,6 +138,39 @@ export function classroomPartnerForAbsence({ sessions = [], absence, absences } 
   return presentTeachers.find((teacherId) => teacherId !== absence.placa) || '';
 }
 
+function subjectArea(session) {
+  return normalisedValue(String(session?.materiaCurta || session?.materia || '').split('-')[0]);
+}
+
+// Un desdoblament flexible (p. ex. MAT-EF-1E) agafa alumnat de diversos grups
+// mentre cada grup fa la mateixa àrea a la seva aula. Si falta qui el fa,
+// l'alumnat torna al seu grup i no cal guàrdia.
+export function studentsReturnToOwnGroup({ sessions = [], absence, absences } = {}) {
+  if (!absence?.placa || !absence?.dia || !absence?.hora || isBatAbsence(absence)) return false;
+  const slotSessions = sessions.filter((session) => (
+    session.teClasse && session.dia === absence.dia && session.hora === absence.hora
+  ));
+  const targetSessions = slotSessions.filter((session) => session.placa === absence.placa);
+  const area = singleValue(targetSessions.map(subjectArea));
+  const groupIds = Array.from(new Set(targetSessions.map((session) => session.grup).filter(Boolean)));
+  if (!area || groupIds.length < 2) return false;
+  if (targetSessions.some((session) => isBatGroup(session.grup) || isBatGroup(session.grupVisible))) return false;
+
+  const subjectOf = (session) => sessionLabel(session, ['materia', 'materiaCurta', 'materiaNom']);
+  // La classe que acull l'alumnat és només d'aquell grup: un altre
+  // desdoblament de la mateixa àrea (EDM-ACE1/ACE2...) no és el seu grup.
+  const ownGroupClass = (session, group) => slotSessions.every((other) => (
+    other.placa !== session.placa || subjectOf(other) !== subjectOf(session) || sameGroup(other, group)
+  ));
+  return groupIds.every((groupId) => slotSessions.some((session) => (
+    session.placa !== absence.placa
+    && sameGroup(session, { grup: groupId })
+    && subjectArea(session) === area
+    && ownGroupClass(session, { grup: groupId })
+    && !isTeacherAbsentAtSlot(absences, absence.dia, absence.hora, session.placa)
+  )));
+}
+
 function mergedValues(items, field) {
   return Array.from(new Set(items.flatMap((item) => (
     Array.isArray(item[field]) ? item[field] : [item[field]]

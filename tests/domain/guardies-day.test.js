@@ -9,6 +9,7 @@ import {
   mergeSharedClassroomAbsences,
   releasedTeachingBlocks,
   selectedAbsencesForDate,
+  studentsReturnToOwnGroup,
   xmlDayForDate,
 } from '../../src/modules/guardies/domain/day.js';
 
@@ -178,6 +179,32 @@ test('agrupa els dos docents absents del grup desdoblat sense incloure-hi el des
   const result = mergeSharedClassroomAbsences({ sessions: flexibleMathSessions, absences });
   assert.equal(result.length, 1);
   assert.deepEqual(result[0].absentTeacherIds, ['CAPO', 'MAT1']);
+});
+
+test('l\'alumnat del desdoblament torna al seu grup si hi queda professorat de la mateixa àrea', () => {
+  const returns = (placa, absentIds = [placa], sessions = flexibleMathSessions) => {
+    const absences = new Map(absentIds.map((id) => [`${id}|1|11:15`, { id: `${id}|1|11:15`, placa: id, dia: '1', hora: '11:15' }]));
+    return studentsReturnToOwnGroup({ sessions, absence: absences.get(`${placa}|1|11:15`), absences });
+  };
+
+  assert.equal(returns('MILL'), true);
+  assert.equal(returns('MILL', ['MILL', 'MAT1']), true);
+  // Si a 1ESO-F no hi queda ningú de matemàtiques, cal guàrdia.
+  assert.equal(returns('MILL', ['MILL', 'MAT1', 'CAPO']), false);
+  // Una classe d'un sol grup no és cap desdoblament.
+  assert.equal(returns('MAT1'), false);
+
+  // Dos subgrups paral·lels d'una optativa no tenen cap grup on tornar.
+  const parallelOptative = [
+    { placa: 'BARB', dia: '1', hora: '11:15', grup: '1ESO-A', materia: 'EDM-AC1-1E', aula: 'TALLER', teClasse: true },
+    { placa: 'BARB', dia: '1', hora: '11:15', grup: '1ESO-C', materia: 'EDM-AC1-1E', aula: 'TALLER', teClasse: true },
+    { placa: 'VIDA', dia: '1', hora: '11:15', grup: '1ESO-A', materia: 'EDM-AC2-1E', aula: 'PLASTICA', teClasse: true },
+    { placa: 'VIDA', dia: '1', hora: '11:15', grup: '1ESO-C', materia: 'EDM-AC2-1E', aula: 'PLASTICA', teClasse: true },
+  ];
+  assert.equal(returns('BARB', ['BARB'], parallelOptative), false);
+
+  const batSessions = flexibleMathSessions.map((session) => ({ ...session, grup: session.grup.replace('1ESO-', '1BAT') }));
+  assert.equal(returns('MILL', ['MILL'], batSessions), false);
 });
 
 test('no preassigna cap grup BAT encara que comparteixi aula', () => {

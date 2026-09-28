@@ -1087,6 +1087,40 @@ test.describe('Guàrdies: comportament existent', () => {
     expect(count).toBeUndefined();
   });
 
+  test('l\'alumnat d\'un desdoblament flexible torna al seu grup sense demanar guàrdia', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#duties-file').setInputFiles({
+      name: 'GPU001.TXT',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(`${dutiesText}
+30,"1ESO-A","MAT1","MAT-AB","AUL15",1,5,,
+30,"1ESO-B","MAT1","MAT-AB","AUL15",1,5,,
+31,"1ESO-A","ADEL","MAT-A","AUL14",1,5,,
+32,"1ESO-B","FUEN","MAT-B","AUL16",1,5,,`),
+    });
+    await expect(page.locator('[data-upload-status="duties"]')).toHaveText('OK');
+    await page.getByRole('tab', { name: 'Gestió diària' }).click();
+    await page.locator('#date-input').fill('2026-09-07');
+    await page.locator('#date-input').press('Tab');
+    await page.locator('#professor-search').fill('MAT1');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#schedule-grid .schedule-item').filter({ hasText: '12:10' }).locator('[data-absence]').check();
+
+    const row = page.locator('#coverage-list .coverage-row.status-returns');
+    await expect(row.locator('.coverage-status')).toHaveText('Torna al seu grup');
+    await expect(row.locator('[data-assignacio] option').first()).toHaveText('Sense substitució · torna al seu grup');
+    await page.locator('#auto-assign-guards').click();
+    await expect(row.locator('[data-assignacio]')).toHaveValue('');
+
+    // Si falta també qui fa la classe de 1ESO-A, aquell alumnat no té on tornar.
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#schedule-grid .schedule-item').filter({ hasText: '12:10' }).locator('[data-absence]').check();
+    await expect(page.locator('#coverage-list .coverage-row.status-returns')).toHaveCount(0);
+  });
+
   test('exclou el professorat d\'Agrària de tot el mòdul de guàrdies', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

@@ -14,6 +14,7 @@ import {
   isTeacherAbsentAtSlot,
   mergeSharedClassroomAbsences,
   releasedTeachingBlocks,
+  studentsReturnToOwnGroup,
   xmlDayForDate,
 } from '../../src/modules/guardies/domain/day.js';
 import { guardCountForSlot, normalizeGuardCount, teachingDatesBetween } from '../../src/modules/guardies/domain/workflow.js';
@@ -983,6 +984,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
             room: aulaLabel(item) || '',
             assigned: assignedId ? labelProfessor(assignedId, true) : '',
             coTeacher,
+            returnsToGroup: !assignedId && returnsToOwnGroup(item),
             cancelled: state.cancelledAssignments.has(item.id),
             comment: state.comentaris.get(item.id) || '',
           };
@@ -2970,7 +2972,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       if (item.hora === 'PATI') return;
       const status = coverageStatus(item);
       if (status === 'open') summary.open += 1;
-      else if (status === 'covered' || status === 'coteacher') summary.covered += 1;
+      else if (status === 'covered' || status === 'coteacher' || status === 'returns') summary.covered += 1;
     });
     if (summary.open !== state.coverageSummary.open || summary.covered !== state.coverageSummary.covered
       || summary.outings !== state.coverageSummary.outings) {
@@ -3157,6 +3159,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
     const pending = mergeSharedClassroomAbsences({ sessions: state.sessions, absences: selectedAbsenceItems() }).filter((item) => (
       !item.sessions?.some(isPatiGuardiaSession) && !isGuardiaItem(item) && !state.assignacions.has(item.id)
+      && !returnsToOwnGroup(item)
     ));
     if (!pending.length) {
       reportResult(false, 'No hi ha guàrdies pendents.');
@@ -3861,10 +3864,18 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   // Estat d'una fila de cobertura. Les guàrdies de pati i les absències en una
   // guàrdia no necessiten substitució; "No realitzada" no compta com a coberta.
+  function returnsToOwnGroup(item) {
+    return !isGuardiaItem(item) && studentsReturnToOwnGroup({
+      sessions: state.sessions,
+      absence: item,
+      absences: state.absencies,
+    });
+  }
+
   function coverageStatus(item) {
     if (item.sessions?.some(isPatiGuardiaSession) || isGuardiaItem(item)) return 'info';
     const assignat = state.assignacions.get(item.id) || '';
-    if (!assignat) return 'open';
+    if (!assignat) return returnsToOwnGroup(item) ? 'returns' : 'open';
     if (state.cancelledAssignments.has(item.id)) return 'not-done';
     return state.assignmentSources.get(item.id) === 'co-teacher' ? 'coteacher' : 'covered';
   }
@@ -3873,6 +3884,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     open: 'Sense cobrir',
     covered: 'Coberta',
     coteacher: 'Queda amb el grup',
+    returns: 'Torna al seu grup',
     'not-done': 'No realitzada',
   };
 
@@ -3911,13 +3923,16 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           room ? `<strong class="print-detail-highlight">${escapeHtml(room)}</strong>` : '',
         ].filter(Boolean).join(' · ');
     const locked = state.dayStatus === 'closed' || !state.canWrite;
+    const returnsToGroup = status === 'returns';
     const assignmentControl = isPati || isGuardiaItem(item)
       ? '<span class="info-only-label">Sense substitució</span>'
       : !state.canWrite && coTeacher
         ? `<strong class="readonly-assignment assigned no-print">${escapeHtml(labelProfessor(coTeacher))}</strong><span class="co-teacher-badge no-print">Queda amb el grup</span>`
+      : !state.canWrite && returnsToGroup
+        ? '<strong class="readonly-assignment no-print">Sense substitució</strong><span class="co-teacher-badge no-print">Torna al seu grup</span>'
       : state.canWrite
         ? `<select data-assignacio="${escapeHtml(item.id)}" data-co-teacher="${escapeHtml(classroomPartner)}" ${(hasCandidates || classroomPartner) && !locked ? '' : 'disabled'}>
-            <option value="">Sense preassignar</option>
+            <option value="">${returnsToGroup ? 'Sense substitució · torna al seu grup' : 'Sense preassignar'}</option>
             ${classroomPartner ? `<option value="${escapeHtml(classroomPartner)}" ${classroomPartner === assignat ? 'selected' : ''}>${escapeHtml(labelProfessor(classroomPartner))} · Queda amb el grup</option>` : ''}
             ${candidates.filter((candidate) => candidate.placa !== classroomPartner).map((candidate) => `
               <option
@@ -3958,7 +3973,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         <div class="coverage-assignment-cell ${hasReleasedCandidates ? 'has-released-candidates' : ''} ${hasCandidates && !hasAvailableCandidates ? 'only-unavailable' : ''}">
           ${assignmentControl}
           ${assignatIsConvivencia ? '<span class="convivencia-badge">Convivència · ús excepcional</span>' : ''}
-          <span class="print-only print-assignment">${escapeHtml(assignat ? `${labelProfessor(assignat, true)}${coTeacher ? ' · Queda amb el grup' : ''}` : '')}</span>
+          <span class="print-only print-assignment">${escapeHtml(assignat ? `${labelProfessor(assignat, true)}${coTeacher ? ' · Queda amb el grup' : ''}` : returnsToGroup ? 'Torna al seu grup' : '')}</span>
           ${state.canWrite && assignat && !isPati && !coTeacher ? `<label class="completion-toggle no-print"><input type="checkbox" data-cancel-assignment="${escapeHtml(item.id)}" ${cancelled ? 'checked' : ''} ${locked ? 'disabled' : ''} /> No realitzada</label>` : ''}
         </div>
         <div class="coverage-comment-cell">

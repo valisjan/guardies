@@ -16,6 +16,16 @@ test('public view escapes all user content and preserves coverage and observatio
   assert.ok(!html.includes('<img'));
 });
 
+test('public view shows that a flexible split returns to its group without a substitute', () => {
+  const html = renderPublicCoverage({ hours: [{ label: '4a hora', rows: [{
+    absent: 'MILL', group: '1ESO-E + 1ESO-F', subject: 'MAT-EF-1E', room: 'Sala B', assigned: '', returnsToGroup: true,
+  }] }] });
+  assert.ok(html.includes('Sense substitució'));
+  assert.ok(html.includes('Torna al seu grup'));
+  assert.ok(!html.includes('Sense assignar'));
+  assert.ok(!html.includes('pending'));
+});
+
 test('public view supports empty days, patio absences and partial outings', () => {
   assert.equal(renderPublicCoverage(null), '');
   const html = renderPublicCoverage({ hours: [{ label: '1a hora', rows: [] }, {
