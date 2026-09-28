@@ -26,6 +26,17 @@ test('public view shows that a flexible split returns to its group without a sub
   assert.ok(!html.includes('pending'));
 });
 
+test('public view marks guard teachers with G and released teachers apart', () => {
+  const html = renderPublicCoverage({ hours: [{ label: '2a hora', rows: [
+    { absent: 'A', group: '1ESO-A', assigned: 'Pere Blanes', source: 'guard' },
+    { absent: 'B', group: '1ESO-B', assigned: 'Joana Mas', source: 'released' },
+    { absent: 'C', group: '1ESO-C', assigned: 'Llucia Pons', source: 'co-teacher', coTeacher: true },
+  ] }] });
+  assert.match(html, /Pere Blanes <abbr class="guard-source-mark is-guard"[^>]*>G<\/abbr>/);
+  assert.match(html, /Joana Mas <span class="guard-source-mark is-released">Alliberat\/ada<\/span>/);
+  assert.equal((html.match(/guard-source-mark/g) || []).length, 2);
+});
+
 test('public view supports empty days, patio absences and partial outings', () => {
   assert.equal(renderPublicCoverage(null), '');
   const html = renderPublicCoverage({ hours: [{ label: '1a hora', rows: [] }, {

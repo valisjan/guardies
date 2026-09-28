@@ -984,6 +984,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
             subject: formatMateria(item) || '',
             room: aulaLabel(item) || '',
             assigned: assignedId ? labelProfessor(assignedId, true) : '',
+            // D'on surt qui cobreix: guàrdia (G), alliberat, codocència o un altre docent.
+            source: assignedId ? (state.assignmentSources.get(item.id) || 'other') : '',
             coTeacher,
             returnsToGroup: !assignedId && returnsToOwnGroup(item),
             cancelled: state.cancelledAssignments.has(item.id),
