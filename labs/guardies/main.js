@@ -5,6 +5,7 @@ import { createScheduleIndex } from '../../src/modules/guardies/domain/schedule-
 import { guardHistoryGroups, guardSlotFromAssignment } from '../../src/modules/guardies/domain/guard-history.js';
 import { createKeyedRenderer } from '../../src/utils/keyedDom.js';
 import { friendlyError } from '../../src/utils/friendlyError.js';
+import { decodeUploadedText, hasEncodingDamage } from '../../src/utils/decodeText.js';
 import { GUARD_CODES_STORAGE, useGuardiesStore } from './stores/guardies.js';
 import {
   classroomPartnerForAbsence,
@@ -1815,19 +1816,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     el.error.classList.toggle('hidden', !message);
   }
 
-  async function readXmlFileText(file) {
-    const buffer = await file.arrayBuffer();
-    const header = new TextDecoder('windows-1252').decode(buffer.slice(0, 300));
-    const declared = (header.match(/encoding=["']([^"']+)/i)?.[1] || '').toLowerCase();
-    const encoding = declared.includes('iso-8859-1') || declared.includes('windows-1252')
-      ? 'windows-1252'
-      : 'utf-8';
-
-    try {
-      return new TextDecoder(encoding).decode(buffer);
-    } catch {
-      return new TextDecoder('utf-8').decode(buffer);
-    }
+  async function readUploadedFileText(file) {
+    return decodeUploadedText(await file.arrayBuffer());
   }
 
   async function onUploadFile(file, intendedKind) {
@@ -1836,7 +1826,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     try {
       if (!state.canWrite) throw new Error('Només un usuari administrador pot substituir els fitxers.');
       showError('');
-      const text = await readXmlFileText(file);
+      const text = await readUploadedFileText(file);
       const detectedKind = detectUploadKind(text, intendedKind);
       if (xmlRootName(text) === 'DOCUMENT') {
         throw new Error('Aquest XML complet d\'Untis no és necessari. Exporta i carrega GPU001.TXT.');
@@ -2044,6 +2034,16 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       const warnings = [];
       if (referenceError) warnings.push(`El XML de GestIB no s'ha pogut llegir: ${referenceError}`);
       if (untisError) warnings.push(`El professorat d'Untis no s'ha pogut llegir: ${untisError}`);
+      // Fitxers pujats abans que es detectés la codificació: els caràcters perduts
+      // no es poden recuperar i cal tornar-los a pujar.
+      const damaged = [
+        [state.dutiesText, 'GPU001'],
+        [state.untisText, 'GPU004'],
+        [state.referenceText, 'XML de GestIB'],
+      ].filter(([text]) => hasEncodingDamage(text)).map(([, label]) => label);
+      if (damaged.length) {
+        warnings.push(`${damaged.join(' i ')}: alguns caràcters (Ñ, À, Í...) es van perdre en pujar el fitxer i surten com a «�». Torna'l a pujar des de Configuració.`);
+      }
       showError(warnings.join(' '));
     } catch (error) {
       parsedScheduleCache = null;

@@ -1087,6 +1087,29 @@ test.describe('Guàrdies: comportament existent', () => {
     expect(count).toBeUndefined();
   });
 
+  test('llegeix fitxers d\'Untis en ANSI sense perdre accents i avisa si un fitxer desat ja els havia perdut', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#untis-file').setInputFiles({
+      name: 'GPU004.TXT',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(teachersText.replace('Adell Domènech, Marina', 'Adell Domènech, Marina Ñúñez'), 'latin1'),
+    });
+    await expect(page.locator('[data-upload-status="untis"]')).toHaveText('OK');
+    const stored = await page.evaluate(() => localStorage.getItem('quota-e2e-guardies:e2e-2026'));
+    expect(stored).toContain('Adell Domènech, Marina Ñúñez');
+    expect(stored).not.toContain('�');
+    await expect(page.locator('#error-box')).toBeHidden();
+
+    await page.locator('#duties-file').setInputFiles({
+      name: 'GPU001.TXT',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(`${dutiesText}\n40,"1ESO-A","ADEL","MAT","L.QU�",2,1,,`),
+    });
+    await expect(page.locator('#error-box')).toContainText('GPU001: alguns caràcters');
+  });
+
   test('l\'alumnat d\'un desdoblament flexible torna al seu grup sense demanar guàrdia', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
