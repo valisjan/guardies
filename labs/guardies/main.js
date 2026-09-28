@@ -24,6 +24,7 @@ import {
   nonTeachingReason,
   patioAssignmentsForDate,
 } from '../../src/modules/guardies/domain/patio.js';
+import { applyPatioZoneOverride } from '../../src/modules/guardies/domain/patio-edit.js';
 import {
   deleteGuardiesFile,
   getGuardiesContext,
@@ -35,7 +36,7 @@ import {
   saveGuardiesDay,
   saveGuardiesConvivencia,
   saveGuardiesFile,
-  saveGuardiesPati,
+  saveGuardiesPatiZoneOverride,
   subscribeGuardiesData,
   subscribeGuardiesStats,
   clearGuardiesContextCache,
@@ -692,6 +693,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.dutiesName = remoteData.files.duties?.name || '';
     state.convivencia = convivenciaFromObject(remoteData.convivencia);
     state.patiConfig = remoteData.pati || null;
+    state.patiConfigCourseId = state.courseId;
     state.observationPresets = remoteData.observationPresets || [];
     state.excludedTeacherIds = new Set(remoteData.excludedTeacherIds || []);
     const hasFiles = Object.values(remoteData.files || {}).some((file) => file?.text);
@@ -3315,18 +3317,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const teacherId = select.dataset.patiZoneOverride;
     const day = diaXmlSeleccionat();
     const previous = state.patiConfig;
-    const next = JSON.parse(JSON.stringify(previous));
-    const teacher = next.weekdayTeachers?.[day]?.find((item) => item.teacherId === teacherId);
-    if (!teacher) return;
-    teacher.zoneOverrides ||= {};
-    const zoneId = select.value;
-    if (zoneId && zoneId !== select.dataset.patiBaseZone) teacher.zoneOverrides[state.date] = zoneId;
-    else delete teacher.zoneOverrides[state.date];
-    state.patiConfig = next;
-    renderCoverage();
+    const change = { day, date: state.date, teacherId, zoneId: select.value,
+      baseZoneId: select.dataset.patiBaseZone };
     try {
+      // Pot fallar si una altra sessió ha tret aquest professor o aquesta zona.
+      state.patiConfig = applyPatioZoneOverride(previous, change);
+      renderCoverage();
       state.persistenceStatus = 'saving';
-      state.patiConfig = await saveGuardiesPati(state.courseId, next);
+      state.patiConfig = await saveGuardiesPatiZoneOverride(state.courseId, change);
       if (['published', 'closed'].includes(state.dayStatus)) await syncPublicGuardiesDay();
       state.persistenceStatus = 'ready';
       showError('');
@@ -3336,6 +3334,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.persistenceStatus = 'error';
       showError(`No s'ha pogut canviar la zona del pati. ${friendlyError(error)}`);
       renderCoverage();
+      // Si la configuració no ha canviat, el full no es torna a pintar: el
+      // desplegable ha de tornar igualment a l'opció desada.
+      if (select.isConnected) select.value = select.querySelector('option[selected]')?.value ?? '';
     }
   }
 

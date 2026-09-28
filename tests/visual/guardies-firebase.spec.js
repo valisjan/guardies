@@ -61,6 +61,33 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/firebase-test');
 });
 
+test('patio settings merge with the latest daily override in one transaction', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const { saveGuardiesPati, saveGuardiesPatiZoneOverride } = await import('/src/services/guardiesStorage.js');
+    const f = window.__firestoreTest;
+    const path = 'cursos/test/guardies/pati';
+    const base = {
+      startYear: 2026, zones: [{ id: 'pista', name: 'Pista' }, { id: 'porxada', name: 'Porxada' }],
+      weekdayTeachers: { 1: [{ teacherId: 'FUEN', startZoneId: 'pista' }] }, customHolidays: [],
+    };
+    f.docs.set(path, base);
+    await saveGuardiesPatiZoneOverride('test', {
+      day: '1', date: '2026-09-14', teacherId: 'FUEN', zoneId: 'porxada', baseZoneId: 'pista',
+    });
+    await saveGuardiesPati('test', { ...base, customHolidays: [
+      { date: '2026-09-21', label: 'Festa del centre' },
+    ] }, { baseConfig: base });
+    const saved = f.docs.get(path);
+    return {
+      zone: saved.weekdayTeachers['1'][0].zoneOverrides['2026-09-14'],
+      holiday: saved.customHolidays[0].label,
+      transactionWrites: f.commits.map((commit) => commit.filter(([action, location]) =>
+        action === 'set' && location === path).length),
+    };
+  });
+  expect(result).toEqual({ zone: 'porxada', holiday: 'Festa del centre', transactionWrites: [1, 1] });
+});
+
 test('identical server confirmation restores metadata without re-emitting configuration', async ({ page }) => {
   const result = await page.evaluate(async () => {
     const { subscribeGuardiesData, subscribeDirectoryVersion } = await import('/src/services/guardiesStorage.js');

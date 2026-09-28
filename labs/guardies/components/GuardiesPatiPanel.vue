@@ -1,8 +1,9 @@
 <script setup>
 import { friendlyError } from '../../../src/utils/friendlyError.js';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useGuardiesStore } from '../stores/guardies';
 import { saveGuardiesPati } from '../../../src/services/guardiesStorage';
+import { mergePatioConfiguration } from '../../../src/modules/guardies/domain/patio-edit.js';
 import {
   WEEKDAYS,
   addDays,
@@ -18,6 +19,7 @@ const state = useGuardiesStore();
 const activeDay = ref('1');
 const saving = ref(false);
 const saveMessage = ref('');
+const pendingConflict = ref(false);
 const holidayDate = ref('');
 const holidayLabel = ref('');
 const selectedTeacher = ref('');
@@ -31,6 +33,9 @@ const dragTargetZoneId = ref('');
 let saveTimer = null;
 let lastSavedSignature = '';
 let replacingDraft = false;
+let baseConfig = null;
+let pendingRestored = false;
+const pendingKey = (courseId) => `guardies_pending_pati:${courseId}`;
 
 function detectedStartYear() {
   return schoolYearStart(state.referencia?.any || state.courseName || state.courseId);
@@ -54,13 +59,72 @@ function signature(value) {
 
 function replaceDraft(value) {
   replacingDraft = true;
-  draft.value = cloneConfig(value);
+  baseConfig = cloneConfig(value);
+  draft.value = cloneConfig(baseConfig);
   lastSavedSignature = signature(draft.value);
+  pendingConflict.value = false;
   queueMicrotask(() => { replacingDraft = false; });
 }
 
-watch(() => state.patiConfig, (value) => {
+function rememberPending(courseId = state.courseId) {
+  if (!courseId || !baseConfig) return;
+  try {
+    sessionStorage.setItem(pendingKey(courseId), JSON.stringify({ base: baseConfig, draft: cloneConfig(draft.value) }));
+  } catch {
+    // A browser without session storage still keeps the in-memory draft.
+  }
+}
+
+function forgetSubmitted(courseId, submitted) {
+  try {
+    const key = pendingKey(courseId);
+    const pending = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if (pending && signature(pending.draft) === signature(submitted)) sessionStorage.removeItem(key);
+  } catch {
+    // Saving to the server has already succeeded.
+  }
+}
+
+function restorePending(courseId) {
+  if (!courseId || pendingRestored) return;
+  pendingRestored = true;
+  try {
+    const pending = JSON.parse(sessionStorage.getItem(pendingKey(courseId)) || 'null');
+    if (!pending?.base || !pending?.draft) return;
+    const rebased = mergePatioConfiguration(pending.base, pending.draft, baseConfig);
+    replacingDraft = true;
+    draft.value = rebased;
+    queueMicrotask(() => { replacingDraft = false; });
+    if (signature(rebased) !== lastSavedSignature) {
+      saveMessage.value = 'Canvis pendents…';
+      saveTimer = setTimeout(() => saveAutomatically(courseId), 450);
+    } else {
+      sessionStorage.removeItem(pendingKey(courseId));
+    }
+  } catch (error) {
+    // Keep the user's draft visible and stored until the conflict is resolved.
+    try {
+      const pending = JSON.parse(sessionStorage.getItem(pendingKey(courseId)) || 'null');
+      if (pending?.base && pending?.draft) {
+        replacingDraft = true;
+        baseConfig = cloneConfig(pending.base);
+        lastSavedSignature = signature(baseConfig);
+        draft.value = cloneConfig(pending.draft);
+        queueMicrotask(() => { replacingDraft = false; });
+      }
+    } catch { /* Invalid local data cannot replace the server version. */ }
+    saveMessage.value = `No s'ha pogut desar: ${friendlyError(error)}`;
+    pendingConflict.value = error?.code === 'guardies/conflict';
+  }
+}
+
+watch([() => state.patiConfig, () => state.patiConfigCourseId], ([value]) => {
+  // A delayed remote echo must not erase edits awaiting their own save.
+  if (baseConfig && signature(draft.value) !== lastSavedSignature) return;
   replaceDraft(value || { startYear: detectedStartYear() });
+  // Pending edits can only be rebased onto the server configuration: before it
+  // arrives they would be compared with an empty one and look like a conflict.
+  if (state.courseId && state.patiConfigCourseId === state.courseId) restorePending(state.courseId);
 }, { immediate: true });
 
 watch(() => state.referencia?.any, () => {
@@ -75,6 +139,7 @@ watch(draft, () => {
   const currentSignature = signature(draft.value);
   if (currentSignature === lastSavedSignature) return;
   saveMessage.value = 'Canvis pendents…';
+  rememberPending();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveAutomatically, 450);
 }, { deep: true });
@@ -274,30 +339,69 @@ function moveWeek(amount) {
   weekAnchor.value = addDays(previewDates.value[0], amount * 7);
 }
 
-async function saveAutomatically() {
-  if (!state.canWrite || !state.courseId) return;
+async function saveAutomatically(courseId = state.courseId) {
+  if (!courseId) return;
   if (saving.value) {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveAutomatically, 200);
+    saveTimer = setTimeout(() => saveAutomatically(courseId), 200);
     return;
   }
-  const pendingSignature = signature(draft.value);
+  const submitted = cloneConfig(draft.value);
+  const pendingSignature = signature(submitted);
   if (pendingSignature === lastSavedSignature) return;
   saving.value = true;
   saveMessage.value = 'Desant automàticament…';
   try {
-    const clean = await saveGuardiesPati(state.courseId, draft.value);
-    lastSavedSignature = signature(clean);
-    if (signature(draft.value) === pendingSignature) state.patiConfig = clean;
-    else saveTimer = setTimeout(saveAutomatically, 200);
-    saveMessage.value = 'Desat automàticament';
-    window.dispatchEvent(new CustomEvent('guardies:pati-updated'));
+    const clean = await saveGuardiesPati(courseId, submitted, { baseConfig });
+    pendingConflict.value = false;
+    const changedWhileSaving = signature(draft.value) !== pendingSignature;
+    if (changedWhileSaving) {
+      // Rebase edits made during the request onto the confirmed server result.
+      const pending = mergePatioConfiguration(submitted, draft.value, clean);
+      replacingDraft = true;
+      baseConfig = cloneConfig(clean);
+      lastSavedSignature = signature(baseConfig);
+      draft.value = pending;
+      queueMicrotask(() => { replacingDraft = false; });
+      rememberPending(courseId);
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => saveAutomatically(courseId), 200);
+      saveMessage.value = 'Canvis pendents…';
+    } else {
+      replaceDraft(clean);
+      saveMessage.value = 'Desat automàticament';
+      forgetSubmitted(courseId, submitted);
+    }
+    // The shared store receives the merged value, including overrides made
+    // from the daily screen after this panel opened.
+    if (courseId === state.courseId && state.canWrite) {
+      state.patiConfig = clean;
+      window.dispatchEvent(new CustomEvent('guardies:pati-updated'));
+    }
   } catch (error) {
+    rememberPending(courseId);
     saveMessage.value = `No s'ha pogut desar: ${friendlyError(error)}`;
+    pendingConflict.value = error?.code === 'guardies/conflict';
   } finally {
     saving.value = false;
   }
 }
+
+function discardPending() {
+  if (!window.confirm('Vols descartar els canvis locals del pati i carregar la configuració compartida?')) return;
+  clearTimeout(saveTimer);
+  try { sessionStorage.removeItem(pendingKey(state.courseId)); } catch { /* Optional local storage. */ }
+  replaceDraft(state.patiConfig || { startYear: detectedStartYear() });
+  saveMessage.value = '';
+}
+
+onBeforeUnmount(() => {
+  clearTimeout(saveTimer);
+  if (state.canWrite && state.courseId && signature(draft.value) !== lastSavedSignature) {
+    rememberPending();
+    void saveAutomatically(state.courseId);
+  }
+});
 </script>
 
 <template>
@@ -503,6 +607,8 @@ async function saveAutomatically() {
     <footer class="pati-save-bar">
       <span v-if="saveMessage" :class="['pati-save-message', { error: saveMessage.startsWith('No') }]">{{ saveMessage }}</span>
       <span v-if="state.canWrite && !saveMessage" class="pati-save-message">Desat automàtic</span>
+      <button v-if="pendingConflict" type="button" class="ghost" @click="discardPending">Carrega la configuració compartida</button>
+      <button v-else-if="saveMessage.startsWith('No')" type="button" class="ghost" :disabled="saving" @click="saveAutomatically()">Reintenta</button>
     </footer>
   </details>
 </template>

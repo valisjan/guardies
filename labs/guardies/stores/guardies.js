@@ -36,6 +36,8 @@ export const useGuardiesStore = defineStore('guardies', {
     excludedTeacherIds: new Set(),
     resum: null,
     patiConfig: null,
+    // Curs de la configuració del pati rebuda del servidor ('' fins que arriba).
+    patiConfigCourseId: '',
     professor: '',
     date: localDateString(new Date()),
     dayConflict: false,

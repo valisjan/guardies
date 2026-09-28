@@ -29,6 +29,7 @@ import { selectDefaultAcademicCourse } from '../utils/academicCourse';
 import { trackReads } from '../utils/diagnostics';
 import { createSnapshotState } from '../utils/snapshotState.js';
 import { normalizePatioConfig } from '../modules/guardies/domain/patio';
+import { applyPatioZoneOverride, mergePatioConfiguration } from '../modules/guardies/domain/patio-edit.js';
 import {
   normalizeGuardCount,
   normalizeCountedAssignment,
@@ -933,19 +934,52 @@ export async function saveGuardiesConvivencia(cursId, assignacions) {
   });
 }
 
-export async function saveGuardiesPati(cursId, config) {
+export async function saveGuardiesPati(cursId, config, { baseConfig } = {}) {
+  // Sense la versió de partida no se sap què ha canviat: la fusió ho donaria tot
+  // per igual i no desaria res. Millor fallar de manera visible.
+  if (!baseConfig) throw new Error('Cal la configuració de partida per desar el pati sense trepitjar altres canvis.');
   const clean = normalizePatioConfig(config, { startYear: config?.startYear });
   if (E2E_AUTH_BYPASS) {
     const data = getE2EData(cursId);
-    data.pati = clean;
-    setE2EData(cursId, data);
-    return clean;
+    const merged = mergePatioConfiguration(baseConfig, clean, data.pati || {});
+    if (JSON.stringify(data.pati) !== JSON.stringify(merged)) {
+      data.pati = merged;
+      setE2EData(cursId, data);
+    }
+    return merged;
   }
-  await setDoc(guardiesRef(cursId, 'pati'), {
-    ...clean,
-    updatedAt: serverTimestamp(),
+  return runTransaction(db, async (transaction) => {
+    const reference = guardiesRef(cursId, 'pati');
+    const snapshot = await transaction.get(reference);
+    const current = snapshot.exists() ? snapshot.data() : {};
+    const merged = mergePatioConfiguration(baseConfig, clean, current);
+    if (JSON.stringify(normalizePatioConfig(current, { startYear: merged.startYear })) !== JSON.stringify(merged)) {
+      transaction.set(reference, { ...merged, updatedAt: serverTimestamp() });
+    }
+    return merged;
   });
-  return clean;
+}
+
+export async function saveGuardiesPatiZoneOverride(cursId, change) {
+  if (E2E_AUTH_BYPASS) {
+    const data = getE2EData(cursId);
+    const next = applyPatioZoneOverride(data.pati || {}, change);
+    if (JSON.stringify(data.pati) !== JSON.stringify(next)) {
+      data.pati = next;
+      setE2EData(cursId, data);
+    }
+    return next;
+  }
+  return runTransaction(db, async (transaction) => {
+    const reference = guardiesRef(cursId, 'pati');
+    const snapshot = await transaction.get(reference);
+    const current = snapshot.exists() ? snapshot.data() : {};
+    const next = applyPatioZoneOverride(current, change);
+    if (JSON.stringify(normalizePatioConfig(current, { startYear: next.startYear })) !== JSON.stringify(next)) {
+      transaction.set(reference, { ...next, updatedAt: serverTimestamp() });
+    }
+    return next;
+  });
 }
 
 export async function saveGuardiesObservationPresets(cursId, phrases) {

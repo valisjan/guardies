@@ -1399,6 +1399,26 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('[data-convivencia-slot="1|8:00"]')).toHaveValue(selected);
   });
 
+  test('recupera els canvis del pati pendents de desar després de recarregar', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#pati-panel summary').click();
+    await page.locator('#new-pati-zone').fill('Pista');
+    await page.locator('#add-pati-zone').click();
+    // Es recarrega abans que el desament automàtic tingui temps d'enviar-ho.
+    expect(await page.evaluate(() => sessionStorage.getItem('guardies_pending_pati:e2e-2026'))).toContain('Pista');
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).pati?.zones?.length || 0)).toBe(0);
+    await page.reload();
+
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#pati-panel summary').click();
+    await expect(page.getByLabel('Nom de la zona 1')).toHaveValue('Pista');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).pati
+      ?.zones?.map((zone) => zone.name))).toEqual(['Pista']);
+    await expect(page.locator('#pati-panel')).not.toContainText("No s'ha pogut desar");
+  });
+
   test('configura manualment zones i GP, desa automàticament i salta festius', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
@@ -1444,6 +1464,8 @@ test.describe('Guàrdies: comportament existent', () => {
     await fuentesCard.locator('[data-pati-zone-override]').selectOption({ label: 'Porxada' });
     await expect(fuentesCard).toHaveClass(/overridden/);
     await expect(fuentesCard.locator('[data-pati-zone-override]')).toHaveValue('zona-2');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).pati
+      ?.weekdayTeachers?.['1']?.find((teacher) => teacher.teacherId === '2')?.zoneOverrides?.['2026-09-14'])).toBe('zona-2');
     await page.locator('[data-comment="__pati_observation__"]')
       .fill('Banys ha de quedar cobert durant tot el pati.');
     await expect(page.locator('[data-comment-print="__pati_observation__"]'))
