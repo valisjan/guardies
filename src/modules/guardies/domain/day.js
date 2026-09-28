@@ -96,27 +96,35 @@ function sharedClassroomContext(sessions, absence) {
   ));
   const groupId = singleValue(targetSessions.map((session) => session.grup));
   if (!groupId) return null;
-  if (isSplitOptativeContext(
-    sessions.filter((session) => session.teClasse && session.dia === absence.dia && session.hora === absence.hora),
-    groupId,
-  )) return null;
+  const slotSessions = sessions.filter((session) => (
+    session.teClasse && session.dia === absence.dia && session.hora === absence.hora
+  ));
+  // En un grup desdoblat (matèries i aules diferents a la franja) només
+  // comparteixen classe els qui hi fan la mateixa matèria: un desdoblament
+  // flexible o una optativa del mateix grup no és el company d'aula.
+  const splitGroup = isSplitOptativeContext(slotSessions, groupId);
+  const subject = splitGroup
+    ? singleValue(targetSessions.map((session) => sessionLabel(session, ['materia', 'materiaCurta', 'materiaNom'])))
+    : '';
+  if (splitGroup && !subject) return null;
 
   const teachersAtSlot = new Map();
-  sessions.filter((session) => (
-    session.teClasse && session.dia === absence.dia && session.hora === absence.hora
-  )).forEach((session) => {
+  slotSessions.forEach((session) => {
     if (!teachersAtSlot.has(session.placa)) teachersAtSlot.set(session.placa, []);
     teachersAtSlot.get(session.placa).push(session);
   });
 
   const targetClassroom = { grup: groupId };
   const teacherIds = Array.from(teachersAtSlot.entries())
-    .filter(([, teacherSessions]) => teacherSessions.some((session) => sameGroup(session, targetClassroom)))
+    .filter(([, teacherSessions]) => teacherSessions.some((session) => (
+      sameGroup(session, targetClassroom)
+      && (!subject || sessionLabel(session, ['materia', 'materiaCurta', 'materiaNom']) === subject)
+    )))
     .map(([teacherId]) => teacherId)
     .sort((a, b) => String(a).localeCompare(String(b), 'ca', { numeric: true }));
   if (teacherIds.length < 2 || !teacherIds.includes(absence.placa)) return null;
   return {
-    key: [absence.dia, absence.hora, groupId].join('|'),
+    key: [absence.dia, absence.hora, groupId, subject].filter(Boolean).join('|'),
     teacherIds,
   };
 }

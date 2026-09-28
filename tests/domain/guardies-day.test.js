@@ -145,6 +145,41 @@ test('manté separades les absències de tres optatives del mateix grup', () => 
   assert.equal(mergeSharedClassroomAbsences({ sessions, absences }).length, 3);
 });
 
+// Estructura real de 1r d'ESO: dos docents per grup i un desdoblament flexible
+// de la mateixa àrea que agafa alumnat de dos grups en una altra aula.
+const flexibleMathSessions = [
+  { placa: 'MARV', dia: '1', hora: '11:15', grup: '1ESO-E', materia: 'MAT-E-1E', aula: 'AUL05', teClasse: true },
+  { placa: 'MAT4', dia: '1', hora: '11:15', grup: '1ESO-E', materia: 'MAT-E-1E', aula: 'AUL05', teClasse: true },
+  { placa: 'MAT1', dia: '1', hora: '11:15', grup: '1ESO-F', materia: 'MAT-F-1E', aula: 'AUL06', teClasse: true },
+  { placa: 'CAPO', dia: '1', hora: '11:15', grup: '1ESO-F', materia: 'MAT-F-1E', aula: 'AUL06', teClasse: true },
+  { placa: 'MILL', dia: '1', hora: '11:15', grup: '1ESO-E', materia: 'MAT-EF-1E', aula: 'SALA-B', teClasse: true },
+  { placa: 'MILL', dia: '1', hora: '11:15', grup: '1ESO-F', materia: 'MAT-EF-1E', aula: 'SALA-B', teClasse: true },
+];
+
+test('preassigna el company de la mateixa matèria encara que el grup tingui un desdoblament', () => {
+  const partnerOf = (placa, absentIds = [placa]) => {
+    const absences = new Map(absentIds.map((id) => [`${id}|1|11:15`, { id: `${id}|1|11:15`, placa: id, dia: '1', hora: '11:15' }]));
+    return classroomPartnerForAbsence({ sessions: flexibleMathSessions, absence: absences.get(`${placa}|1|11:15`), absences });
+  };
+
+  assert.equal(partnerOf('MAT1'), 'CAPO');
+  assert.equal(partnerOf('CAPO'), 'MAT1');
+  assert.equal(partnerOf('MARV'), 'MAT4');
+  // Qui fa el desdoblament no és company d'aula de ningú.
+  assert.equal(partnerOf('MILL'), '');
+  assert.equal(partnerOf('MAT1', ['MAT1', 'CAPO']), '');
+});
+
+test('agrupa els dos docents absents del grup desdoblat sense incloure-hi el desdoblament', () => {
+  const absences = ['MAT1', 'CAPO'].map((placa) => ({
+    id: `${placa}|1|11:15`, placa, dia: '1', hora: '11:15', grups: ['1ESO-F'], grupsVisibles: ['1ESO-F'],
+  }));
+
+  const result = mergeSharedClassroomAbsences({ sessions: flexibleMathSessions, absences });
+  assert.equal(result.length, 1);
+  assert.deepEqual(result[0].absentTeacherIds, ['CAPO', 'MAT1']);
+});
+
 test('no preassigna cap grup BAT encara que comparteixi aula', () => {
   const sessions = [
     { placa: 'P1', dia: '1', hora: '8:00', grup: '1BAT', materia: 'MAT', aula: 'AULA 1', teClasse: true },
