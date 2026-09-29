@@ -5,7 +5,9 @@ import { renderPublicCoverage, renderPublicOutings } from '../../labs/guardies/p
 test('public view escapes all user content and preserves coverage and observations', () => {
   const html = renderPublicCoverage({ hours: [{ label: '7a hora', observation: '<script>alert(1)</script>', rows: [{
     absent: 'Anna & Pere', group: '1ESO-A', subject: 'MAT', room: 'A14',
-    assigned: 'Joan', coTeacher: true, cancelled: true, comment: '<img src=x onerror=alert(1)>',
+    assigned: 'Joan', coTeacher: true, comment: '<img src=x onerror=alert(1)>',
+  }, {
+    absent: 'Marta', group: '1ESO-B', subject: 'MAT', room: 'A15', assigned: 'Pere', source: 'guard', cancelled: true,
   }] }] });
   assert.ok(html.includes('Anna &amp; Pere'));
   assert.ok(html.includes('Queda amb el grup'));
@@ -24,6 +26,22 @@ test('public view shows that a flexible split returns to its group without a sub
   assert.ok(html.includes('Torna al seu grup'));
   assert.ok(!html.includes('Sense assignar'));
   assert.ok(!html.includes('pending'));
+});
+
+test('public view labels every row status and only draws comments that exist', () => {
+  const row = (fields) => ({ absent: 'A', group: '1ESO-A', subject: 'MAT', room: 'A14', assigned: '', ...fields });
+  const html = renderPublicCoverage({ hours: [{ label: '1a hora', rows: [
+    row({}),
+    row({ assigned: 'Pere', source: 'guard' }),
+    row({ group: 'Guàrdia', subject: 'Guàrdia', room: '' }),
+    row({ returnsToGroup: true }),
+  ] }] });
+  assert.deepEqual([...html.matchAll(/public-row status-([a-z-]+)/g)].map((match) => match[1]), ['open', 'covered', 'info', 'returns']);
+  assert.match(html, /status-label">Sense cobrir<\/span><strong class="readonly-assignment pending">Pendent/);
+  assert.match(html, /status-label">Cobreix<\/span><strong class="readonly-assignment assigned">Pere/);
+  assert.match(html, /status-label">No cal cobrir-la<\/span><strong class="readonly-assignment ">Sense substitució/);
+  assert.match(html, /<span class="coverage-detail-line">MAT · A14<\/span>/);
+  assert.equal(html.includes('coverage-comment-cell'), false);
 });
 
 test('public view marks guard teachers with G and released teachers apart', () => {

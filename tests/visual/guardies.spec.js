@@ -666,7 +666,14 @@ test.describe('Guàrdies: comportament existent', () => {
       });
       expect(layout.overflow).toBeLessThanOrEqual(0);
       expect(layout.right).toBeLessThanOrEqual(layout.width);
+      // Qui cobreix (o «Pendent») es llegeix almenys tan gran com qui falta.
+      const sizes = await page.locator('.public-row').first().evaluate((row) => ({
+        absent: Number.parseFloat(getComputedStyle(row.querySelector('.coverage-professor-cell strong')).fontSize),
+        cover: Number.parseFloat(getComputedStyle(row.querySelector('.readonly-assignment')).fontSize),
+      }));
+      expect(sizes.cover).toBeGreaterThanOrEqual(sizes.absent);
     }
+    await expect(page.locator('.public-row .status-label').first()).not.toBeEmpty();
   });
 
   test('avisa només els navegadors que no admeten capes CSS', async ({ page }) => {

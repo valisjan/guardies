@@ -12,16 +12,42 @@ function sourceMark(row) {
   return '';
 }
 
+// Estat de cada fila, amb els mateixos criteris que el full de guàrdies i Pantalles.
+export function publicRowStatus(row) {
+  if (row?.group === 'Guàrdia') return 'info';
+  if (row?.assigned) {
+    if (row.cancelled) return 'not-done';
+    return row.coTeacher ? 'coteacher' : 'covered';
+  }
+  return row?.returnsToGroup ? 'returns' : 'open';
+}
+
+const STATUS_LABELS = {
+  open: 'Sense cobrir',
+  covered: 'Cobreix',
+  coteacher: 'Queda amb el grup',
+  returns: 'Torna al seu grup',
+  'not-done': 'No realitzada',
+  info: 'No cal cobrir-la',
+};
+
+function renderRow(row) {
+  const status = publicRowStatus(row);
+  const cover = row.assignedDisplay || row.assigned || (status === 'open' ? 'Pendent' : 'Sense substitució');
+  const detail = [row.subject !== row.group ? row.subject : '', row.room].filter(Boolean).join(' · ');
+  return `
+      <article class="coverage-item coverage-row public-row status-${status} ${row.cancelled ? 'not-completed' : ''}">
+        <div class="coverage-professor-cell"><span class="cell-kicker">Absència</span><strong class="no-print">${escape(row.absentDisplay || row.absent)}</strong><strong class="print-only">${escape(row.absent)}</strong></div>
+        <div class="coverage-detail-cell"><strong class="coverage-group-label">${escape(row.group)}</strong>${detail ? `<span class="coverage-detail-line">${escape(detail)}</span>` : ''}</div>
+        <div class="coverage-assignment-cell"><span class="cell-kicker status-label">${STATUS_LABELS[status]}</span><strong class="readonly-assignment ${row.assigned ? 'assigned' : status === 'open' ? 'pending' : ''}">${escape(cover)}${sourceMark(row)}</strong></div>
+        ${row.comment ? `<div class="coverage-comment-cell">${escape(row.comment)}</div>` : ''}
+      </article>`;
+}
+
 export function renderPublicCoverage(day) {
   return (day?.hours || []).map((hour) => {
     const patio = hour.kind === 'patio';
-    const rows = (hour.rows || []).map((row) => `
-      <article class="coverage-item coverage-row ${row.assigned ? 'covered' : ''} ${row.cancelled ? 'not-completed' : ''}">
-        <div class="coverage-professor-cell"><span class="cell-kicker">Absència</span><strong class="no-print">${escape(row.absentDisplay || row.absent)}</strong><strong class="print-only">${escape(row.absent)}</strong></div>
-        <div class="coverage-detail-cell"><strong class="coverage-group-label">${escape(row.group)}</strong><span>${escape(row.subject)}</span><strong class="coverage-room-label">${escape(row.room)}</strong></div>
-        <div class="coverage-assignment-cell"><strong class="readonly-assignment ${row.assigned ? 'assigned' : row.returnsToGroup ? '' : 'pending'}">${escape(row.assignedDisplay || row.assigned || (row.group === 'Guàrdia' || row.returnsToGroup ? 'Sense substitució' : 'Sense assignar'))}${sourceMark(row)}</strong>${row.coTeacher ? '<span class="co-teacher-badge">Queda amb el grup</span>' : ''}${row.returnsToGroup ? '<span class="co-teacher-badge">Torna al seu grup</span>' : ''}${row.cancelled ? '<span>No realitzada</span>' : ''}</div>
-        <div class="coverage-comment-cell">${escape(row.comment)}</div>
-      </article>`).join('');
+    const rows = (hour.rows || []).map(renderRow).join('');
     const zones = (hour.patio?.zones || []).map((zone) => `
       <article class="pati-zone-card ${zone.absent ? 'absent' : ''}"><strong class="pati-zone-name">${escape(zone.name)}</strong><span class="pati-teacher-name">${escape(zone.teacher)}</span>${zone.absent ? '<small class="pati-absence-badge">Absent</small>' : ''}</article>`).join('');
     return `<section class="coverage-session ${patio ? 'pati-session' : ''}">
