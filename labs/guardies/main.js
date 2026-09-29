@@ -196,7 +196,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   window.addEventListener('popstate', handlePopState);
   window.addEventListener('guardies:retry-connection', bootstrap);
   document.addEventListener('visibilitychange', handleVisibilityChange);
-  window.addEventListener('guardies:pati-updated', () => renderCoverage());
+  window.addEventListener('guardies:pati-updated', () => parseStoredData({ resetSelection: false }));
   window.addEventListener('guardies:convivencia-ready', renderConvivenciaAdmin);
   window.addEventListener('guardies:clear-convivencia', async () => {
     if (!state.canWrite) return;
@@ -783,6 +783,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         || state.untisText !== (remoteData.files.untis?.text || '')
         || state.dutiesText !== (remoteData.files.duties?.text || '');
       const previousExclusions = JSON.stringify(Array.from(state.excludedTeacherIds).sort());
+      const previousPatioRoster = patioRosterSignature();
       const settingsSignature = (data) => JSON.stringify({
         convivencia: data?.convivencia, pati: data?.pati,
         observationPresets: data?.observationPresets,
@@ -797,7 +798,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.guardCounts = new Map(Object.entries(remoteData.stats?.counts || {}));
       state.guardHistory = remoteData.stats?.guardHistory || state.guardHistory || {};
       state.guardHistoryVersion = Number(remoteData.stats?.guardHistoryVersion) || state.guardHistoryVersion || 0;
-      if (filesChanged || previousExclusions !== JSON.stringify(Array.from(state.excludedTeacherIds).sort())) {
+      if (filesChanged
+        || previousExclusions !== JSON.stringify(Array.from(state.excludedTeacherIds).sort())
+        || previousPatioRoster !== patioRosterSignature()) {
         parseStoredData({ resetSelection: false, renderAfter: false });
       }
       if (state.canWrite && filesChanged && daySignature() === lastDaySignature) {
@@ -2092,16 +2095,15 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           professoratUntis: state.professoratUntis,
         });
         if (!sameFiles) {
-          // Les estructures de l'horari es reemplacen senceres i mai es modifiquen:
-          // no necessiten proxies reactius, que encareixen cada accés.
-          state.allSessions = markRaw(mergeSessions(result.sessions, []));
+          // Les files GP d'Untis són compensació horària, no el torn real de pati.
+          const baseSessions = result.sessions.filter((session) => !isPatiGuardiaSession(session));
           parsedScheduleCache = {
             referenceText: state.referenceText, untisText: state.untisText, dutiesText: state.dutiesText,
             referencia: state.referencia, professoratUntis: state.professoratUntis,
-            referenceError, untisError, result, allSessions: state.allSessions,
+            referenceError, untisError, result, baseSessions,
           };
           teacherAliasesById = new Map();
-          state.allSessions.forEach((session) => {
+          baseSessions.forEach((session) => {
             if (!session.placa) return;
             const aliases = teacherAliasesById.get(session.placa) || new Set([session.placa]);
             if (session.professorCurta) aliases.add(session.professorCurta);
@@ -2113,9 +2115,16 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
             if (place.curta) aliases.add(place.curta);
             teacherAliasesById.set(place.codi, aliases);
           });
-        } else {
-          state.allSessions = parsedScheduleCache.allSessions;
         }
+        // Les estructures de l'horari es reemplacen senceres i mai es modifiquen:
+        // no necessiten proxies reactius, que encareixen cada accés.
+        const patioRoster = patioRosterSignature();
+        if (parsedScheduleCache.patioRoster !== patioRoster) {
+          const { baseSessions } = parsedScheduleCache;
+          parsedScheduleCache.patioRoster = patioRoster;
+          parsedScheduleCache.allSessions = markRaw(mergeSessions(baseSessions, patioRosterSessions(baseSessions)));
+        }
+        state.allSessions = parsedScheduleCache.allSessions;
         state.sessions = markRaw(state.allSessions.filter((session) => !isExcludedTeacher(session.placa)));
         scheduleIndex = createScheduleIndex(state.sessions);
         state.allProfessorOptions = markRaw(professorsOrdenatsAmbLabel(state.allSessions));
@@ -3488,17 +3497,61 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       if (!labels.has(placa)) labels.set(placa, labelProfessor(placa));
       return labels.get(placa);
     };
-    return Array.from(sessions.values()).map((session) => (
-      isPatiGuardiaSession(session)
-        ? { ...session, hora: 'PATI', franja: parser.franjaKey(session.dia, 'PATI') }
-        : session
-    )).sort((a, b) => {
+    return Array.from(sessions.values()).sort((a, b) => {
       const dayDifference = Number(a.dia) - Number(b.dia);
       if (dayDifference) return dayDifference;
       const hourDifference = sortHours(a.hora, b.hora);
       if (hourDifference) return hourDifference;
       return catalanCompare(labelFor(a.placa), labelFor(b.placa));
     });
+  }
+
+  function patioRosterSignature() {
+    return JSON.stringify(Object.entries(state.patiConfig?.weekdayTeachers || {})
+      .map(([dia, teachers]) => [dia, (teachers || []).map(({ teacherId }) => teacherId)]));
+  }
+
+  // El torn de pati el decideix la configuració de l'app. L'id resultant
+  // (placa|dia|PATI|||GP) coincideix amb el de les absències ja desades.
+  function patioRosterSessions(baseSessions) {
+    const profiles = new Map();
+    baseSessions.forEach((session) => {
+      if (session.placa && !profiles.has(session.placa)) profiles.set(session.placa, session);
+    });
+    return Object.entries(state.patiConfig?.weekdayTeachers || {}).flatMap(([dia, teachers]) => (
+      (teachers || [])
+        .filter(({ teacherId }) => profiles.has(teacherId))
+        .map(({ teacherId }) => ({
+          index: `pati-${dia}-${teacherId}`,
+          origenGuardia: 'PATI',
+          placa: teacherId,
+          curs: '',
+          grup: '',
+          dia,
+          hora: 'PATI',
+          durada: 0,
+          aula: '',
+          materia: '',
+          activitat: 'GP',
+          key: '',
+          franja: parser.franjaKey(dia, 'PATI'),
+          diaLabel: parser.diaLabel(dia),
+          teClasse: false,
+          teActivitat: true,
+          tipus: 'activitat',
+          professorCurta: profiles.get(teacherId).professorCurta || '',
+          professorNom: profiles.get(teacherId).professorNom || '',
+          grupVisible: '',
+          cursVisible: '',
+          materiaCurta: '',
+          materiaNom: '',
+          activitatCurta: 'Guàrdia pati',
+          activitatNom: 'GP',
+          activitatEsGuardia: true,
+          activitatEsGuardiaGeneral: false,
+          aulaNom: '',
+        }))
+    ));
   }
 
   function catalanCompare(left, right) {

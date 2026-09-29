@@ -1574,6 +1574,36 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.getByText('Festa del centre')).toBeVisible();
   });
 
+  test('el torn de pati el decideix la configuració, no les files GP d\'Untis', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#date-input').fill('2026-09-14');
+    await page.locator('#date-input').press('Tab');
+
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#pati-panel summary').click();
+    await page.locator('#new-pati-zone').fill('Pista');
+    await page.locator('#add-pati-zone').click();
+    await page.locator('#pati-teacher-search').fill('Sanz');
+    await page.locator('#pati-teacher-search').press('Enter');
+    await expect(page.locator('.pati-roster-row')).toHaveCount(1);
+    await page.getByRole('tab', { name: 'Gestió diària' }).click();
+
+    // Fuentes té una fila GP d'Untis dilluns, però no fa pati aquest dia.
+    await page.locator('#professor-search').fill('Fuentes');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await expect(page.locator('#schedule-grid .schedule-item').filter({ hasText: 'PATI' })).toHaveCount(0);
+
+    // Sanz fa pati dilluns sense cap fila GP: l'absència de tot el dia l'ha d'incloure.
+    await page.locator('#professor-search').fill('Sanz');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await expect(page.locator('#schedule-grid .schedule-item').filter({ hasText: 'PATI' })).toHaveCount(1);
+    await page.locator('#add-all-hours').click();
+    const sanzCard = page.locator('#coverage-list .pati-zone-card').filter({ hasText: 'Sanz' });
+    await expect(sanzCard).toHaveClass(/absent/);
+    await expect(sanzCard.locator('.pati-absence-badge')).toHaveText('Absent');
+  });
+
   test('una sortida completa allibera professorat i els acompanyants generen absències', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
