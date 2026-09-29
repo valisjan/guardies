@@ -1529,7 +1529,7 @@ test.describe('Guàrdies: comportament existent', () => {
 
     await page.locator('#professor-search').fill('Fuentes');
     await page.locator('#professor-results [data-professor]').first().click();
-    await page.locator('#schedule-grid .schedule-item').filter({ hasText: 'PATI' }).locator('[data-absence]').check();
+    await page.locator('#schedule-grid .schedule-item').filter({ hasText: 'Guàrdia de pati' }).locator('[data-absence]').check();
     await expect(page.locator('.pati-zone-card.absent')).toHaveCount(1);
     await expect(page.locator('.pati-zone-card.absent .pati-absence-badge')).toHaveText('Absent');
     await expect(page.locator('.coverage-session.pati-session .coverage-session-list')).toHaveCount(0);
@@ -1592,16 +1592,44 @@ test.describe('Guàrdies: comportament existent', () => {
     // Fuentes té una fila GP d'Untis dilluns, però no fa pati aquest dia.
     await page.locator('#professor-search').fill('Fuentes');
     await page.locator('#professor-results [data-professor]').first().click();
-    await expect(page.locator('#schedule-grid .schedule-item').filter({ hasText: 'PATI' })).toHaveCount(0);
+    await expect(page.locator('#schedule-grid .schedule-item').filter({ hasText: 'Guàrdia de pati' })).toHaveCount(0);
 
     // Sanz fa pati dilluns sense cap fila GP: l'absència de tot el dia l'ha d'incloure.
     await page.locator('#professor-search').fill('Sanz');
     await page.locator('#professor-results [data-professor]').first().click();
-    await expect(page.locator('#schedule-grid .schedule-item').filter({ hasText: 'PATI' })).toHaveCount(1);
+    await expect(page.locator('#schedule-grid .schedule-item').filter({ hasText: 'Guàrdia de pati' })).toHaveCount(1);
     await page.locator('#add-all-hours').click();
     const sanzCard = page.locator('#coverage-list .pati-zone-card').filter({ hasText: 'Sanz' });
     await expect(sanzCard).toHaveClass(/absent/);
     await expect(sanzCard.locator('.pati-absence-badge')).toHaveText('Absent');
+  });
+
+  test('el pati surt al seu lloc cronològic a l\'horari del professor', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#date-input').fill('2026-09-14');
+    await page.locator('#date-input').press('Tab');
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#duties-file').setInputFiles(sevenSessionsDutiesFile);
+    await expect(page.locator('[data-upload-status="duties"]')).toHaveText('OK');
+    await page.locator('#pati-panel summary').click();
+    await page.locator('#new-pati-zone').fill('Pista');
+    await page.locator('#add-pati-zone').click();
+    await page.locator('#pati-teacher-search').fill('Adell');
+    await page.locator('#pati-teacher-search').press('Enter');
+    await expect(page.locator('.pati-roster-row')).toHaveCount(1);
+    await page.getByRole('tab', { name: 'Gestió diària' }).click();
+
+    await page.locator('#professor-search').fill('Adell');
+    await page.locator('#professor-results [data-professor]').first().click();
+    const items = page.locator('#schedule-grid .schedule-item');
+    await expect(items.filter({ hasText: 'Guàrdia de pati' })).toHaveCount(1);
+    const texts = await items.allInnerTexts();
+    expect(texts.length).toBeGreaterThan(4);
+    const patioIndex = texts.findIndex((text) => text.includes('Guàrdia de pati'));
+    expect(patioIndex).toBe(3);
+    expect(texts[patioIndex]).toMatch(/^10:45/);
+    expect(texts[patioIndex]).not.toContain('Sense grup');
   });
 
   test('una sortida completa allibera professorat i els acompanyants generen absències', async ({ page }) => {

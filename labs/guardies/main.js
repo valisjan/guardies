@@ -14,6 +14,7 @@ import {
   groupTeachingBlocks,
   isTeacherAbsentAtSlot,
   mergeSharedClassroomAbsences,
+  minutesFromHour,
   releasedTeachingBlocks,
   studentsReturnToOwnGroup,
   xmlDayForDate,
@@ -52,6 +53,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
 (function initGuardiesLab() {
   const PATI_COMMENT_KEY = '__pati_observation__';
+  const PATI_START = '10:45';
   const SEVENTH_COMMENT_KEY = '__seventh_observation__';
   const LEGACY_STORAGE = {
     referenceXml: 'quota_guardies_lab_reference_xml',
@@ -2896,13 +2898,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       const checked = state.absencies.has(item.id) ? 'checked' : '';
       const disabled = selectable && state.dayStatus !== 'closed' ? '' : 'disabled';
       const tipus = tipusItem(item);
+      const pati = item.hora === 'PATI';
       return `
         <label class="schedule-item ${selectable ? '' : 'schedule-item-muted'}">
           <input type="checkbox" data-absence="${escapeHtml(item.id)}" ${checked} ${disabled} />
-          <span class="schedule-time">${escapeHtml(item.hora)}</span>
+          <span class="schedule-time">${escapeHtml(scheduleHourText(item.hora))}</span>
           <span class="schedule-main">
-            <strong>${escapeHtml(formatMateria(item))}</strong>
-            <small>${escapeHtml(formatBlocCurt(item))}</small>
+            <strong>${escapeHtml(pati ? 'Guàrdia de pati' : formatMateria(item))}</strong>
+            ${pati ? '' : `<small>${escapeHtml(formatBlocCurt(item))}</small>`}
           </span>
           <span class="schedule-type">${escapeHtml(tipus)}</span>
         </label>
@@ -2941,7 +2944,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       .sort(([diaA], [diaB]) => Number(diaA) - Number(diaB))
       .map(([itemDia, dayItems]) => {
         const hores = Array.from(new Set(dayItems.map((item) => item.hora).filter(Boolean)))
-          .sort((a, b) => a.localeCompare(b, 'ca', { numeric: true }));
+          .sort(compareScheduleHours)
+          .map(scheduleHourText);
         return `
           <button type="button" class="ghost" data-jump-day="${escapeHtml(itemDia)}">
             ${escapeHtml(parser.diaLabel(itemDia))} · ${escapeHtml(hores.join(', ') || 'sense hora')}
@@ -3568,14 +3572,25 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       .sort((a, b) => {
         const dia = Number(a.dia) - Number(b.dia);
         if (dia) return dia;
-        return (a.hora || '').localeCompare(b.hora || '', 'ca', { numeric: true });
+        return compareScheduleHours(a.hora, b.hora);
       });
   }
 
   function currentProfessorDayItems() {
     const dia = diaXmlSeleccionat();
     return dedupeScheduleItems(parser.agruparSessionsCobertura(sessionsProfessorDia(state.professor, dia)))
-      .sort((a, b) => (a.hora || '').localeCompare(b.hora || '', 'ca', { numeric: true }));
+      .sort((a, b) => compareScheduleHours(a.hora, b.hora));
+  }
+
+  // El pati sempre és de 10:45 a 11:15, encara que no tingui hora pròpia a Untis.
+  function scheduleHourText(hora) {
+    return hora === 'PATI' ? PATI_START : hora;
+  }
+
+  function compareScheduleHours(a, b) {
+    const minutesA = minutesFromHour(scheduleHourText(a));
+    const minutesB = minutesFromHour(scheduleHourText(b));
+    return minutesA !== null && minutesB !== null ? minutesA - minutesB : sortHours(a, b);
   }
 
   function dedupeScheduleItems(items) {

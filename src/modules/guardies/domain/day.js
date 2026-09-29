@@ -225,7 +225,7 @@ export function mergeSharedClassroomAbsences({ sessions = [], absences = [] } = 
 
 const STANDARD_TEACHING_STARTS = [480, 535, 590, 675, 730, 785, 840];
 
-function minutesFromHour(value) {
+export function minutesFromHour(value) {
   const match = String(value || '').match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return null;
   const hours = Number(match[1]);
