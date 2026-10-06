@@ -1808,6 +1808,9 @@ test.describe('Guàrdies: comportament existent', () => {
       expect(pages).toHaveLength(1);
       expect(Number(mediaBox?.[1])).toBeGreaterThan(840);
       expect(Number(mediaBox?.[2])).toBeGreaterThan(1190);
+      // També ha de cabre quan la mida A3 arriba de la impressora i no del CSS.
+      const printerPdf = await page.pdf({ format: 'A3', printBackground: true, preferCSSPageSize: false });
+      expect(printerPdf.toString('latin1').match(/\/Type\s*\/Page(?!s)\b/g)).toHaveLength(1);
     }
   });
 
@@ -1840,7 +1843,10 @@ test.describe('Guàrdies: comportament existent', () => {
       };
     });
 
-    expect(layout.panelHeight).toBeGreaterThan(1500);
+    // A3: 420 mm - 2 × 10 mm de marge = 400 mm disponibles.
+    // El full fa 390 mm i conserva 10 mm de reserva per a l'àrea imprimible real.
+    expect(layout.panelHeight).toBeGreaterThan(1450);
+    expect(layout.panelHeight).toBeLessThan(1490);
     expect(Math.max(...layout.sessionHeights) - Math.min(...layout.sessionHeights)).toBeLessThan(2);
     expect(layout.patioHeight).toBeLessThan(Math.min(...layout.sessionHeights));
     expect(layout.seventhHeight).toBeLessThan(Math.min(...layout.sessionHeights));
