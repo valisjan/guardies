@@ -1151,6 +1151,43 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('#coverage-list .coverage-row.status-returns')).toHaveCount(0);
   });
 
+  test('les hores de PALIC sense codi es marquen amb tot el dia; les reunions, només a mà', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#duties-file').setInputFiles({
+      name: 'GPU001.TXT',
+      mimeType: 'text/plain',
+      // SANZ: PALIC sense codi (3 hores a l'aula 14) i una reunió sense codi a les 13:05.
+      buffer: Buffer.from(`${dutiesText}
+41,,"SANZ",,"AUL14",1,5,,
+41,,"SANZ",,"AUL14",2,1,,
+41,,"SANZ",,"AUL14",3,1,,
+42,,"SANZ",,,1,6,,`),
+    });
+    await expect(page.locator('[data-upload-status="duties"]')).toHaveText('OK');
+    await page.getByRole('tab', { name: 'Gestió diària' }).click();
+    await page.locator('#date-input').fill('2026-09-07');
+    await page.locator('#date-input').press('Tab');
+    await page.locator('#professor-search').fill('SANZ');
+    await page.locator('#professor-results [data-professor]').first().click();
+
+    const palic = page.locator('#schedule-grid .schedule-item').filter({ hasText: '12:10' });
+    const meeting = page.locator('#schedule-grid .schedule-item').filter({ hasText: '13:05' });
+    await expect(palic).toContainText('Docència sense grup (PALIC)');
+    await expect(meeting).toContainText('Sessió sense codi');
+    await expect(palic.locator('[data-absence]')).not.toBeChecked();
+
+    await page.locator('#add-all-hours').click();
+    await expect(palic.locator('[data-absence]')).toBeChecked();
+    await expect(meeting.locator('[data-absence]')).not.toBeChecked();
+    await expect(meeting.locator('[data-absence]')).toBeEnabled();
+
+    await meeting.locator('[data-absence]').check();
+    await expect(page.locator('#coverage-list .coverage-row').filter({ hasText: 'Sessió sense codi' })).toHaveCount(1);
+    await expect(page.locator('#coverage-list .coverage-row').filter({ hasText: 'Docència sense grup (PALIC)' })).toHaveCount(1);
+  });
+
   test('exclou el professorat d\'Agrària de tot el mòdul de guàrdies', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

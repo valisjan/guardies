@@ -327,6 +327,34 @@
     return sessions.sort(ordenarSessions);
   }
 
+  // Hores de docència sense grup (PALIC): l'alumnat ve de molts grups i Untis les
+  // exporta sense grup. Si falta el professor s'han de poder marcar i entren al
+  // «tot el dia». Es reconeixen pel codi de l'activitat de GESTIB («*Hores de
+  // docència al PALIC») o, si arriben sense codi, per la classe d'Untis: un sol
+  // professor, aula assignada i almenys 3 hores setmanals (les reunions sense
+  // codi no tenen aula o són d'1 o 2 hores).
+  function marcarDocenciaSenseGrup(sessions) {
+    const textNormalitzat = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    const perClasse = new Map();
+    sessions.forEach((sessio) => {
+      if (sessio.teClasse || sessio.activitatEsGuardia) return;
+      const activitat = textNormalitzat([sessio.activitat, sessio.activitatCurta, sessio.activitatNom].join(' '));
+      if (/DOCENCIA|PALIC|\bPALE\b/.test(activitat)) {
+        sessio.docenciaSenseGrup = true;
+        return;
+      }
+      if (sessio.teActivitat || !sessio.classeUntis) return;
+      if (!perClasse.has(sessio.classeUntis)) perClasse.set(sessio.classeUntis, []);
+      perClasse.get(sessio.classeUntis).push(sessio);
+    });
+    perClasse.forEach((classe) => {
+      const professors = new Set(classe.map((sessio) => sessio.placa));
+      if (professors.size === 1 && classe.length >= 3 && classe.every((sessio) => sessio.aula)) {
+        classe.forEach((sessio) => { sessio.docenciaSenseGrup = true; });
+      }
+    });
+  }
+
   function parseUntisHorari(gpu001Text, {
     gpu002Text = '',
     referencia = null,
@@ -365,6 +393,7 @@
         const sessio = {
           index: `gpu001-${index}`,
           origenGuardia: esGuardia ? 'GPU001' : '',
+          classeUntis: fields[0] || '',
           placa,
           curs: grup?.curs || '',
           grup: grup?.codi || grupUntis,
@@ -415,6 +444,7 @@
       throw new Error('No s\'han trobat sessions dins del GPU001.');
     }
 
+    marcarDocenciaSenseGrup(sessions);
     const ordenades = sessions.sort(ordenarSessions);
     return {
       format: 'untis-gpu001',

@@ -128,6 +128,40 @@ test('usa GPU001 com a horari complet i conserva els noms de GPU004', async ({ p
   ]);
 });
 
+test('reconeix les hores de docència al PALIC encara que Untis no hi posi codi', async ({ page }) => {
+  const result = await runParser(page, (parser, { reference, duties }) => {
+    const parsedReference = parser.parseGestibReference(reference);
+    return parser.parseUntisHorari(duties, { referencia: parsedReference }).sessions
+      .map((session) => `${session.placa} ${session.dia}/${session.hora}: ${session.docenciaSenseGrup ? 'PALIC' : 'no'}`);
+  }, {
+    reference: `
+      <CENTRE codi="E2E" any="2026">
+        <CURSOS />
+        <PLACES><PLACA codi="1" curta="HUER" /><PLACA codi="2" curta="SIMO" /><PLACA codi="3" curta="CEIP" /><PLACA codi="4" curta="RICA" /></PLACES>
+        <MATERIES />
+        <ACTIVITATS><ACTIVITAT codi="53" descripcio="*Hores de docència al PALIC (IES)" curta="*H. de docència al PALIC" /></ACTIVITATS>
+        <AULES />
+      </CENTRE>`,
+    duties: [
+      // Sense codi: un professor, aula i 3 hores → PALIC.
+      '1124,,"HUER",,"AUL25",1,1,,', '1124,,"HUER",,"AUL25",1,2,,', '1124,,"HUER",,"AUL25",2,1,,',
+      // Reunió a la biblioteca: aula però 1 hora → no.
+      '315,,"SIMO",,"BIB",1,1,,',
+      // Dedicació de 3 hores sense aula → no.
+      '469,,"CEIP",,,1,1,,', '469,,"CEIP",,,1,2,,', '469,,"CEIP",,,2,1,,',
+      // Amb el codi de l'activitat de GESTIB → PALIC.
+      '473,,"RICA","AHDEDOCENCIAAL","AUL23",3,1,,',
+    ].join('\n'),
+  });
+
+  expect(result.sort()).toEqual([
+    '1 1/8:00: PALIC', '1 1/8:55: PALIC', '1 2/8:00: PALIC',
+    '2 1/8:00: no',
+    '3 1/8:00: no', '3 1/8:55: no', '3 2/8:00: no',
+    '4 3/8:00: PALIC',
+  ]);
+});
+
 test('resol els codis especials d aula amb el nom complet del catàleg', async ({ page }) => {
   const result = await runParser(page, (parser, { reference, duties }) => {
     const parsedReference = parser.parseGestibReference(reference);
