@@ -1176,6 +1176,37 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(row).toContainText('Fuentes Serra');
   });
 
+  test('amb el GPU002 opcional, el PALIC sense codi també demana guàrdia', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await expect(page.locator('[data-upload-status="lessons"]')).toHaveText('Opcional');
+    await page.locator('#duties-file').setInputFiles({
+      name: 'GPU001.TXT',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(`${dutiesText}
+41,,"SANZ",,"AUL14",1,5,,`),
+    });
+    await expect(page.locator('[data-upload-status="duties"]')).toHaveText('OK');
+    await page.locator('#lessons-file').setInputFiles({
+      name: 'GPU002.TXT',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('41,1,,1,,"SANZ",,,,0,1.00000,,,,"20260701","20270630",0.00530,,,,"HodedocalPALIES",,,"aBn",,,,,,,,,,0,0,,,,,100000,1.00000,,,,,0,'),
+    });
+    await expect(page.locator('[data-upload-status="lessons"]')).toHaveText('OK');
+    await expect(page.locator('#cache-info')).toContainText('3/3 fitxers compartits');
+
+    await page.getByRole('tab', { name: 'Gestió diària' }).click();
+    await page.locator('#date-input').fill('2026-09-07');
+    await page.locator('#date-input').press('Tab');
+    await page.locator('#professor-search').fill('SANZ');
+    await page.locator('#professor-results [data-professor]').first().click();
+    const session = page.locator('#schedule-grid .schedule-item').filter({ hasText: '12:10' });
+    await expect(session).toContainText('PALIC');
+    await session.locator('[data-absence]').check();
+    await expect(page.locator('#coverage-list .coverage-row').filter({ hasText: 'PALIC' })).toHaveCount(1);
+  });
+
   test('exclou el professorat d\'Agrària de tot el mòdul de guàrdies', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

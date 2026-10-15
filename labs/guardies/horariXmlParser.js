@@ -343,6 +343,30 @@
     return /DOCENCIA/.test(text) ? 'PALIC' : '';
   }
 
+  // GPU002 (opcional): número de classe → programa, per a les classes sense grup el
+  // text o el grup d'alumnes de les quals és de docència al PALIC/PALE
+  // («HodedocalPALIES»). Al GPU001 aquestes sessions poden arribar sense cap codi.
+  function programesPerClasseUntis(gpu002Text) {
+    const programes = new Map();
+    textNet(gpu002Text)
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .forEach((line) => {
+        const fields = parseCsvLine(line);
+        if (!fields[0] || fields[4]) return;
+        const text = [fields[6], fields[17], fields[20]]
+          .filter(Boolean)
+          .join(' ')
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '')
+          .toUpperCase();
+        if (/PALI|HODEDOC/.test(text)) programes.set(fields[0], 'PALIC');
+        else if (/\bPALE\b/.test(text)) programes.set(fields[0], 'PALE');
+      });
+    return programes;
+  }
+
   function curtaSenseAsterisc(text) {
     return String(text || '').replace(/^\*\s*/, '').trim();
   }
@@ -354,6 +378,7 @@
     hores = HORES_UNTIS_PER_DEFECTE,
   } = {}) {
     const guardCodes = codisGuardiaUntis(gpu002Text);
+    const programesClasse = programesPerClasseUntis(gpu002Text);
     const sessions = [];
 
     textNet(gpu001Text)
@@ -379,7 +404,9 @@
         const hora = hores[horaIndex - 1] || String(horaIndex);
         const esGuardia = guardCodes.has(codiMateriaActivitat);
         const esConvivencia = codiMateriaActivitat === 'GC' || codiMateriaActivitat === 'GCONV';
-        const programa = !grupUntis && !esGuardia ? programaDocenciaSenseGrup(codiMateriaActivitat, activitat) : '';
+        const programa = !grupUntis && !esGuardia
+          ? programesClasse.get(fields[0] || '') || programaDocenciaSenseGrup(codiMateriaActivitat, activitat)
+          : '';
         const teClasse = Boolean(grupUntis) || Boolean(programa);
         const teActivitat = !teClasse && Boolean(codiMateriaActivitat);
 
@@ -404,7 +431,7 @@
           professorNom: professor?.label || '',
           grupVisible: grup?.visible || grupUntis || programa,
           cursVisible: grup?.cursVisible || '',
-          materiaCurta: materia?.curta || (programa ? curtaSenseAsterisc(activitat?.curta) || programa : '')
+          materiaCurta: materia?.curta || (programa ? curtaSenseAsterisc(activitat?.curta) || `Docència al ${programa}` : '')
             || (teClasse ? codiMateriaActivitat : ''),
           materiaNom: materia?.descripcio || (programa ? curtaSenseAsterisc(activitat?.descripcio) : ''),
           docenciaSenseGrup: Boolean(programa),

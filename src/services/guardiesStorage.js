@@ -37,7 +37,8 @@ import {
 } from '../modules/guardies/domain/workflow';
 import { GUARD_HISTORY_VERSION } from '../modules/guardies/domain/guard-history.js';
 
-const FILE_KINDS = new Set(['reference', 'untis', 'duties']);
+// 'lessons' (GPU002) és opcional: només serveix per reconèixer la docència sense grup (PALIC).
+const FILE_KINDS = new Set(['reference', 'untis', 'duties', 'lessons']);
 const DELETABLE_FILE_KINDS = new Set([...FILE_KINDS, 'schedule']);
 const MAX_FILE_BYTES = 850 * 1024;
 const E2E_PREFIX = 'quota-e2e-guardies:';
@@ -453,6 +454,7 @@ export async function loadGuardiesData(cursId, { signal } = {}) {
         reference: data.files.reference || null,
         untis: data.files.untis || null,
         duties: data.files.duties || null,
+        lessons: data.files.lessons || null,
       },
       convivencia: data.convivencia || {},
       pati: normalizePati(data.pati),
@@ -461,21 +463,23 @@ export async function loadGuardiesData(cursId, { signal } = {}) {
     };
   }
 
-  const [reference, untis, duties, convivencia, pati, observations, exclusions] = await withNetworkRetry(() => Promise.all([
+  const [reference, untis, duties, lessons, convivencia, pati, observations, exclusions] = await withNetworkRetry(() => Promise.all([
     readDoc(guardiesRef(cursId, 'reference'), { signal }),
     readDoc(guardiesRef(cursId, 'untis'), { signal }),
     readDoc(guardiesRef(cursId, 'duties'), { signal }),
+    readDoc(guardiesRef(cursId, 'lessons'), { signal }),
     readDoc(guardiesRef(cursId, 'convivencia'), { signal }),
     readDoc(guardiesRef(cursId, 'pati'), { signal }),
     readDoc(guardiesObservationsRef(cursId), { signal }),
     readDoc(guardiesExclusionsRef(cursId), { signal }),
   ]), { signal });
-  trackReads('configLoad', 7);
+  trackReads('configLoad', 8);
   return {
     files: {
       reference: reference.exists() ? await loadStoredFile(reference.data()) : null,
       untis: untis.exists() ? await loadStoredFile(untis.data()) : null,
       duties: duties.exists() ? await loadStoredFile(duties.data()) : null,
+      lessons: lessons.exists() ? await loadStoredFile(lessons.data()) : null,
     },
     convivencia: convivencia.exists() ? normalizeConvivencia(convivencia.data()) : {},
     pati: pati.exists() ? normalizePati(pati.data()) : null,
@@ -492,6 +496,7 @@ export function subscribeGuardiesData(cursId, onChange, onError = () => {}, { io
           reference: data.files?.reference || null,
           untis: data.files?.untis || null,
           duties: data.files?.duties || null,
+          lessons: data.files?.lessons || null,
         },
         convivencia: data.convivencia || {},
         pati: normalizePati(data.pati),
@@ -534,13 +539,14 @@ export function subscribeGuardiesData(cursId, onChange, onError = () => {}, { io
     const currentEmission = ++emission;
     const currentDocuments = documents;
     try {
-      const files = await Promise.all(['reference', 'untis', 'duties'].map((kind) => loadStoredFile(currentDocuments.get(kind))));
+      const files = await Promise.all(['reference', 'untis', 'duties', 'lessons'].map((kind) => loadStoredFile(currentDocuments.get(kind))));
       if (!active || currentEmission !== emission) return;
       await onChange({
         files: {
           reference: files[0],
           untis: files[1],
           duties: files[2],
+          lessons: files[3],
         },
         convivencia: normalizeConvivencia(documents.get('convivencia')),
         pati: normalizePati(documents.get('pati')),
@@ -745,22 +751,25 @@ export async function loadGuardiesTeacherSchedule(cursId) {
         reference: data.files?.reference || null,
         untis: data.files?.untis || null,
         duties: data.files?.duties || null,
+        lessons: data.files?.lessons || null,
       },
       excludedTeacherIds: normalizeExcludedTeacherIds({ teacherIds: data.excludedTeacherIds }),
     };
   }
-  const [reference, untis, duties, exclusions] = await withNetworkRetry(() => Promise.all([
+  const [reference, untis, duties, lessons, exclusions] = await withNetworkRetry(() => Promise.all([
     readDoc(guardiesRef(cursId, 'reference')),
     readDoc(guardiesRef(cursId, 'untis')),
     readDoc(guardiesRef(cursId, 'duties')),
+    readDoc(guardiesRef(cursId, 'lessons')),
     readDoc(guardiesExclusionsRef(cursId)),
   ]));
-  trackReads('teacherScheduleLoad', 4);
+  trackReads('teacherScheduleLoad', 5);
   return {
     files: {
       reference: reference.exists() ? await loadStoredFile(reference.data()) : null,
       untis: untis.exists() ? await loadStoredFile(untis.data()) : null,
       duties: duties.exists() ? await loadStoredFile(duties.data()) : null,
+      lessons: lessons.exists() ? await loadStoredFile(lessons.data()) : null,
     },
     excludedTeacherIds: exclusions.exists() ? normalizeExcludedTeacherIds({ teacherIds: exclusions.data().excludedTeacherIds }) : [],
   };

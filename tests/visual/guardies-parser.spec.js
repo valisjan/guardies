@@ -165,6 +165,25 @@ test('les hores de docència al PALIC sense grup compten com a classe', async ({
   ]);
 });
 
+test('amb el GPU002 reconeix el PALIC encara que el GPU001 no porti codi', async ({ page }) => {
+  const result = await runParser(page, (parser, { duties, lessons }) => {
+    const summary = (options) => parser.parseUntisHorari(duties, options).sessions
+      .map((session) => `${session.placa}:${session.teClasse ? `classe ${session.grupVisible}` : 'no'}`);
+    return { without: summary({}), with: summary({ gpu002Text: lessons }) };
+  }, {
+    // 1124: PALIC sense codi a l'aula 25; 315: reunió (text Reucoodoc) a la biblioteca.
+    duties: '1124,,"HUER",,"AUL25",1,2,,\n315,,"SIMO",,"BIB",4,4,,',
+    lessons: [
+      '1124,15,,15,,"HUER",,,,0,15.00000,,,,"20260701","20270630",0.07950,,,,"HodedocalPALIES",,,"aBn",,,,,,,,,,0,0,,,,,1500000,15.00000,,,,,0,',
+      '473,5,,5,,"RICA",,,,0,5.00000,,"S",,"20260701","20270630",0.02650,"PALE",,,"HodedocalPALIES",,,"aBn",,,,,,,,,,0,0,,,,,500000,5.00000,,,,,0,',
+      '315,1,,1,,"SIMO",,,,0,1.00000,,,,"20260701","20270630",0.00530,"Equip docent 1ACE",,,"Reucoodoc",,,"aBn",,,,,,,,,,0,0,,,,,100000,1.00000,,,,,0,',
+    ].join('\n'),
+  });
+
+  expect(result.without).toEqual(['HUER:no', 'SIMO:no']);
+  expect(result.with).toEqual(['HUER:classe PALIC', 'SIMO:no']);
+});
+
 test('resol els codis especials d aula amb el nom complet del catàleg', async ({ page }) => {
   const result = await runParser(page, (parser, { reference, duties }) => {
     const parsedReference = parser.parseGestibReference(reference);
