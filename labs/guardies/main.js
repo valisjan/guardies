@@ -4258,9 +4258,16 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     return 'Classe';
   }
 
+  // Activitats amb alumnat que es marquen com una guàrdia (G, GP) però sense que el
+  // professor compti com a disponible per cobrir: hores de docència al PALIC.
+  const MARKABLE_ACTIVITY_CODES = new Set(['PALIC']);
+
   function isAbsenceSelectable(item) {
     const hasTeachingSession = item.sessions.some((sessio) => sessio.teClasse);
-    return hasTeachingSession || isGuardiaItem(item);
+    const hasMarkableActivity = item.sessions.some((sessio) => (
+      MARKABLE_ACTIVITY_CODES.has(String(sessio.activitat || '').trim().toUpperCase())
+    ));
+    return hasTeachingSession || hasMarkableActivity || isGuardiaItem(item);
   }
 
   function isGuardiaItem(item) {

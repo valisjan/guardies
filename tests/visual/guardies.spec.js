@@ -1151,6 +1151,31 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('#coverage-list .coverage-row.status-returns')).toHaveCount(0);
   });
 
+  test('l activitat PALIC es pot marcar com una guàrdia i entra a tot el dia', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#duties-file').setInputFiles({
+      name: 'GPU001.TXT',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(`${dutiesText}
+41,,"SANZ","PALIC","AUL14",1,5,,`),
+    });
+    await expect(page.locator('[data-upload-status="duties"]')).toHaveText('OK');
+    await page.getByRole('tab', { name: 'Gestió diària' }).click();
+    await page.locator('#date-input').fill('2026-09-07');
+    await page.locator('#date-input').press('Tab');
+    await page.locator('#professor-search').fill('SANZ');
+    await page.locator('#professor-results [data-professor]').first().click();
+
+    const palic = page.locator('#schedule-grid .schedule-item').filter({ hasText: '12:10' });
+    await expect(palic).toContainText('PALIC');
+    await expect(palic.locator('[data-absence]')).toBeEnabled();
+    await page.locator('#add-all-hours').click();
+    await expect(palic.locator('[data-absence]')).toBeChecked();
+    await expect(page.locator('#coverage-list .coverage-row').filter({ hasText: 'PALIC' })).toHaveCount(1);
+  });
+
   test('exclou el professorat d\'Agrària de tot el mòdul de guàrdies', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
