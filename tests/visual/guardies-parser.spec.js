@@ -128,6 +128,43 @@ test('usa GPU001 com a horari complet i conserva els noms de GPU004', async ({ p
   ]);
 });
 
+test('les hores de docència al PALIC sense grup compten com a classe', async ({ page }) => {
+  const result = await runParser(page, (parser, { reference, duties }) => {
+    const parsedReference = parser.parseGestibReference(reference);
+    return parser.parseUntisHorari(duties, { referencia: parsedReference }).sessions.map((session) => ({
+      teacher: session.placa,
+      class: session.teClasse,
+      activity: session.teActivitat,
+      group: session.grupVisible,
+      subject: session.materiaCurta,
+    }));
+  }, {
+    reference: `
+      <CENTRE codi="E2E" any="2026">
+        <CURSOS><CURS codi="1" descripcio="1r ESO"><GRUP codi="10" nom="A" /></CURS></CURSOS>
+        <PLACES><PLACA codi="101" curta="RICA" /><PLACA codi="102" curta="PROF2" /><PLACA codi="103" curta="GUARD1" /></PLACES>
+        <MATERIES />
+        <ACTIVITATS>
+          <ACTIVITAT codi="53" descripcio="*Hores de docència al PALIC (IES)" curta="*H. de docència al PALIC" />
+          <ACTIVITAT codi="32" descripcio="Reunions coordinació docent" curta="Reunions coordinació docent" />
+          <ACTIVITAT codi="30" descripcio="Guàrdia" curta="G" />
+        </ACTIVITATS>
+        <AULES />
+      </CENTRE>`,
+    duties: [
+      '473,,"RICA","AHDEDOCENCIAAL",,1,5,,',
+      '315,,"PROF2","REUNIONSCOORDINACIODOCENT",,1,5,,',
+      '2,,"GUARD1","G",,1,5,,',
+    ].join('\n'),
+  });
+
+  expect(result).toEqual([
+    { teacher: '101', class: true, activity: false, group: 'PALIC', subject: 'H. de docència al PALIC' },
+    { teacher: '102', class: false, activity: true, group: '', subject: '' },
+    { teacher: '103', class: false, activity: true, group: '', subject: '' },
+  ]);
+});
+
 test('resol els codis especials d aula amb el nom complet del catàleg', async ({ page }) => {
   const result = await runParser(page, (parser, { reference, duties }) => {
     const parsedReference = parser.parseGestibReference(reference);
