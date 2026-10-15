@@ -1795,17 +1795,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       reportResult(false, message);
       return;
     }
-    // Tot el dia = totes les classes i guàrdies marcades; les altres sessions es copien per hora.
-    const automaticItems = currentItems.filter(isAutomaticAbsence);
-    const wholeDay = automaticItems.length > 0 && automaticItems.every((item) => state.absencies.has(item.id));
+    const wholeDay = currentItems.length > 0 && selectedItems.length === currentItems.length;
     const plans = dates.map((date) => {
       const day = xmlDayForDate(date);
       const dayItems = parser.agruparSessionsCobertura(
         state.sessions.filter((session) => session.placa === state.professor && session.dia === day && isMeaningfulSession(session)),
       ).filter(isAbsenceSelectable);
-      const ids = dayItems
-        .filter((item) => (wholeDay && isAutomaticAbsence(item)) || selectedHours.has(item.hora))
-        .map((item) => item.id);
+      const ids = (wholeDay ? dayItems : dayItems.filter((item) => selectedHours.has(item.hora))).map((item) => item.id);
       return { date, ids };
     });
     try {
@@ -2889,7 +2885,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const selectableItems = items.filter(isAbsenceSelectable);
 
     el.scheduleTitle.textContent = `${professorLabel} · ${parser.diaLabel(dia)}`;
-    el.addAllHours.disabled = state.dayStatus === 'closed' || !items.some(isAutomaticAbsence);
+    el.addAllHours.disabled = state.dayStatus === 'closed' || !selectableItems.length;
     el.clearMissing.disabled = state.dayStatus === 'closed' || !selectableItems.some((item) => state.absencies.has(item.id));
 
     if (!items.length) {
@@ -3722,10 +3718,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     return convivenciaProfessors(dia, hora).includes(placa);
   }
 
-  // Tota sessió del GPU001 és part de l'horari del professor: també les que Untis
-  // exporta sense grup ni codi (p. ex. les hores de docència al PALIC).
   function isMeaningfulSession(sessio) {
-    return Boolean(sessio?.placa && sessio?.dia && sessio?.hora);
+    return Boolean(sessio?.teClasse || sessio?.teActivitat);
   }
 
   function guardiesPerFranja(dia, hora, professorAbsent, currentAbsenceId = '') {
@@ -3922,7 +3916,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     accompanyingTeachers.forEach((teacherId) => {
       parser.agruparSessionsCobertura(
         state.sessions.filter((session) => session.placa === teacherId && session.dia === day && isMeaningfulSession(session)),
-      ).filter(isAutomaticAbsence).forEach((item) => {
+      ).filter(isAbsenceSelectable).forEach((item) => {
         state.absencies.set(item.id, item);
         state.outingAbsenceIds.add(item.id);
       });
@@ -3963,7 +3957,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function addAllCurrentProfessorAbsences() {
     currentProfessorDayItems()
-      .filter(isAutomaticAbsence)
+      .filter(isAbsenceSelectable)
       .forEach((item) => {
         state.absencies.set(item.id, item);
       });
@@ -4259,22 +4253,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function tipusItem(item) {
     if (isGuardiaItem(item)) return 'Guàrdia';
-    if (item.sessions?.some((sessio) => sessio.docenciaSenseGrup)) return 'Docència';
     if (item.activitat) return 'Activitat';
-    if (!item.sessions?.some((sessio) => sessio.teClasse)) return 'Altres';
+    if (!item.sessions?.some((sessio) => sessio.teClasse)) return 'Sense sessio';
     return 'Classe';
   }
 
-  // Qualsevol sessió es pot marcar a mà com a absència (classe, guàrdia, PALIC o
-  // una altra activitat sense codi a Untis).
   function isAbsenceSelectable(item) {
-    return Boolean(item?.sessions?.length);
-  }
-
-  // Els marcatges automàtics (tot el dia, professorat que acompanya una sortida)
-  // només inclouen classes i guàrdies: si no, també marcarien les reunions.
-  function isAutomaticAbsence(item) {
-    return item.sessions.some((sessio) => sessio.teClasse || sessio.docenciaSenseGrup) || isGuardiaItem(item);
+    const hasTeachingSession = item.sessions.some((sessio) => sessio.teClasse);
+    return hasTeachingSession || isGuardiaItem(item);
   }
 
   function isGuardiaItem(item) {
@@ -4323,8 +4309,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (isGuardiaItem(item) && !item.materia) return 'Guàrdia';
     if (item.materia) return item.materiaCurta || item.materiaNom || 'Matèria sense nom';
     if (item.activitat) return item.activitatCurta || item.activitatNom || 'Activitat sense nom';
-    if (item.sessions?.some((sessio) => sessio.docenciaSenseGrup)) return 'Docència sense grup (PALIC)';
-    return 'Sessió sense codi';
+    return 'Sessió';
   }
 
   function formatBlocCurt(item) {
