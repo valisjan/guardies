@@ -194,12 +194,10 @@ test('teacher statistics read only the schedule once and listen only to the stat
   expect(result.reads).toEqual([
     'cursos/test/config/guardies-exclusions',
     'cursos/test/guardies/duties',
-    'cursos/test/guardies/lessons',
     'cursos/test/guardies/reference',
     'cursos/test/guardies/untis',
   ]);
-  // El GPU002 (lessons) és opcional: aquí no n'hi ha.
-  expect(result.files).toEqual(['ref.xml', 'untis.txt', 'GPU001.TXT', undefined]);
+  expect(result.files).toEqual(['ref.xml', 'untis.txt', 'GPU001.TXT']);
   expect(result.excluded).toEqual(['AGR1']);
   expect(result.listened).toEqual(['cursos/test/guardies/stats']);
   expect(result.events).toEqual([{ 2: { guard: 1 } }, { 2: { guard: 2 } }]);

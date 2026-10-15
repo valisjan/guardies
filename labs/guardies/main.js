@@ -693,8 +693,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.untisName = untis?.name || '';
     state.dutiesText = remoteData.files.duties?.text || '';
     state.dutiesName = remoteData.files.duties?.name || '';
-    state.lessonsText = remoteData.files.lessons?.text || '';
-    state.lessonsName = remoteData.files.lessons?.name || '';
     state.convivencia = convivenciaFromObject(remoteData.convivencia);
     state.patiConfig = remoteData.pati || null;
     state.patiConfigCourseId = state.courseId;
@@ -785,15 +783,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       }
       const filesChanged = state.referenceText !== (remoteData.files.reference?.text || '')
         || state.untisText !== (remoteData.files.untis?.text || '')
-        || state.dutiesText !== (remoteData.files.duties?.text || '')
-        || state.lessonsText !== (remoteData.files.lessons?.text || '');
+        || state.dutiesText !== (remoteData.files.duties?.text || '');
       const previousExclusions = JSON.stringify(Array.from(state.excludedTeacherIds).sort());
       const previousPatioRoster = patioRosterSignature();
       const settingsSignature = (data) => JSON.stringify({
         convivencia: data?.convivencia, pati: data?.pati,
         observationPresets: data?.observationPresets,
         excludedTeacherIds: data?.excludedTeacherIds,
-        names: ['reference', 'untis', 'duties', 'lessons'].map((kind) => data?.files?.[kind]?.name),
+        names: ['reference', 'untis', 'duties'].map((kind) => data?.files?.[kind]?.name),
       });
       const configurationChanged = filesChanged
         || settingsSignature(lastAppliedConfiguration) !== settingsSignature(remoteData);
@@ -851,8 +848,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           state.untisName = schedule.files.untis?.name || '';
           state.dutiesText = schedule.files.duties?.text || '';
           state.dutiesName = schedule.files.duties?.name || '';
-          state.lessonsText = schedule.files.lessons?.text || '';
-          state.lessonsName = schedule.files.lessons?.name || '';
           state.excludedTeacherIds = new Set(schedule.excludedTeacherIds || []);
           scheduleTextsCourseId = courseId;
         }
@@ -1970,7 +1965,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           reference: 'XML de GestIB',
           untis: 'GPU004 de professorat',
           duties: 'GPU001 d\'horari i guàrdies',
-          lessons: 'GPU002 de classes',
         };
         throw new Error(`Aquest fitxer no correspon al pas actual. S'espera: ${labels[intendedKind]}.`);
       }
@@ -1987,13 +1981,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const root = xmlRootName(text);
     if (root === 'HORARI' || root === 'DOCUMENT') return 'schedule';
     if (root === 'CENTRE') return 'reference';
-    if (root) return fallback;
-    // GPU001 té 9 camps per línia; GPU002, més de 30: evita carregar-los a l'apartat equivocat.
-    if (fallback === 'duties' || fallback === 'lessons') {
-      const fields = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0].split(',').length;
-      if (fields > 20) return 'lessons';
-      if (fields > 1) return 'duties';
-    }
+    if (!root) return fallback;
     return fallback;
   }
 
@@ -2017,9 +2005,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     } else if (kind === 'duties') {
       state.dutiesText = file.text;
       state.dutiesName = file.name;
-    } else if (kind === 'lessons') {
-      state.lessonsText = file.text;
-      state.lessonsName = file.name;
     }
     state.persistenceStatus = 'ready';
     if (state.referenceText && state.untisText && state.dutiesText) {
@@ -2041,23 +2026,15 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     } else if (kind === 'duties') {
       state.dutiesText = '';
       state.dutiesName = '';
-    } else if (kind === 'lessons') {
-      state.lessonsText = '';
-      state.lessonsName = '';
     }
     state.persistenceStatus = 'ready';
     showError('');
   }
 
   async function removeUploadedFile(kind) {
-    if (!state.canWrite || !['reference', 'untis', 'duties', 'lessons'].includes(kind)) return;
+    if (!state.canWrite || !['reference', 'untis', 'duties'].includes(kind)) return;
     try {
       await clearUploadedFile(kind);
-      if (kind === 'lessons') {
-        // GPU002 només afegeix informació: no cal reiniciar la jornada.
-        parseStoredData({ resetSelection: false });
-        return;
-      }
       state.professor = '';
       state.absencies.clear();
       state.assignacions.clear();
@@ -2084,8 +2061,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const sameFiles = parsedScheduleCache
       && parsedScheduleCache.referenceText === state.referenceText
       && parsedScheduleCache.untisText === state.untisText
-      && parsedScheduleCache.dutiesText === state.dutiesText
-      && parsedScheduleCache.lessonsText === state.lessonsText;
+      && parsedScheduleCache.dutiesText === state.dutiesText;
     let referenceError = '';
     let untisError = '';
     state.referencia = sameFiles ? parsedScheduleCache.referencia : null;
@@ -2117,7 +2093,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     try {
       if (state.dutiesText) {
         const result = sameFiles ? parsedScheduleCache.result : parser.parseUntisHorari(state.dutiesText, {
-          gpu002Text: state.lessonsText,
           referencia: state.referencia,
           professoratUntis: state.professoratUntis,
         });
@@ -2125,7 +2100,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           // Les files GP d'Untis són compensació horària, no el torn real de pati.
           const baseSessions = result.sessions.filter((session) => !isPatiGuardiaSession(session));
           parsedScheduleCache = {
-            referenceText: state.referenceText, untisText: state.untisText, dutiesText: state.dutiesText, lessonsText: state.lessonsText,
+            referenceText: state.referenceText, untisText: state.untisText, dutiesText: state.dutiesText,
             referencia: state.referencia, professoratUntis: state.professoratUntis,
             referenceError, untisError, result, baseSessions,
           };
@@ -2198,7 +2173,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       // no es poden recuperar i cal tornar-los a pujar.
       const damaged = [
         [state.dutiesText, 'GPU001'],
-        [state.lessonsText, 'GPU002'],
         [state.untisText, 'GPU004'],
         [state.referenceText, 'XML de GestIB'],
       ].filter(([text]) => hasEncodingDamage(text)).map(([, label]) => label);
@@ -2244,16 +2218,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   async function clearPersistentFiles() {
     if (!state.canWrite || !state.courseId) return;
-    const confirmed = window.confirm('Vols eliminar els fitxers compartits de guàrdies?');
+    const confirmed = window.confirm('Vols eliminar els tres fitxers compartits de guàrdies?');
     if (!confirmed) return;
     try {
       state.persistenceStatus = 'saving';
       await Promise.all(
-        ['reference', 'untis', 'duties', 'lessons', 'schedule']
+        ['reference', 'untis', 'duties', 'schedule']
           .map((kind) => deleteGuardiesFile(state.courseId, kind)),
       );
-      state.lessonsText = '';
-      state.lessonsName = '';
       state.referenceText = '';
       state.referenceName = '';
       state.untisText = '';

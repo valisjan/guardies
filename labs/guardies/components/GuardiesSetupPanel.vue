@@ -7,13 +7,11 @@ const definitions = [
   { kind: 'reference', title: 'XML GestIB', accept: '.xml,text/xml,application/xml,*/*' },
   { kind: 'untis', title: 'Professorat Untis (GPU004)', accept: '.txt,.csv,text/plain,text/csv,*/*' },
   { kind: 'duties', title: 'Horari i guàrdies Untis (GPU001)', accept: '.txt,.csv,text/plain,text/csv,*/*' },
-  // Opcional: el text de cada classe permet reconèixer les hores de docència al PALIC sense grup.
-  { kind: 'lessons', title: 'Classes Untis (GPU002) · opcional, per al PALIC', accept: '.txt,.csv,text/plain,text/csv,*/*', optional: true },
 ];
 
 const store = useGuardiesStore();
 const {
-  referenceText, referenceName, untisText, untisName, dutiesText, dutiesName, lessonsText, lessonsName,
+  referenceText, referenceName, untisText, untisName, dutiesText, dutiesName,
   persistenceStatus, courseName, courseId, canWrite,
 } = storeToRefs(store);
 
@@ -21,7 +19,6 @@ const values = computed(() => ({
   reference: { text: referenceText.value, name: referenceName.value },
   untis: { text: untisText.value, name: untisName.value },
   duties: { text: dutiesText.value, name: dutiesName.value },
-  lessons: { text: lessonsText.value, name: lessonsName.value },
 }));
 
 const uploads = computed(() => {
@@ -31,13 +28,13 @@ const uploads = computed(() => {
     const loaded = Boolean(value.text);
     const lockedByOrder = !loaded && !previousComplete;
     const locked = !canWrite.value || persistenceStatus.value === 'saving' || lockedByOrder;
-    if (!definition.optional) previousComplete = previousComplete && loaded;
+    previousComplete = previousComplete && loaded;
     return {
       ...definition,
       loaded,
       locked,
       filename: loaded ? value.name || 'Fitxer carregat' : 'No carregat',
-      status: loaded ? 'OK' : canWrite.value && lockedByOrder ? 'Pas anterior' : definition.optional ? 'Opcional' : 'Pendent',
+      status: loaded ? 'OK' : canWrite.value && lockedByOrder ? 'Pas anterior' : 'Pendent',
     };
   });
 });
@@ -46,7 +43,7 @@ const cacheLabel = computed(() => {
   if (persistenceStatus.value === 'loading') return 'Connectant amb Firebase...';
   if (persistenceStatus.value === 'stale') return 'Dades locals · reintentant connexió...';
   if (persistenceStatus.value === 'saving') return 'Guardant a Firebase...';
-  const count = uploads.value.filter((upload) => !upload.optional && upload.loaded).length;
+  const count = uploads.value.filter((upload) => upload.loaded).length;
   const course = courseName.value || courseId.value || 'curs actiu';
   const mode = canWrite.value ? 'compartits' : 'només lectura';
   return `${count}/3 fitxers ${mode} · ${course}`;
