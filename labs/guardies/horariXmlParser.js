@@ -327,26 +327,6 @@
     return sessions.sort(ordenarSessions);
   }
 
-  // PALIC/PALE: hores de docència sense grup (l'alumnat ve de molts grups). A Untis
-  // surten sense classe i amb el codi de l'activitat de GESTIB («*H. de docència al
-  // PALIC», exportat com AHDEDOCENCIAAL). Hi ha alumnes: si falta el professor, cal
-  // guàrdia, així que compten com a classe. Retorna el nom del programa o ''.
-  function programaDocenciaSenseGrup(codi, activitat) {
-    const text = [codi, activitat?.curta, activitat?.descripcio]
-      .filter(Boolean)
-      .join(' ')
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
-      .toUpperCase();
-    const programa = text.match(/\bPAL(?:IC|IES|E)\b/);
-    if (programa) return programa[0] === 'PALIES' ? 'PALIC' : programa[0];
-    return /DOCENCIA/.test(text) ? 'PALIC' : '';
-  }
-
-  function curtaSenseAsterisc(text) {
-    return String(text || '').replace(/^\*\s*/, '').trim();
-  }
-
   function parseUntisHorari(gpu001Text, {
     gpu002Text = '',
     referencia = null,
@@ -379,8 +359,7 @@
         const hora = hores[horaIndex - 1] || String(horaIndex);
         const esGuardia = guardCodes.has(codiMateriaActivitat);
         const esConvivencia = codiMateriaActivitat === 'GC' || codiMateriaActivitat === 'GCONV';
-        const programa = !grupUntis && !esGuardia ? programaDocenciaSenseGrup(codiMateriaActivitat, activitat) : '';
-        const teClasse = Boolean(grupUntis) || Boolean(programa);
+        const teClasse = Boolean(grupUntis);
         const teActivitat = !teClasse && Boolean(codiMateriaActivitat);
 
         const sessio = {
@@ -402,12 +381,10 @@
           tipus: teActivitat ? 'activitat' : teClasse ? 'classe' : 'altres',
           professorCurta: professor?.codi || codiProfessor,
           professorNom: professor?.label || '',
-          grupVisible: grup?.visible || grupUntis || programa,
+          grupVisible: grup?.visible || grupUntis,
           cursVisible: grup?.cursVisible || '',
-          materiaCurta: materia?.curta || (programa ? curtaSenseAsterisc(activitat?.curta) || programa : '')
-            || (teClasse ? codiMateriaActivitat : ''),
-          materiaNom: materia?.descripcio || (programa ? curtaSenseAsterisc(activitat?.descripcio) : ''),
-          docenciaSenseGrup: Boolean(programa),
+          materiaCurta: materia?.curta || (teClasse ? codiMateriaActivitat : ''),
+          materiaNom: materia?.descripcio || '',
           activitatCurta: activitat?.curta || (teActivitat ? codiMateriaActivitat : ''),
           activitatNom: activitat?.descripcio || '',
           activitatEsGuardia: esGuardia,
