@@ -5213,6 +5213,80 @@ button.ghost {
   .admin-panel > summary:hover {
     background: var(--surface-subtle);
   }
+
+  /* Observacions sempre visibles però compactes: una línia que creix amb el text
+     i el botó de frases al costat. Les columnes donen més espai a l'observació. */
+  .comment-editor {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .comment-editor textarea {
+    flex: 1 1 0;
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    max-height: 9.5em;
+    resize: none;
+    field-sizing: content;
+    overflow-y: auto;
+    padding-block: 11px;
+    line-height: 1.4;
+  }
+
+  .comment-editor textarea:focus {
+    background: var(--surface);
+  }
+
+  .coverage-comment-cell .comment-editor select {
+    flex: 0 0 auto;
+    width: auto;
+    max-width: 6.5rem;
+    min-height: 44px;
+    border-color: var(--border);
+    background-color: var(--surface);
+    padding: 0 26px 0 10px;
+    color: var(--primary);
+    font-weight: 600;
+  }
+
+  .coverage-comment-cell .comment-editor select:hover:not(:disabled) {
+    border-color: var(--primary-border);
+    background-color: var(--primary-soft);
+  }
+
+  /* Hores sense absències: una línia discreta perquè destaquin les que tenen feina. */
+  .coverage-session.is-empty {
+    border-style: dashed;
+    background: transparent;
+  }
+
+  .coverage-session.is-empty .coverage-session-head {
+    border-bottom: 0;
+    background: transparent;
+  }
+
+  .coverage-session.is-empty .coverage-session-head h3 {
+    color: var(--muted);
+    font-size: var(--text-base);
+    font-weight: 600;
+  }
+
+  .coverage-session.is-empty .coverage-session-head span {
+    font-size: var(--text-xs);
+    font-weight: 500;
+  }
+
+  .coverage-session.is-empty:hover {
+    box-shadow: none;
+  }
+}
+
+@media screen and (min-width: 1181px) {
+  .guard-layout:not(.is-readonly) .coverage-row {
+    grid-template-columns: minmax(160px, 0.9fr) minmax(140px, 0.75fr) minmax(220px, 1.2fr) minmax(240px, 1.35fr);
+  }
 }
 
 @media screen and (prefers-reduced-motion: no-preference) {

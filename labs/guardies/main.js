@@ -3123,7 +3123,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       const items = selectedByHour.get(hora) || [];
       const visibleItems = hora === 'PATI' ? [] : items;
       const openItems = visibleItems.filter((item) => coverageStatus(item) === 'open').length;
-      const progress = !visibleItems.length ? '' : openItems ? 'has-open' : 'is-covered';
+      const progress = !visibleItems.length ? (hora === 'PATI' ? '' : 'is-empty') : openItems ? 'has-open' : 'is-covered';
       return `
       <section data-coverage-session="${escapeHtml(hora)}" class="coverage-session ${hora === 'PATI' ? 'pati-session' : ''} ${hora === seventhHour ? 'seventh-session' : ''} ${progress}">
         <div class="coverage-session-head">
@@ -3206,7 +3206,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
     el.coverageList.querySelectorAll('[data-comment]').forEach((input) => {
       if (!bindOnce(input)) return;
+      fitCommentEditor(input);
       input.addEventListener('input', () => {
+        fitCommentEditor(input);
         if (state.dayStatus === 'closed') return;
         updateComment(input.dataset.comment, input.value, { typing: true });
         const preset = Array.from(el.coverageList.querySelectorAll('[data-comment-preset]'))
@@ -3230,7 +3232,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         const alreadyIncluded = current.split(/\s+·\s+/)
           .some((part) => normalizeSearch(part) === normalizeSearch(phrase));
         const next = alreadyIncluded ? current : [current, phrase].filter(Boolean).join(' · ');
-        if (input) input.value = next;
+        if (input) {
+          input.value = next;
+          fitCommentEditor(input);
+        }
         select.value = '';
         updateComment(select.dataset.commentPreset, next);
       });
@@ -3269,6 +3274,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         commitCoverageEdit();
       });
     });
+  }
+
+  const supportsFieldSizing = typeof CSS !== 'undefined' && CSS.supports?.('field-sizing', 'content');
+
+  function fitCommentEditor(textarea) {
+    if (supportsFieldSizing || !textarea.closest('.comment-editor')) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight + 2}px`;
   }
 
   function updateComment(id, rawValue, { typing = false } = {}) {
@@ -4150,11 +4163,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           </select>${coTeacher ? '<span class="co-teacher-badge no-print">Queda amb el grup</span>' : ''}`
         : `<strong class="readonly-assignment no-print ${assignat ? 'assigned' : 'pending'}">${escapeHtml(assignat ? labelProfessor(assignat) : 'Sense cobrir')}</strong>`;
     const commentControl = state.canWrite
-      ? `<select data-comment-preset="${escapeHtml(item.id)}" aria-label="Observació preestablerta" ${locked || !state.observationPresets.length ? 'disabled' : ''}>
-          <option value="">Afegeix una frase…</option>
-          ${state.observationPresets.map((phrase) => `<option value="${escapeHtml(phrase)}">${escapeHtml(phrase)}</option>`).join('')}
-        </select>
-        <textarea data-comment="${escapeHtml(item.id)}" rows="2" placeholder="Observació lliure" ${locked ? 'disabled' : ''}>${escapeHtml(comentari)}</textarea>`
+      ? `<div class="comment-editor">
+          <textarea data-comment="${escapeHtml(item.id)}" rows="1" placeholder="Observació…" aria-label="Observació" ${locked ? 'disabled' : ''}>${escapeHtml(comentari)}</textarea>
+          ${state.observationPresets.length ? `<select data-comment-preset="${escapeHtml(item.id)}" aria-label="Afegeix una frase preestablerta" ${locked ? 'disabled' : ''}>
+            <option value="">+ Frase</option>
+            ${state.observationPresets.map((phrase) => `<option value="${escapeHtml(phrase)}">${escapeHtml(phrase)}</option>`).join('')}
+          </select>` : ''}
+        </div>`
       : `<span class="readonly-comment">${escapeHtml(comentari || 'Sense observacions')}</span>`;
 
     return `
