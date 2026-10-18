@@ -3122,10 +3122,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const html = warning + dayHours.map((hora) => {
       const items = selectedByHour.get(hora) || [];
       const visibleItems = hora === 'PATI' ? [] : items;
+      const openItems = visibleItems.filter((item) => coverageStatus(item) === 'open').length;
+      const progress = !visibleItems.length ? '' : openItems ? 'has-open' : 'is-covered';
       return `
-      <section data-coverage-session="${escapeHtml(hora)}" class="coverage-session ${hora === 'PATI' ? 'pati-session' : ''} ${hora === seventhHour ? 'seventh-session' : ''}">
+      <section data-coverage-session="${escapeHtml(hora)}" class="coverage-session ${hora === 'PATI' ? 'pati-session' : ''} ${hora === seventhHour ? 'seventh-session' : ''} ${progress}">
         <div class="coverage-session-head">
           <h3>${escapeHtml(horaLabel(hora))}</h3>
+          ${openItems ? `<em class="session-pending no-print">${openItems} sense cobrir</em>` : ''}
           <span>${items.length ? `${items.length} ${items.length === 1 ? 'absència' : 'absències'}` : 'Sense absències'}</span>
         </div>
         ${hora === 'PATI' ? renderPatiForDate() : ''}

@@ -37,6 +37,12 @@ const dayStatusLabel = computed(() => ({
   closed: 'Tancada',
 }[dayStatus.value] || 'Esborrany'));
 
+// Part de les absències que ja tenen qui les cobreixi (barra de progrés del resum).
+const coverageTotal = computed(() => coverageSummary.value.open + coverageSummary.value.covered);
+const coveragePercent = computed(() => (
+  coverageTotal.value ? Math.round((coverageSummary.value.covered / coverageTotal.value) * 100) : 0
+));
+
 function formatShortDate(value) {
   if (!value) return '';
   const parsed = new Date(`${value}T12:00:00`);
@@ -155,16 +161,28 @@ function changeStatus(action) {
 
     <div class="day-kpis" role="group" aria-label="Resum de la jornada">
       <div class="day-kpi" :class="{ 'is-open': coverageSummary.open > 0 }">
-        <strong>{{ coverageSummary.open }}</strong>
+        <strong :key="coverageSummary.open">{{ coverageSummary.open }}</strong>
         <span>sense cobrir</span>
       </div>
       <div class="day-kpi" :class="{ 'is-covered': coverageSummary.covered > 0 }">
-        <strong>{{ coverageSummary.covered }}</strong>
+        <strong :key="coverageSummary.covered">{{ coverageSummary.covered }}</strong>
         <span>{{ coverageSummary.covered === 1 ? 'coberta' : 'cobertes' }}</span>
       </div>
       <div class="day-kpi">
-        <strong>{{ coverageSummary.outings }}</strong>
+        <strong :key="coverageSummary.outings">{{ coverageSummary.outings }}</strong>
         <span>{{ coverageSummary.outings === 1 ? 'sortida' : 'sortides' }}</span>
+      </div>
+      <div
+        v-if="coverageTotal"
+        class="day-progress"
+        :class="{ 'is-complete': coveragePercent === 100 }"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-valuenow="coveragePercent"
+        :aria-label="`${coverageSummary.covered} de ${coverageTotal} absències cobertes`"
+      >
+        <span :style="{ width: `${coveragePercent}%` }"></span>
       </div>
     </div>
 

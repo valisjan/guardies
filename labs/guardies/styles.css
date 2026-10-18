@@ -54,6 +54,12 @@
   --text-xl: 1.25rem;
   --text-2xl: 1.5625rem;
   --text-3xl: 2rem;
+  /* Moviment: corbes i durades compartides (fase 3 del redisseny). */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-pop: cubic-bezier(0.34, 1.45, 0.64, 1);
+  --dur-fast: 140ms;
+  --dur: 220ms;
+  --dur-slow: 420ms;
   /* Superfície invertida (fitxes emergents i avisos): fosca en clar, clara en fosc. */
   --surface-inverse: #15171c;
   --text-inverse: #f5f4f0;
@@ -5030,6 +5036,255 @@ button.ghost {
   .admin-view-tabs button,
   .admin-view-tabs .diagnostics-tab {
     font-size: var(--text-sm);
+  }
+}
+
+/* ==========================================================================
+   Redisseny · fase 3: moviment i acabat. Només pantalla. Les animacions
+   d'entrada respecten «reduir moviment»; la impressió A3 no canvia.
+   ========================================================================== */
+@media screen {
+  /* Transicions comunes: tot canvi d'estat es fon en lloc de saltar. */
+  button,
+  .admin-view-tabs button,
+  .teacher-view-tabs button,
+  .mode-tab,
+  .search-result,
+  .schedule-item,
+  .day-kpi,
+  .coverage-item,
+  .coverage-assignment-cell select,
+  .coverage-comment-cell select,
+  .coverage-comment-cell textarea,
+  input,
+  select,
+  textarea {
+    transition:
+      background-color var(--dur) var(--ease-out),
+      border-color var(--dur) var(--ease-out),
+      color var(--dur) var(--ease-out),
+      box-shadow var(--dur) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
+  }
+
+  /* Botons: un relleu lleuger en passar-hi i una pressió en clicar. */
+  :is(#day-status-action:not(.ghost), #auto-assign-guards, .range-builder button:not(.ghost)):not(:disabled):hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+
+  button:not(:disabled):active {
+    transform: translateY(1px) scale(0.985);
+    box-shadow: none;
+  }
+
+  /* Resum de la jornada: targetes amb relleu i barra de progrés. */
+  .day-kpi {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .day-kpi:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow);
+  }
+
+  .day-kpi strong {
+    display: inline-block;
+    transform-origin: left bottom;
+  }
+
+  .day-progress {
+    flex: 1 0 100%;
+    height: 6px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--surface-strong);
+  }
+
+  .day-progress > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--green-dot), var(--green));
+    transition: width var(--dur-slow) var(--ease-out);
+  }
+
+  .day-progress.is-complete > span {
+    background: var(--green-dot);
+  }
+
+  /* Hores: un punt d'estat abans del títol i un avís de pendents. */
+  .coverage-session {
+    transition: border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+  }
+
+  .coverage-session:not(.pati-session):hover {
+    box-shadow: var(--shadow);
+  }
+
+  .coverage-session.has-open .coverage-session-head h3::before,
+  .coverage-session.is-covered .coverage-session-head h3::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 9px;
+    border-radius: 999px;
+    vertical-align: 0.12em;
+    transition: background-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+  }
+
+  .coverage-session.has-open .coverage-session-head h3::before {
+    background: var(--amber-dot);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber-dot) 22%, transparent);
+  }
+
+  .coverage-session.is-covered .coverage-session-head h3::before {
+    background: var(--green-dot);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-dot) 18%, transparent);
+  }
+
+  .session-pending {
+    margin-left: auto;
+    border-radius: 999px;
+    background: var(--amber-soft);
+    padding: 3px 9px;
+    color: var(--amber);
+    font-size: var(--text-xs);
+    font-style: normal;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  /* Files: franja lateral amb el color de l'estat i fons suau en passar-hi. */
+  .guard-layout:not(.is-readonly) .coverage-item {
+    position: relative;
+  }
+
+  .guard-layout:not(.is-readonly) .coverage-item::before {
+    content: "";
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: 0;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: transparent;
+    transition: background-color var(--dur) var(--ease-out), top var(--dur) var(--ease-out), bottom var(--dur) var(--ease-out);
+  }
+
+  .guard-layout:not(.is-readonly) .coverage-item.status-open::before { background: var(--amber-dot); }
+  .guard-layout:not(.is-readonly) .coverage-item.status-covered::before,
+  .guard-layout:not(.is-readonly) .coverage-item.status-coteacher::before { background: var(--green-dot); }
+  .guard-layout:not(.is-readonly) .coverage-item.status-returns::before { background: var(--border-strong); }
+  .guard-layout:not(.is-readonly) .coverage-item.not-completed::before { background: var(--coral); }
+
+  .guard-layout:not(.is-readonly) .coverage-item:hover {
+    background: var(--surface-subtle);
+  }
+
+  .guard-layout:not(.is-readonly) .coverage-item:hover::before {
+    top: 0;
+    bottom: 0;
+  }
+
+  /* Hores del professor seleccionat: resposta immediata en marcar-les. */
+  .schedule-item:hover {
+    transform: translateX(2px);
+  }
+
+  /* Panells de configuració: el «+» gira fins a «×» en obrir-se. */
+  .admin-panel > summary::after {
+    content: "+";
+    display: inline-block;
+    transition: transform var(--dur) var(--ease-out);
+  }
+
+  .admin-panel[open] > summary::after {
+    content: "+";
+    transform: rotate(45deg);
+  }
+
+  .admin-panel > summary {
+    transition: background-color var(--dur) var(--ease-out);
+  }
+
+  .admin-panel > summary:hover {
+    background: var(--surface-subtle);
+  }
+}
+
+@media screen and (prefers-reduced-motion: no-preference) {
+  /* Entrades: cada vista apareix pujant una mica; les files noves també. */
+  .work-header,
+  .guard-layout,
+  .admin-panel,
+  .empty {
+    animation: rise-in var(--dur-slow) var(--ease-out) backwards;
+  }
+
+  .guard-layout { animation-delay: 60ms; }
+  .admin-panel:nth-of-type(2) { animation-delay: 30ms; }
+  .admin-panel:nth-of-type(3) { animation-delay: 60ms; }
+  .admin-panel:nth-of-type(4) { animation-delay: 90ms; }
+  .admin-panel:nth-of-type(5) { animation-delay: 120ms; }
+  .admin-panel:nth-of-type(6) { animation-delay: 150ms; }
+  .admin-panel:nth-of-type(n + 7) { animation-delay: 180ms; }
+
+  .coverage-session {
+    animation: rise-in var(--dur-slow) var(--ease-out) backwards;
+  }
+
+  .coverage-session:nth-child(2) { animation-delay: 40ms; }
+  .coverage-session:nth-child(3) { animation-delay: 80ms; }
+  .coverage-session:nth-child(4) { animation-delay: 120ms; }
+  .coverage-session:nth-child(5) { animation-delay: 160ms; }
+  .coverage-session:nth-child(n + 6) { animation-delay: 200ms; }
+
+  /* Una fila nova (absència afegida) entra sense moure la resta de cop. */
+  .coverage-item:not(.coverage-row-head) {
+    animation: row-in var(--dur-slow) var(--ease-out) backwards;
+  }
+
+  .schedule-item {
+    animation: row-in var(--dur) var(--ease-out) backwards;
+  }
+
+  .schedule-item:nth-child(2) { animation-delay: 25ms; }
+  .schedule-item:nth-child(3) { animation-delay: 50ms; }
+  .schedule-item:nth-child(4) { animation-delay: 75ms; }
+  .schedule-item:nth-child(5) { animation-delay: 100ms; }
+  .schedule-item:nth-child(n + 6) { animation-delay: 125ms; }
+
+  /* El número del resum fa un petit salt quan canvia. */
+  .day-kpi strong {
+    animation: kpi-pop var(--dur-slow) var(--ease-pop);
+  }
+
+  .session-pending {
+    animation: pop-in var(--dur) var(--ease-pop) backwards;
+  }
+
+  .admin-panel[open] > :not(summary) {
+    animation: rise-in var(--dur) var(--ease-out) backwards;
+  }
+
+  @keyframes rise-in {
+    from { opacity: 0; transform: translateY(8px); }
+  }
+
+  @keyframes row-in {
+    from { opacity: 0; transform: translateY(-4px); }
+  }
+
+  @keyframes kpi-pop {
+    0% { transform: scale(0.82); opacity: 0.4; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes pop-in {
+    from { opacity: 0; transform: scale(0.7); }
   }
 }
 }
