@@ -74,7 +74,7 @@ async function setExcluded(teacher, excluded) {
   <details id="teacher-exclusions-panel" class="admin-panel teacher-exclusions-panel no-print">
     <summary>
       <span class="admin-summary-title">
-        <span class="admin-icon" aria-hidden="true">🎓</span>
+        <span class="admin-icon" aria-hidden="true">⊘</span>
         <strong>Professorat d’FP</strong>
       </span>
       <span class="cache-info">{{ excludedCount }} marcats</span>

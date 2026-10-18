@@ -3329,7 +3329,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           const countRank = (guardCount(a.placa, a.source, item.dia, item.hora) + (projectedCounts.get(keyA) || 0))
             - (guardCount(b.placa, b.source, item.dia, item.hora) + (projectedCounts.get(keyB) || 0));
           if (countRank) return countRank;
-          return labelProfessor(a.placa).localeCompare(labelProfessor(b.placa), 'ca', { numeric: true });
+          return catalanCollator.compare(labelProfessor(a.placa), labelProfessor(b.placa));
         });
       const selected = candidates[0];
       if (!selected) return;
@@ -3728,6 +3728,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const ocupacio = occupationCache.get(key);
     if (!occupationByTeacherCache.has(key)) occupationByTeacherCache.set(key, new Map(ocupacio.map((professor) => [professor.placa, professor])));
     const ocupacioByPlaca = occupationByTeacherCache.get(key);
+    const unavailableAtSlot = slotUnavailableTeachers(dia, hora, currentAbsenceId);
+    const convivenciaAtSlot = new Set(convivenciaProfessors(dia, hora));
     const candidates = new Map();
 
     ocupacio
@@ -3739,12 +3741,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         candidates.set(professor.placa, {
           ...professor,
           alliberaments: [],
-          convivencia: isConvivenciaProfessor(dia, hora, professor.placa),
-          unavailable: isProfessorAbsentAtHour(dia, hora, professor.placa) || isAssignedElsewhere(dia, hora, professor.placa, currentAbsenceId),
+          convivencia: convivenciaAtSlot.has(professor.placa),
+          unavailable: unavailableAtSlot.has(professor.placa),
         });
       });
 
-    convivenciaProfessors(dia, hora).forEach((placa) => {
+    convivenciaAtSlot.forEach((placa) => {
       if (placa === professorAbsent) return;
       if (candidates.has(placa)) {
         candidates.get(placa).convivencia = true;
@@ -3763,7 +3765,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         ...base,
         alliberaments: [],
         convivencia: true,
-        unavailable: isProfessorAbsentAtHour(dia, hora, placa) || isAssignedElsewhere(dia, hora, placa, currentAbsenceId),
+        unavailable: unavailableAtSlot.has(placa),
       });
     });
 
@@ -3783,13 +3785,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         candidates.set(item.placa, {
           ...base,
           alliberaments: [],
-          convivencia: isConvivenciaProfessor(dia, hora, item.placa),
-          unavailable: isProfessorAbsentAtHour(dia, hora, item.placa) || isAssignedElsewhere(dia, hora, item.placa, currentAbsenceId),
+          convivencia: convivenciaAtSlot.has(item.placa),
+          unavailable: unavailableAtSlot.has(item.placa),
         });
       }
 
       candidates.get(item.placa).alliberaments.push(item);
-      if (isConvivenciaProfessor(dia, hora, item.placa)) candidates.get(item.placa).convivencia = true;
+      if (convivenciaAtSlot.has(item.placa)) candidates.get(item.placa).convivencia = true;
     });
 
     allProfessorIds().forEach((placa) => {
@@ -3808,23 +3810,38 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         alliberaments: [],
         convivencia: false,
         outsideDuty: true,
-        unavailable: isProfessorAbsentAtHour(dia, hora, placa) || isAssignedElsewhere(dia, hora, placa, currentAbsenceId),
+        unavailable: unavailableAtSlot.has(placa),
       });
     });
 
+    // Les claus d'ordenació es calculen una vegada per candidat, no a cada comparació.
     return Array.from(candidates.values())
-      .map((candidate) => ({ ...candidate, dia, hora }))
-      .sort((a, b) => {
-        const rankA = a.unavailable ? 4 : a.convivencia ? 2 : a.alliberaments.length ? 0 : a.outsideDuty ? 3 : 1;
-        const rankB = b.unavailable ? 4 : b.convivencia ? 2 : b.alliberaments.length ? 0 : b.outsideDuty ? 3 : 1;
-        if (rankA !== rankB) return rankA - rankB;
-        const sourceA = a.alliberaments.length ? 'released' : a.outsideDuty ? 'other' : 'guard';
-        const sourceB = b.alliberaments.length ? 'released' : b.outsideDuty ? 'other' : 'guard';
-        const countDifference = guardCount(a.placa, sourceA, dia, hora) - guardCount(b.placa, sourceB, dia, hora);
-        if (countDifference) return countDifference;
-        return (professorShort(a.placa) || a.placa)
-          .localeCompare(professorShort(b.placa) || b.placa, 'ca', { numeric: true });
-      });
+      .map((candidate) => {
+        const source = candidate.alliberaments.length ? 'released' : candidate.outsideDuty ? 'other' : 'guard';
+        return {
+          candidate: { ...candidate, dia, hora },
+          rank: candidate.unavailable ? 4 : candidate.convivencia ? 2 : candidate.alliberaments.length ? 0 : candidate.outsideDuty ? 3 : 1,
+          count: guardCount(candidate.placa, source, dia, hora),
+          name: professorShort(candidate.placa) || candidate.placa,
+        };
+      })
+      .sort((a, b) => (a.rank - b.rank) || (a.count - b.count) || catalanCollator.compare(a.name, b.name))
+      .map(({ candidate }) => candidate);
+  }
+
+  // Professorat que no pot cobrir la franja: absent a aquesta hora o ja assignat a
+  // una altra absència de la mateixa hora. Una sola passada per absències i assignacions.
+  function slotUnavailableTeachers(dia, hora, currentAbsenceId = '') {
+    const unavailable = new Set();
+    state.absencies.forEach((absence) => {
+      if (absence.dia === dia && absence.hora === hora && absence.placa) unavailable.add(absence.placa);
+    });
+    state.assignacions.forEach((assigned, absenceId) => {
+      if (absenceId === currentAbsenceId) return;
+      const absence = state.absencies.get(absenceId);
+      if (absence?.dia === dia && absence?.hora === hora) unavailable.add(assigned);
+    });
+    return unavailable;
   }
 
   function allProfessorIds() {
@@ -3873,14 +3890,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       return slotCount ? `${slotCount} G en aquesta franja` : '0 G';
     }
     return 'No té G';
-  }
-
-  function isAssignedElsewhere(dia, hora, placa, currentAbsenceId) {
-    return Array.from(state.assignacions.entries()).some(([absenceId, assigned]) => {
-      if (absenceId === currentAbsenceId || assigned !== placa) return false;
-      const absence = state.absencies.get(absenceId);
-      return absence?.dia === dia && absence?.hora === hora;
-    });
   }
 
   function releasedItemsForDay() {
@@ -4152,7 +4161,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           <strong class="no-print">${escapeHtml(absentTeacherIds.map((teacherId) => labelProfessor(teacherId)).join(' · '))}</strong>
           <strong class="print-only">${escapeHtml(absentTeacherIds.map((teacherId) => labelProfessor(teacherId, true)).join(' · '))}</strong>
           ${statusLabel ? `<span class="coverage-status no-print">${escapeHtml(statusLabel)}</span>` : ''}
-          ${state.canWrite ? `<button type="button" class="icon-remove no-print" aria-label="Elimina aquesta absència" data-remove-absence="${escapeHtml(item.id)}" data-remove-absences="${escapeHtml((item.absenceIds || [item.id]).join(','))}" ${locked ? 'disabled' : ''}>X</button>` : ''}
+          ${state.canWrite ? `<button type="button" class="icon-remove no-print" aria-label="Elimina aquesta absència" data-remove-absence="${escapeHtml(item.id)}" data-remove-absences="${escapeHtml((item.absenceIds || [item.id]).join(','))}" ${locked ? 'disabled' : ''}>×</button>` : ''}
         </div>
         <div class="coverage-detail-cell">
           <span class="cell-kicker">Sessió</span>

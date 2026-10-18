@@ -41,7 +41,7 @@ function removePhrase(value) {
   <details id="observation-presets-panel" class="admin-panel observation-presets-panel no-print">
     <summary>
       <span class="admin-summary-title">
-        <span class="admin-icon" aria-hidden="true">✎</span>
+        <span class="admin-icon" aria-hidden="true">≡</span>
         <strong>Observacions preestablertes</strong>
       </span>
       <span class="cache-info">{{ state.observationPresets.length }} frases</span>

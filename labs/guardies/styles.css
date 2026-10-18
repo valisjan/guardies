@@ -4994,6 +4994,44 @@ button.ghost {
   .nav-date-pill input[type="date"] { min-width: 0; }
   .nav-date-pill { flex: 0 1 auto; padding-left: 10px; }
 }
+
+/* Revisió d'UI (octubre 2026): textos de fila llegibles, botó d'eliminar clar
+   i pestanyes que caben al mòbil. */
+@media screen {
+  .completion-toggle,
+  .co-teacher-badge,
+  .convivencia-badge {
+    font-size: var(--text-xs);
+  }
+
+  .coverage-professor-cell .icon-remove {
+    font-size: var(--text-xl);
+    font-weight: 400;
+    line-height: 1;
+  }
+
+  .coverage-professor-cell .icon-remove:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+}
+
+@media screen and (max-width: 620px) {
+  .coverage-professor-cell .icon-remove {
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .admin-view-tabs {
+    gap: 14px;
+  }
+
+  .admin-view-tabs button,
+  .admin-view-tabs .diagnostics-tab {
+    font-size: var(--text-sm);
+  }
+}
 }
 
 @layer print {
