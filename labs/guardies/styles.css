@@ -4864,6 +4864,91 @@ button.ghost {
   }
 }
 
+/* Historial de la jornada: versions anteriors que es poden restaurar */
+@media screen {
+  .day-history {
+    display: grid;
+    gap: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    background: var(--surface);
+    padding: 12px 14px;
+    font-size: var(--text-sm);
+  }
+
+  .day-history-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .day-history-head h2 {
+    margin: 0;
+    font-size: var(--text-md);
+  }
+
+  .day-history-head p,
+  .day-history-empty {
+    margin: 2px 0 0;
+    color: var(--muted);
+  }
+
+  .day-history-feedback { margin: 0; font-weight: 700; }
+  .day-history-feedback.is-success { color: var(--green); }
+  .day-history-feedback.is-error { color: var(--coral); }
+
+  .day-history-list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .day-history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-top: 1px solid var(--border);
+    padding: 8px 0;
+  }
+
+  .day-history-item:first-child { border-top: 0; }
+  .day-history-item p { margin: 2px 0 0; }
+  .day-history-item small { color: var(--muted); font-size: var(--text-xs); }
+
+  .day-history-status {
+    margin-left: 8px;
+    border-radius: 999px;
+    background: var(--surface-strong);
+    padding: 1px 8px;
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+    font-weight: 700;
+  }
+
+  .day-history-item button { flex: none; }
+
+  .day-history-toggle {
+    min-height: 24px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: transparent;
+    padding: 0 10px;
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+    font-weight: 700;
+  }
+
+  .day-history-toggle:hover,
+  .day-history-toggle[aria-expanded="true"] {
+    border-color: var(--border-strong);
+    background: var(--surface-strong);
+    color: var(--text);
+  }
+}
+
 /* Vista del professorat (només lectura): la regla antiga de 4 columnes amb
    mínims fixos desbordava la pantalla del mòbil i tallava qui cobreix. */
 @media screen and (max-width: 820px) {

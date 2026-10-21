@@ -52,9 +52,14 @@ import {
 import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
 (function initGuardiesLab() {
-  const PATI_COMMENT_KEY = '__pati_observation__';
+  // Claus de les observacions del pati i de la 7a hora dins de «comments». Firestore
+  // rebutja els camps que comencen i acaben amb "__": amb les claus antigues, cap
+  // jornada amb aquestes observacions es podia desar. Les antigues només poden
+  // quedar en còpies locals que no es van arribar a desar.
+  const PATI_COMMENT_KEY = 'pati_observation';
   const PATI_START = '10:45';
-  const SEVENTH_COMMENT_KEY = '__seventh_observation__';
+  const SEVENTH_COMMENT_KEY = 'seventh_observation';
+  const LEGACY_COMMENT_KEYS = { __pati_observation__: PATI_COMMENT_KEY, __seventh_observation__: SEVENTH_COMMENT_KEY };
   const LEGACY_STORAGE = {
     referenceXml: 'quota_guardies_lab_reference_xml',
     referenceName: 'quota_guardies_lab_reference_name',
@@ -293,6 +298,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   window.addEventListener('guardies:undo', applyUndo);
   window.addEventListener('guardies:close-days', (event) => closeUnclosedDays(event.detail?.dates || []));
   window.addEventListener('guardies:dismiss-undo', clearUndo);
+  window.addEventListener('guardies:restore-day-version', (event) => restoreDayVersion(event.detail?.version));
 
   async function navigateToDate(date) {
     if (!date || date === state.date || navigationInFlight) return;
@@ -1345,7 +1351,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         state.assignmentSources.set(shownAs(id), source);
       }
     });
-    Object.entries(saved?.comments || {}).forEach(([id, comment]) => {
+    Object.entries(saved?.comments || {}).forEach(([savedId, comment]) => {
+      const id = LEGACY_COMMENT_KEYS[savedId] || savedId;
       if (!comment) return;
       if (state.unmatchedAbsences.has(id)) state.unmatchedAbsences.get(id).comment = comment;
       else if (state.absencies.has(shownAs(id)) || [PATI_COMMENT_KEY, SEVENTH_COMMENT_KEY].includes(id)) {
@@ -1413,6 +1420,48 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       { ...serializableDay(), revision: state.dayRevision, clientUpdatedAt: state.updatedAt },
       state.date,
     ));
+  }
+
+  // Torna la jornada oberta a una versió de l'historial. És una edició més: es desa
+  // com a revisió nova i el que hi havia passa a l'historial. L'estat (publicada,
+  // tancada) i els recomptes de guàrdies no canvien.
+  async function restoreDayVersion(version) {
+    const report = (ok, message) => window.dispatchEvent(new CustomEvent('guardies:day-version-restored', { detail: { ok, message } }));
+    if (!state.canWrite || !version || version.date !== state.date || !state.dayLoaded || loadedDate !== state.date) {
+      report(false, 'Aquesta versió no és de la jornada oberta.');
+      return;
+    }
+    if (state.dayStatus === 'closed') {
+      report(false, 'Reobre la jornada per restaurar-ne una versió.');
+      return;
+    }
+    if (state.dayConflict || state.autoSavePaused || navigationInFlight) {
+      report(false, 'Primer resol els canvis pendents de la jornada.');
+      return;
+    }
+    clearUndo();
+    const before = daySignature();
+    fillDayFromSaved({
+      ...version,
+      status: state.dayStatus,
+      publishedAt: state.publishedAt,
+      closedAt: state.closedAt,
+      countedAssignments: state.countedAssignments,
+      revision: state.dayRevision,
+      clientUpdatedAt: state.updatedAt,
+    }, state.date);
+    commitCoverageEdit({ renderAll: true });
+    if (daySignature() === before) {
+      report(true, 'La jornada ja era igual que aquesta versió.');
+      return;
+    }
+    try {
+      await persistDayNow();
+      report(true, 'Jornada restaurada. El que hi havia abans és ara a l’historial.');
+    } catch (error) {
+      state.dayPersistenceStatus = 'error';
+      report(false, `No s'ha pogut desar la jornada restaurada. ${friendlyError(error)}`);
+    }
   }
 
   async function hydrateGuardiesDay(date, { preserveCurrent = false, read = loadGuardiesDay, isConfirmed = () => true } = {}) {

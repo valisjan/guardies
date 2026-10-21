@@ -1,7 +1,10 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useGuardiesStore } from '../stores/guardies.js';
+import GuardiesDayHistory from './GuardiesDayHistory.vue';
+
+const historyOpen = ref(false);
 
 const store = useGuardiesStore();
 const {
@@ -192,6 +195,7 @@ function changeStatus(action) {
       <div class="work-title-meta">
         <span class="day-status-badge" :class="`is-${dayStatus}`">{{ dayStatusLabel }}</span>
         <em v-if="nonTeachingDay" class="non-teaching-note">Dia no lectiu</em>
+        <button v-if="canWrite" id="day-history-toggle" type="button" class="day-history-toggle" :aria-expanded="historyOpen" @click="historyOpen = !historyOpen">Historial</button>
       </div>
     </div>
 
@@ -244,5 +248,6 @@ function changeStatus(action) {
       <button v-if="canWrite" id="clear-day-list" type="button" class="ghost" :disabled="dayStatus === 'closed' || !selectedAbsences.length" @click="clearDay">Neteja dia</button>
     </div>
     </header>
+    <GuardiesDayHistory v-if="canWrite && !teacherView && historyOpen" @close="historyOpen = false" />
   </div>
 </template>

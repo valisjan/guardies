@@ -236,7 +236,7 @@ test.describe('Guàrdies: comportament existent', () => {
     await uploadConfiguration(page);
     await page.evaluate(async () => {
       const { saveGuardiesDay } = await import('/src/services/guardiesStorage.js');
-      await saveGuardiesDay('e2e-2026', '2026-09-07', { status: 'draft', comments: { __pati_observation__: 'Servidor' } }, 0);
+      await saveGuardiesDay('e2e-2026', '2026-09-07', { status: 'draft', comments: { pati_observation: 'Servidor' } }, 0);
     });
     await page.reload();
     await expect(page.locator('#workspace')).toBeVisible();
@@ -244,13 +244,13 @@ test.describe('Guàrdies: comportament existent', () => {
       const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
       window.dispatchEvent(new CustomEvent('guardies:legacy-render', { detail: { reloadDay: true } }));
       const state = useGuardiesStore();
-      state.comentaris.set('__pati_observation__', 'Edició durant la càrrega');
+      state.comentaris.set('pati_observation', 'Edició durant la càrrega');
     });
     await expect.poll(() => page.evaluate(async () => {
       const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
-      return useGuardiesStore().comentaris.get('__pati_observation__');
+      return useGuardiesStore().comentaris.get('pati_observation');
     })).toBe('Edició durant la càrrega');
-    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07']?.comments?.__pati_observation__)).toBe('Edició durant la càrrega');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07']?.comments?.pati_observation)).toBe('Edició durant la càrrega');
   });
 
   test('no descarta el canvi local quan arriba una versió remota pendent', async ({ page }) => {
@@ -1547,9 +1547,9 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(fuentesCard.locator('[data-pati-zone-override]')).toHaveValue('zona-2');
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).pati
       ?.weekdayTeachers?.['1']?.find((teacher) => teacher.teacherId === '2')?.zoneOverrides?.['2026-09-14'])).toBe('zona-2');
-    await page.locator('[data-comment="__pati_observation__"]')
+    await page.locator('[data-comment="pati_observation"]')
       .fill('Banys ha de quedar cobert durant tot el pati.');
-    await expect(page.locator('[data-comment-print="__pati_observation__"]'))
+    await expect(page.locator('[data-comment-print="pati_observation"]'))
       .toContainText('Banys ha de quedar cobert');
 
     await page.locator('#professor-search').fill('Fuentes');
@@ -1583,7 +1583,7 @@ test.describe('Guàrdies: comportament existent', () => {
     await page.locator('#date-input').press('Tab');
     await expect(page.locator('.pati-zone-card').filter({ hasText: 'Fuentes Serra' })
       .locator('[data-pati-zone-override]')).toHaveValue('zona-2');
-    await expect(page.locator('[data-comment="__pati_observation__"]'))
+    await expect(page.locator('[data-comment="pati_observation"]'))
       .toHaveValue('Banys ha de quedar cobert durant tot el pati.');
     await page.locator('#date-input').fill('2026-09-21');
     await page.locator('#date-input').press('Tab');
@@ -1979,4 +1979,90 @@ test.describe('Guàrdies: canvis d’horari amb la jornada oberta', () => {
     await page.reload();
     await expect(page.locator('[data-coverage-session="8:55"] [data-assignacio]')).toHaveValue('3');
   });
+});
+
+test.describe('Guàrdies: historial de la jornada', () => {
+  const savedDay = (page) => page.evaluate(() => (
+    JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07'] || null
+  ));
+
+  test('cada canvi desa la versió anterior i se\'n pot restaurar una', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await page.locator('[data-coverage-session="8:55"] [data-comment]').fill('Material a la taula');
+    await expect.poll(async () => Object.values((await savedDay(page))?.comments || {})).toContain('Material a la taula');
+
+    // Un error buida la jornada.
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: 'Neteja dia', exact: true }).click();
+    await expect.poll(async () => (await savedDay(page)).absenceIds).toEqual([]);
+
+    await page.getByRole('button', { name: 'Historial', exact: true }).click();
+    const history = page.locator('.day-history');
+    const before = history.locator('.day-history-item').filter({ hasText: '3 absències' }).filter({ hasText: '1 observació' });
+    await expect(before).toHaveCount(1);
+    await expect(before).toContainText('Substituïda');
+    page.once('dialog', (dialog) => dialog.accept());
+    await before.getByRole('button', { name: 'Restaura' }).click();
+    await expect(history.locator('.day-history-feedback')).toContainText('Jornada restaurada');
+    await expect(page.locator('#coverage-list [data-coverage-row]')).toHaveCount(3);
+    await expect(page.locator('[data-coverage-session="8:55"] [data-comment]')).toHaveValue('Material a la taula');
+    await expect.poll(async () => (await savedDay(page)).absenceIds).toHaveLength(3);
+    // La jornada buida també queda a l'historial: la restauració es pot desfer.
+    await expect(history.locator('.day-history-item').first()).toContainText('0 absències');
+
+    await page.reload();
+    await expect(page.locator('#coverage-list [data-coverage-row]')).toHaveCount(3);
+  });
+
+  test('es guarden com a màxim les 30 darreres versions de cada jornada', async ({ page }) => {
+    await openGuardies(page);
+    const result = await page.evaluate(async () => {
+      const storage = await import('/src/services/guardiesStorage.js');
+      const day = {
+        status: 'draft', absenceIds: [], assignments: {}, comments: {}, groupsOut: [], groupTeachers: {},
+        groupReleasedTeachers: {}, partialGroups: [], outingAbsenceIds: [], cancelledAssignments: [],
+        overriddenCoTeacherAssignments: [], publishedAt: '', closedAt: '', countedAssignments: [],
+      };
+      let revision = 0;
+      for (let change = 0; change < 35; change += 1) {
+        revision = (await storage.saveGuardiesDay('e2e-2026', '2026-09-09', {
+          ...day, comments: { pati_observation: `canvi ${change}` },
+        }, revision)).revision;
+      }
+      const versions = await storage.loadGuardiesDayVersions('e2e-2026', '2026-09-09');
+      return { revision, count: versions.length, newest: versions[0].revision, oldest: versions.at(-1).revision };
+    });
+    expect(result).toEqual({ revision: 35, count: 30, newest: 34, oldest: 5 });
+  });
+});
+
+test('les observacions del pati i de la 7a hora es desen amb claus que Firestore accepta', async ({ page }) => {
+  await openGuardies(page);
+  await uploadConfiguration(page);
+  // Una còpia local d'abans del canvi: Firestore rebutja les claus que comencen i acaben amb "__".
+  await page.evaluate(async () => {
+    const { saveGuardiesDay } = await import('/src/services/guardiesStorage.js');
+    const saved = JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07'];
+    await saveGuardiesDay('e2e-2026', '2026-09-07', {
+      status: 'draft', comments: { __pati_observation__: 'Pati antic', __seventh_observation__: 'Setena antiga' },
+    }, Number(saved?.revision) || 0);
+  });
+  await page.reload();
+  await expect(page.locator('#workspace')).toBeVisible();
+  await expect.poll(() => page.evaluate(async () => {
+    const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+    const store = useGuardiesStore();
+    return [store.comentaris.get('pati_observation'), store.comentaris.get('seventh_observation')];
+  })).toEqual(['Pati antic', 'Setena antiga']);
+
+  await page.locator('#professor-search').fill('ADELL');
+  await page.locator('#professor-results [data-professor]').first().click();
+  await page.locator('#add-all-hours').click();
+  await expect.poll(async () => page.evaluate(() => (
+    JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days['2026-09-07'].comments
+  ))).toEqual({ pati_observation: 'Pati antic', seventh_observation: 'Setena antiga' });
 });

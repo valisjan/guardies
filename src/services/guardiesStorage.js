@@ -85,6 +85,39 @@ function guardiesStatsRef(cursId) {
   return guardiesRef(cursId, 'stats');
 }
 
+// Historial: cada canvi d'una jornada en desa la versió que substitueix, dins de la
+// mateixa transacció. Les versions ocupen 30 posicions fixes per jornada (revisió
+// % 30): desar-les no costa cap lectura, no cal esborrar-ne i mai n'hi ha més de 30.
+export const DAY_VERSION_SLOTS = 30;
+
+function dayVersionId(revision) {
+  return `v${String((Number(revision) || 0) % DAY_VERSION_SLOTS).padStart(2, '0')}`;
+}
+
+function currentEditor() {
+  return E2E_AUTH_BYPASS ? 'e2e@iesjosepsuredaiblanes.com' : String(auth.currentUser?.email || '');
+}
+
+function keepDayVersion(transaction, cursId, date, previous) {
+  if (!previous) return;
+  transaction.set(doc(guardiesDayRef(cursId, date), 'versions', dayVersionId(previous.revision)), {
+    ...previous,
+    replacedAt: serverTimestamp(),
+    replacedBy: currentEditor(),
+  });
+}
+
+function keepE2EDayVersion(data, date, previous) {
+  if (!previous) return;
+  data.dayVersions ||= {};
+  data.dayVersions[date] ||= {};
+  data.dayVersions[date][dayVersionId(previous.revision)] = {
+    ...JSON.parse(JSON.stringify(previous)),
+    replacedAt: new Date().toISOString(),
+    replacedBy: currentEditor(),
+  };
+}
+
 function cleanGuardGroups(groups) {
   return Array.from(new Set(groups.map((group) => String(group || '').trim()).filter(Boolean)));
 }
@@ -1014,6 +1047,18 @@ export async function loadGuardiesDay(cursId, date, { publishedOnly = false, sig
   }
 }
 
+// Versions anteriors d'una jornada (com a màxim DAY_VERSION_SLOTS), de la més nova a la més antiga.
+export async function loadGuardiesDayVersions(cursId, date) {
+  const byRevision = (a, b) => (Number(b.revision) || 0) - (Number(a.revision) || 0);
+  if (E2E_AUTH_BYPASS) return Object.values(getE2EData(cursId).dayVersions?.[date] || {}).sort(byRevision);
+  const snapshot = await getDocs(collection(guardiesDayRef(cursId, date), 'versions'));
+  trackReads('dayVersions', snapshot.docs.length, date);
+  return snapshot.docs.map((item) => {
+    const data = item.data();
+    return { ...data, replacedAt: data.replacedAt?.toDate?.().toISOString() || '' };
+  }).sort(byRevision);
+}
+
 function guardiesDayNeedsClosing(day = {}) {
   if (day.status === 'closed') return false;
   if (day.status === 'published') return true;
@@ -1173,6 +1218,7 @@ export async function saveGuardiesDay(cursId, date, payload, expectedRevision = 
     data.days ||= {};
     const currentRevision = Number(data.days[date]?.revision) || 0;
     if (currentRevision !== expectedRevision) throw Object.assign(new Error('La jornada ha canviat en una altra pestanya.'), { code: 'guardies/conflict' });
+    keepE2EDayVersion(data, date, data.days[date]);
     data.days[date] = { ...clean, revision: currentRevision + 1, clientUpdatedAt: new Date().toISOString() };
     if (publicProjection !== undefined) {
       data.publicDays ||= {};
@@ -1196,6 +1242,7 @@ export async function saveGuardiesDay(cursId, date, payload, expectedRevision = 
       clientUpdatedAt: new Date().toISOString(),
       updatedAt: serverTimestamp(),
     };
+    if (snapshot.exists()) keepDayVersion(transaction, cursId, date, snapshot.data());
     transaction.set(reference, next);
     if (publicProjection !== undefined && (publicProjection || ['published', 'closed'].includes(snapshot.exists() ? snapshot.data().status : ''))) {
       writePublicGuardiesDay(transaction, cursId, date, publicProjection, next);
@@ -1231,6 +1278,7 @@ export async function transitionGuardiesDay(cursId, date, action, { guardHistory
     if (expectedRevision !== undefined && (Number(day.revision) || 0) !== expectedRevision) {
       throw Object.assign(new Error('La jornada ha canviat en una altra pestanya.'), { code: 'guardies/conflict' });
     }
+    keepE2EDayVersion(data, date, day);
     const previousCounted = day.countedAssignments || [];
     if (action === 'publish') Object.assign(day, { status: 'published', publishedAt: day.publishedAt || now, closedAt: '' });
     if (action === 'unpublish') {
@@ -1305,6 +1353,7 @@ export async function transitionGuardiesDay(cursId, date, action, { guardHistory
       stats = { counts, guardHistory: changeGuardHistoryDate(stats.guardHistory, date, guardHistoryEntries), guardHistoryVersion: Number(stats.guardHistoryVersion) || 0, updatedAt: serverTimestamp() };
       transaction.set(statsReference, stats);
     }
+    keepDayVersion(transaction, cursId, date, day);
     transaction.update(dayReference, update);
     if (publicProjection !== undefined) writePublicGuardiesDay(transaction, cursId, date, publicProjection, { ...day, ...update });
     return { day: { ...day, ...update }, stats };
@@ -1325,6 +1374,7 @@ export async function mergeGuardiesDayPlan(cursId, date, patch) {
       countedAssignments: [], revision: 0,
     };
     if (current.status === 'closed') return current;
+    keepE2EDayVersion(data, date, data.days[date]);
     data.days[date] = {
       ...current,
       absenceIds: Array.from(new Set([...(current.absenceIds || []), ...additions])),
@@ -1360,6 +1410,7 @@ export async function mergeGuardiesDayPlan(cursId, date, patch) {
       clientUpdatedAt: new Date().toISOString(),
       updatedAt: serverTimestamp(),
     };
+    if (snapshot.exists()) keepDayVersion(transaction, cursId, date, current);
     transaction.set(reference, next);
     return next;
   });
