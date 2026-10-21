@@ -54,6 +54,10 @@ export const useGuardiesStore = defineStore('guardies', {
     grupProfessorsAlliberats: new Map(),
     partialGroups: new Set(),
     outingAbsenceIds: new Set(),
+    // Absències desades que l'horari carregat no conté (p. ex. després de pujar
+    // un GPU001 nou). Es conserven amb la seva assignació i observació perquè cap
+    // desament les esborri: id -> { assignment, comment }.
+    unmatchedAbsences: new Map(),
     courseId: '',
     courseName: '',
     canWrite: false,
@@ -100,6 +104,15 @@ export const useGuardiesStore = defineStore('guardies', {
       this.cancelledAssignments.clear();
       this.overriddenCoTeacherAssignments.clear();
       this.outingAbsenceIds.clear();
+      this.unmatchedAbsences.clear();
+    },
+    // Descarta les absències desades que no encaixen amb l'horari carregat.
+    discardUnmatchedAbsences() {
+      Array.from(this.unmatchedAbsences.keys()).forEach((id) => {
+        this.cancelledAssignments.delete(id);
+        this.overriddenCoTeacherAssignments.delete(id);
+      });
+      this.unmatchedAbsences.clear();
     },
     clearGroupsOut() {
       this.grupsFora.clear();

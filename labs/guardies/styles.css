@@ -4821,6 +4821,49 @@ button.ghost {
   }
 }
 
+/* Absències desades que l'horari carregat no conté: es conserven i s'avisa */
+@media screen {
+  .unmatched-absences {
+    display: grid;
+    justify-items: start;
+    gap: 6px;
+    border: 1px solid var(--amber-border);
+    border-radius: 8px;
+    background: var(--amber-soft);
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+  }
+
+  .unmatched-absences p { margin: 0; }
+  .unmatched-absences p > strong { color: var(--amber); }
+
+  .unmatched-absences ul {
+    display: grid;
+    gap: 2px;
+    margin: 0;
+    padding-left: 18px;
+  }
+
+  .unmatched-absences button {
+    min-height: 28px;
+    border: 1px solid var(--amber-border);
+    border-radius: 999px;
+    background: var(--surface);
+    padding: 0 12px;
+    color: var(--amber);
+    font-size: var(--text-sm);
+    font-weight: 700;
+  }
+
+  .unmatched-absences button:hover:not(:disabled) {
+    border-color: var(--amber-dot);
+    background: var(--surface);
+    color: var(--amber);
+  }
+}
+
 /* Vista del professorat (només lectura): la regla antiga de 4 columnes amb
    mínims fixos desbordava la pantalla del mòbil i tallava qui cobreix. */
 @media screen and (max-width: 820px) {

@@ -8,7 +8,27 @@ const {
   date, absencies, dayStatus, dayPersistenceStatus,
   persistenceStatus, canWrite, teacherView, unclosedDays,
   dayConflict, conflictRemoteClosed, coverageSummary, autoSavePaused, closingDays,
+  unmatchedAbsences,
 } = storeToRefs(store);
+
+// Absències desades que l'horari carregat no conté: es conserven i s'avisa.
+const unmatchedList = computed(() => Array.from(unmatchedAbsences.value, ([id, entry]) => ({
+  id,
+  teacher: entry.teacher || id.split('|')[0],
+  hour: entry.hour || id.split('|')[2] || '',
+  coveredBy: entry.coveredBy || '',
+  comment: entry.comment || '',
+})));
+
+function discardUnmatched() {
+  const count = unmatchedList.value.length;
+  const message = count === 1
+    ? 'Vols descartar l’absència que no encaixa amb l’horari? No es podrà recuperar.'
+    : `Vols descartar les ${count} absències que no encaixen amb l’horari? No es podran recuperar.`;
+  if (!window.confirm(message)) return;
+  store.discardUnmatchedAbsences();
+  window.dispatchEvent(new CustomEvent('guardies:day-edited'));
+}
 
 const xmlDay = computed(() => {
   if (!date.value) return '';
@@ -135,6 +155,22 @@ function changeStatus(action) {
     <div v-if="canWrite && autoSavePaused" class="day-conflict autosave-paused" role="alert">
       <span>Guardat automàtic aturat</span>
       <button type="button" @click="resumeAutoSave">Reprèn el guardat</button>
+    </div>
+    <div v-if="canWrite && unmatchedList.length" class="unmatched-absences" role="alert">
+      <p v-if="unmatchedList.length === 1">
+        <strong>Una absència desada no surt al full</strong> perquè no encaixa amb l’horari carregat.
+        Es conserva fins que la descartis: torna-la a marcar si encara cal.
+      </p>
+      <p v-else>
+        <strong>{{ unmatchedList.length }} absències desades no surten al full</strong> perquè no encaixen amb l’horari carregat.
+        Es conserven fins que les descartis: torna-les a marcar si encara cal.
+      </p>
+      <ul>
+        <li v-for="item in unmatchedList" :key="item.id">
+          <strong>{{ item.teacher }}</strong> · {{ item.hour }}<template v-if="item.coveredBy"> · cobreix {{ item.coveredBy }}</template><template v-if="item.comment"> · «{{ item.comment }}»</template>
+        </li>
+      </ul>
+      <button type="button" :disabled="dayStatus === 'closed'" @click="discardUnmatched">{{ unmatchedList.length === 1 ? 'Descarta-la' : 'Descarta-les' }}</button>
     </div>
     <p v-if="!teacherView && canWrite && unclosedDays.length" class="unclosed-days-warning" role="status">
       <strong>Dies no tancats:</strong>

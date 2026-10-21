@@ -1879,3 +1879,104 @@ test.describe('Guàrdies: comportament existent', () => {
     expect(layout.bottomGap).toBeLessThan(2);
   });
 });
+
+test.describe('Guàrdies: canvis d’horari amb la jornada oberta', () => {
+  const savedDay = (page) => page.evaluate(() => (
+    JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07'] || null
+  ));
+
+  // Adell absent tot el dilluns, amb una observació a la classe de 8:55. Retorna l'id desat.
+  async function markAdellWithComment(page, comment) {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await page.locator('[data-coverage-session="8:55"] [data-comment]').fill(comment);
+    await expect.poll(async () => Object.values((await savedDay(page))?.comments || {})).toContain(comment);
+    const day = await savedDay(page);
+    expect(day.absenceIds).toHaveLength(3);
+    return Object.keys(day.comments).find((id) => day.comments[id] === comment);
+  }
+
+  async function uploadDuties(page, text, name = 'GPU001-nou.TXT') {
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#duties-file').setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(text) });
+    await expect(page.locator('[data-upload-name="duties"]')).toHaveText(name);
+    await page.getByRole('tab', { name: 'Gestió diària' }).click();
+  }
+
+  test('pujar un GPU001 nou no buida la jornada i la classe que canvia d’aula hi conserva l’absència', async ({ page }) => {
+    const oldId = await markAdellWithComment(page, 'Material a la taula');
+    await uploadDuties(page, dutiesText.replace('"ADEL","MAT","AUL14",1,2', '"ADEL","MAT","AUL15",1,2'));
+
+    await expect(page.locator('#coverage-list [data-coverage-row]')).toHaveCount(3);
+    await expect(page.locator('[data-coverage-session="8:55"] [data-comment]')).toHaveValue('Material a la taula');
+    await expect(page.locator('.unmatched-absences')).toHaveCount(0);
+    await expect.poll(async () => (await savedDay(page)).absenceIds).not.toContain(oldId);
+    const saved = await savedDay(page);
+    expect(saved.absenceIds).toHaveLength(3);
+    const newId = Object.keys(saved.comments).find((id) => saved.comments[id] === 'Material a la taula');
+    expect(newId.split('|').slice(0, 3)).toEqual(oldId.split('|').slice(0, 3));
+
+    await page.reload();
+    await expect(page.locator('#coverage-list [data-coverage-row]')).toHaveCount(3);
+    await expect(page.locator('[data-coverage-session="8:55"] [data-comment]')).toHaveValue('Material a la taula');
+  });
+
+  test('una absència que ja no és a l’horari es conserva, s’avisa i es pot descartar', async ({ page }) => {
+    const oldId = await markAdellWithComment(page, 'Material a la taula');
+    await uploadDuties(page, dutiesText.replace('11,"1ESO-A","ADEL","MAT","AUL14",1,2,,\n', ''));
+
+    await expect(page.locator('#coverage-list [data-coverage-row]')).toHaveCount(2);
+    const warning = page.locator('.unmatched-absences');
+    await expect(warning).toContainText('Una absència desada no surt al full');
+    await expect(warning).toContainText('Adell Domènech, Marina');
+    await expect(warning).toContainText('Material a la taula');
+
+    // Una altra edició desa la jornada sense perdre l'absència que no encaixa.
+    await page.locator('[data-coverage-session="8:00"] [data-comment]').fill('Una altra observació');
+    await expect.poll(async () => Object.values((await savedDay(page)).comments)).toContain('Una altra observació');
+    const saved = await savedDay(page);
+    expect(saved.absenceIds).toContain(oldId);
+    expect(saved.comments[oldId]).toBe('Material a la taula');
+
+    await page.reload();
+    await expect(page.locator('.unmatched-absences')).toContainText('Adell Domènech, Marina');
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.locator('.unmatched-absences').getByRole('button', { name: 'Descarta-la' }).click();
+    await expect(page.locator('.unmatched-absences')).toHaveCount(0);
+    await expect.poll(async () => (await savedDay(page)).absenceIds).not.toContain(oldId);
+    expect((await savedDay(page)).comments[oldId]).toBeUndefined();
+    await expect(page.locator('#coverage-list [data-coverage-row]')).toHaveCount(2);
+  });
+
+  test('treure i tornar a pujar el GPU001 no perd la jornada oberta', async ({ page }) => {
+    await markAdellWithComment(page, 'Material a la taula');
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#admin-panel > summary').click();
+    await page.locator('[data-remove-upload="duties"]').click();
+    await expect(page.locator('[data-upload-name="duties"]')).not.toHaveText('GPU001.TXT');
+    await uploadDuties(page, dutiesText);
+
+    await expect(page.locator('#coverage-list [data-coverage-row]')).toHaveCount(3);
+    await expect(page.locator('[data-coverage-session="8:55"] [data-comment]')).toHaveValue('Material a la taula');
+    await expect(page.locator('.unmatched-absences')).toHaveCount(0);
+    await page.waitForTimeout(400);
+    expect((await savedDay(page)).absenceIds).toHaveLength(3);
+  });
+
+  test('qui cobreix la classe d’un acompanyant de sortida es conserva en tornar a obrir la jornada', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await page.locator('#group-search').selectOption('11');
+    await page.locator('[data-add-group-companion="11"]').selectOption('1');
+    await expect(page.locator('[data-group-companion="11"][data-teacher="1"]')).toBeVisible();
+    await page.locator('[data-coverage-session="8:55"] [data-assignacio]').selectOption('3');
+    await expect.poll(async () => Object.values((await savedDay(page))?.assignments || {}).map((item) => item.teacherId)).toContain('3');
+
+    await page.reload();
+    await expect(page.locator('[data-coverage-session="8:55"] [data-assignacio]')).toHaveValue('3');
+  });
+});
