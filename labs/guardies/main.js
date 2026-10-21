@@ -27,6 +27,14 @@ import {
 } from '../../src/modules/guardies/domain/patio.js';
 import { applyPatioZoneOverride } from '../../src/modules/guardies/domain/patio-edit.js';
 import {
+  mailDateFields,
+  mailHourFields,
+  mailId,
+  mailPersonNames,
+  mailSendAfter,
+  newReleasedAssignments,
+} from '../../src/modules/guardies/domain/mail.js';
+import {
   deleteGuardiesFile,
   getGuardiesContext,
   loadGuardiesData,
@@ -48,6 +56,7 @@ import {
   subscribeDirectoryVersion,
   bumpDirectoryVersion,
   transitionGuardiesDay,
+  queueGuardiesMails,
 } from '../../src/services/guardiesStorage';
 import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
@@ -1707,6 +1716,64 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     }, delay);
   }
 
+  // Correus al professorat: assignacions noves com a alliberat/da respecte de l'última
+  // jornada desada. Es preparen abans de desar (amb l'horari d'aquesta jornada) i es
+  // posen a la cua quan el desament ha anat bé; el servei de correu fa la resta.
+  function releasedAssignmentMails(previousSignature, payload, date) {
+    if (!previousSignature) return [];
+    let previous;
+    try {
+      previous = JSON.parse(previousSignature);
+    } catch {
+      return [];
+    }
+    const dayHours = hoursForSelectedDay();
+    return newReleasedAssignments(previous, payload).map(({ absenceId, teacherId }) => {
+      const item = state.absencies.get(absenceId);
+      const teacher = professorInfo(teacherId);
+      return {
+        id: mailId([date, 'alliberat', teacherId, absenceId]),
+        kind: 'alliberat',
+        date,
+        teacherId,
+        email: teacher.email,
+        fields: {
+          ...mailPersonNames(teacher.name),
+          ...mailDateFields(date),
+          ...mailHourFields(item?.hora, dayHours),
+          // Com al full de guàrdies.
+          grup: item ? groupLabel(item) : '',
+          materia: item ? item.materiaNom || formatMateria(item) : '',
+          aula: item ? aulaLabel(item) : '',
+        },
+        check: { absenceId },
+      };
+    });
+  }
+
+  function patioZoneMail({ day, date, teacherId, zoneId, baseZoneId }) {
+    const zoneName = (id) => state.patiConfig?.zones?.find((zone) => zone.id === id)?.name || '';
+    const teacher = professorInfo(teacherId);
+    return {
+      id: mailId([date, 'pati', teacherId]),
+      kind: 'pati',
+      date,
+      teacherId,
+      email: teacher.email,
+      fields: { ...mailPersonNames(teacher.name), ...mailDateFields(date), zona: zoneName(zoneId), zona_habitual: zoneName(baseZoneId) },
+      check: { day, zoneId },
+    };
+  }
+
+  function queueTeacherMails(courseId, mails) {
+    if (!mails.length) return;
+    const sendAfter = mailSendAfter(new Date());
+    queueGuardiesMails(courseId, mails.map((mail) => ({ ...mail, sendAfter })))
+      .catch((error) => showError(`No s'ha pogut programar el correu al professorat. ${friendlyError(error)}`));
+    const withoutEmail = mails.filter((mail) => !mail.email).map((mail) => mail.fields.nom_complet || labelProfessor(mail.teacherId));
+    if (withoutEmail.length) showError(`No es pot avisar per correu ${withoutEmail.join(', ')}: no hi ha cap correu a Professorat.`);
+  }
+
   async function persistDayNow() {
     clearTimeout(daySaveTimer);
     if (daySaveInFlight) await daySaveInFlight;
@@ -1744,7 +1811,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         }
         recentDaySaves.push(Date.now());
         const projection = ['published', 'closed'].includes(payload.status) ? publicGuardiesDay() : null;
+        const mails = releasedAssignmentMails(lastDaySignature, payload, date);
         const saved = await saveGuardiesDay(courseId, date, payload, state.dayRevision, { publicProjection: projection });
+        queueTeacherMails(courseId, mails);
         if (courseId !== state.courseId || date !== state.date) return;
         state.dayRevision = saved.revision;
         state.updatedAt = saved.clientUpdatedAt || new Date().toISOString();
@@ -3563,6 +3632,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       renderCoverage();
       state.persistenceStatus = 'saving';
       state.patiConfig = await saveGuardiesPatiZoneOverride(state.courseId, change);
+      // Només la zona canviada a mà avisa el professor; tornar a la rotació no.
+      if (change.zoneId && change.zoneId !== change.baseZoneId) queueTeacherMails(state.courseId, [patioZoneMail(change)]);
       if (['published', 'closed'].includes(state.dayStatus)) await syncPublicGuardiesDay();
       state.persistenceStatus = 'ready';
       showError('');
@@ -4341,6 +4412,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       name: parsedName
         || (directoryName && !aliases.has(normalizeSearch(directoryName)) ? directoryName : '')
         || referenceName,
+      email: String(directory?.email || '').trim().toLowerCase(),
     };
     professorInfoCache.set(placa, info);
     return info;

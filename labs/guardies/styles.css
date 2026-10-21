@@ -4949,6 +4949,162 @@ button.ghost {
   }
 }
 
+/* Correus al professorat: plantilles, previsualització i darrers enviaments */
+@media screen {
+  .mail-block { display: grid; gap: 14px; }
+
+  .mail-intro,
+  .mail-service {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--text-sm);
+  }
+
+  .mail-service.is-missing { color: var(--amber); font-weight: 700; }
+
+  .mail-sender {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+  }
+
+  .mail-sender label,
+  .mail-template > label {
+    display: grid;
+    gap: 4px;
+    font-size: var(--text-sm);
+    font-weight: 700;
+  }
+
+  .mail-sender input,
+  .mail-template input[type="text"],
+  .mail-template textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-weight: 400;
+  }
+
+  .mail-sender input,
+  .mail-template input[type="text"] {
+    min-height: 36px;
+    padding: 0 10px;
+  }
+
+  .mail-template textarea {
+    min-height: 120px;
+    padding: 8px 10px;
+    resize: vertical;
+  }
+
+  .mail-sender input:focus-visible,
+  .mail-template input[type="text"]:focus-visible,
+  .mail-template textarea:focus-visible {
+    border-color: var(--primary-border);
+    outline: 2px solid color-mix(in srgb, var(--primary) 25%, transparent);
+    outline-offset: 0;
+  }
+
+  .mail-template {
+    display: grid;
+    justify-items: stretch;
+    gap: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    padding: 12px;
+  }
+
+  .mail-template > button { justify-self: start; }
+  .mail-template header { display: grid; gap: 2px; }
+  .mail-template header small { color: var(--muted); font-size: var(--text-xs); }
+
+  .mail-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mail-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+  }
+
+  .mail-fields button {
+    min-height: 26px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-subtle);
+    padding: 0 8px;
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: var(--text-xs);
+  }
+
+  .mail-fields button:hover { border-color: var(--border-strong); }
+
+  .mail-preview {
+    border-left: 3px solid var(--primary-border);
+    border-radius: 6px;
+    background: var(--surface-subtle);
+    padding: 8px 12px;
+    font-size: var(--text-sm);
+  }
+
+  .mail-preview p { margin: 4px 0 0; white-space: pre-line; }
+
+  .mail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .mail-feedback { font-size: var(--text-sm); font-weight: 700; }
+  .mail-feedback.is-success { color: var(--green); }
+  .mail-feedback.is-error { color: var(--coral); }
+
+  .mail-recent h3 { margin: 0 0 6px; font-size: var(--text-md); }
+
+  .mail-recent ul {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .mail-recent li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 10px;
+    border-top: 1px solid var(--border);
+    padding: 6px 0;
+    font-size: var(--text-sm);
+  }
+
+  .mail-recent li span { grid-column: 1; color: var(--muted); }
+
+  .mail-recent li small {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    align-self: center;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-align: right;
+  }
+
+  .mail-recent li.is-enviat small { color: var(--green); }
+  .mail-recent li.is-pendent small { color: var(--amber); }
+  .mail-recent li.is-error small { color: var(--coral); }
+  .mail-recent li.is-cancelled small { color: var(--muted); }
+}
+
 /* Vista del professorat (només lectura): la regla antiga de 4 columnes amb
    mínims fixos desbordava la pantalla del mòbil i tallava qui cobreix. */
 @media screen and (max-width: 820px) {

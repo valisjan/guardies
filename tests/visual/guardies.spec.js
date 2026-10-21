@@ -2040,6 +2040,125 @@ test.describe('Guàrdies: historial de la jornada', () => {
   });
 });
 
+test.describe('Guàrdies: correus al professorat', () => {
+  const e2eData = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')));
+  const mails = async (page) => Object.values((await e2eData(page)).mails || {});
+  // El rellotge de la pàgina comença al moment indicat i continua avançant.
+  const startClockAt = (page, iso) => page.addInitScript((target) => {
+    const RealDate = Date;
+    const offset = target - RealDate.now();
+    window.Date = class extends RealDate {
+      constructor(...args) { super(...(args.length ? args : [RealDate.now() + offset])); }
+      static now() { return RealDate.now() + offset; }
+    };
+  }, new Date(iso).getTime());
+  const minutesAfter = (iso, from) => (new Date(iso).getTime() - new Date(from).getTime()) / 60000;
+
+  async function releasedAssignment(page) {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await page.locator('#group-search').selectOption('10');
+    await page.getByRole('tab', { name: 'Professor/a', exact: true }).click();
+    await page.locator('#professor-search').fill('MAT1');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await page.locator('#auto-assign-guards').click();
+    await expect(page.locator('.auto-assignment-feedback')).toHaveText('2 assignades');
+  }
+
+  test('assignar una guàrdia com a alliberat/da posa un correu a la cua (i només aquest)', async ({ page }) => {
+    // Dilluns a les 10:00: dins de l'horari, surt al cap de 2 minuts.
+    await startClockAt(page, '2026-09-07T10:00:00+02:00');
+    await releasedAssignment(page);
+    await expect.poll(async () => (await mails(page)).length).toBe(1);
+    const [mail] = await mails(page);
+    expect(mail).toMatchObject({
+      kind: 'alliberat', template: 'alliberat', date: '2026-09-07', teacherId: '1', status: 'pendent',
+      email: 'marina.adell@iesjosepsuredaiblanes.com',
+      fields: { nom: 'Marina', nom_complet: 'Marina Adell Domènech', data: '07/09/2026', dia: 'dilluns', hora: '1a hora', horari: '8:00', grup: '1ESO-A + 1ESO-B' },
+    });
+    expect(mail.check.absenceId).toContain('|1|8:00|');
+    const delay = minutesAfter(mail.sendAfter, '2026-09-07T10:00:00+02:00');
+    expect(delay).toBeGreaterThanOrEqual(2);
+    expect(delay).toBeLessThan(3);
+
+    // Tornar a desar la jornada no en programa cap altre.
+    await page.locator('#coverage-list [data-comment]').first().fill('Material a la taula');
+    await expect.poll(async () => Object.values((await e2eData(page)).days['2026-09-07'].comments)).toContain('Material a la taula');
+    expect(await mails(page)).toHaveLength(1);
+  });
+
+  test('fora de l\'horari, el correu queda per a les 8:00 del següent dia feiner', async ({ page }) => {
+    // Divendres a les 17:00: dilluns a les 8:00.
+    await startClockAt(page, '2026-09-11T17:00:00+02:00');
+    await releasedAssignment(page);
+    await expect.poll(async () => (await mails(page)).map((mail) => mail.sendAfter)).toEqual(['2026-09-14T06:00:00.000Z']);
+  });
+
+  test('canviar a mà la zona de pati d\'algú li programa un correu; tornar a la rotació, no', async ({ page }) => {
+    await startClockAt(page, '2026-09-14T09:00:00+02:00');
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#date-input').fill('2026-09-14');
+    await page.locator('#date-input').press('Tab');
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#pati-panel summary').click();
+    await page.locator('#new-pati-zone').fill('Pista');
+    await page.locator('#add-pati-zone').click();
+    await page.locator('#new-pati-zone').fill('Porxada');
+    await page.locator('#add-pati-zone').click();
+    await page.locator('#pati-teacher-search').fill('Fuentes');
+    await page.locator('.pati-teacher-results [role="option"]').first().click();
+    await expect(page.locator('.pati-roster-row')).toHaveCount(1);
+    await page.getByRole('tab', { name: 'Gestió diària' }).click();
+
+    const card = page.locator('#coverage-list .pati-zone-card').filter({ hasText: 'Fuentes Serra' });
+    await card.locator('[data-pati-zone-override]').selectOption({ label: 'Porxada' });
+    await expect.poll(async () => (await mails(page)).length).toBe(1);
+    const [mail] = await mails(page);
+    expect(mail).toMatchObject({
+      kind: 'pati', date: '2026-09-14', teacherId: '2', email: 'gabriel.fuentes@iesjosepsuredaiblanes.com',
+      fields: { nom: 'Gabriel', data: '14/09/2026', dia: 'dilluns', zona: 'Porxada', zona_habitual: 'Pista' },
+    });
+    expect(mail.check).toEqual({ day: '1', zoneId: mail.check.zoneId });
+    expect(minutesAfter(mail.sendAfter, '2026-09-14T09:00:00+02:00')).toBeGreaterThanOrEqual(2);
+
+    await card.locator('[data-pati-zone-override]').selectOption({ index: 0 });
+    await expect(card).not.toHaveClass(/overridden/);
+    await page.waitForTimeout(300);
+    expect(await mails(page)).toHaveLength(1);
+  });
+
+  test('els textos es configuren a Configuració, amb camps i previsualització', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#mail-panel summary').click();
+    const template = page.locator('[data-mail-template="alliberat"]');
+    await expect(template.locator('.mail-preview')).toContainText('Se us ha assignat una guàrdia amb el grup 3ESO-B, com a alliberat/da, el 20/10/2026 a 4a hora.');
+
+    await template.getByLabel('Text: Guàrdia com a alliberat/da').fill('Hola ');
+    await template.getByRole('button', { name: '{nom}' }).click();
+    await expect(template.getByLabel('Text: Guàrdia com a alliberat/da')).toHaveValue('Hola {nom}');
+    await expect(template.locator('.mail-preview p')).toHaveText('Hola Marina');
+    await page.locator('[data-mail-template="pati"] .mail-toggle input').uncheck();
+    await page.locator('#mail-panel').getByRole('button', { name: 'Desa', exact: true }).click();
+    await expect(page.locator('.mail-feedback')).toHaveText('Desat.');
+
+    await page.reload();
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#mail-panel summary').click();
+    await expect(page.locator('[data-mail-template="alliberat"]').getByLabel('Text: Guàrdia com a alliberat/da')).toHaveValue('Hola {nom}');
+    await expect(page.locator('[data-mail-template="pati"] .mail-toggle input')).not.toBeChecked();
+
+    await page.locator('[data-mail-template="alliberat"]').getByRole('button', { name: 'Envia’m una prova' }).click();
+    await expect(page.locator('.mail-feedback')).toContainText('Prova a la cua per a e2e.admin@iesjosepsuredaiblanes.com');
+    await expect(page.locator('.mail-recent li').first()).toContainText('Prova');
+    expect((await mails(page)).map((mail) => [mail.kind, mail.template, mail.email])).toEqual([['prova', 'alliberat', 'e2e.admin@iesjosepsuredaiblanes.com']]);
+  });
+});
+
 test('les observacions del pati i de la 7a hora es desen amb claus que Firestore accepta', async ({ page }) => {
   await openGuardies(page);
   await uploadConfiguration(page);

@@ -8,9 +8,12 @@ const f = window.__firestoreTest = { docs: new Map(), listeners: new Map(), comm
 const snapshot = (path, data, metadata = { fromCache: false, hasPendingWrites: false }) => ({
   id: path.split('/').pop(), exists: () => data != null, data: () => data, metadata,
 });
-export const doc = (_, ...parts) => ({ path: parts.join('/') });
+export const doc = (base, ...parts) => ({ path: [base?.path, ...parts].filter(Boolean).join('/') });
 export const collection = doc;
 export const serverTimestamp = () => 'server-time';
+export const limit = () => ({});
+export const orderBy = () => ({});
+export const Timestamp = { fromDate: (date) => ({ toDate: () => date }), now: () => ({ toDate: () => new Date() }) };
 export const getDoc = async (ref) => { f.reads.push(ref.path); return snapshot(ref.path, f.docs.get(ref.path)); };
 export const getDocs = async () => ({ docs: [] });
 export const enableNetwork = async () => {};

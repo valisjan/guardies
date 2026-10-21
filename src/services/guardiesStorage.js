@@ -5,12 +5,16 @@ import {
   enableNetwork,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
+  orderBy,
   query,
   runTransaction,
   serverTimestamp,
   setDoc,
+  Timestamp,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import {
   browserLocalPersistence,
@@ -36,6 +40,7 @@ import {
   updateGuardCounts,
 } from '../modules/guardies/domain/workflow';
 import { GUARD_HISTORY_VERSION } from '../modules/guardies/domain/guard-history.js';
+import { normalizeMailConfig } from '../modules/guardies/domain/mail.js';
 
 const FILE_KINDS = new Set(['reference', 'untis', 'duties']);
 const DELETABLE_FILE_KINDS = new Set([...FILE_KINDS, 'schedule']);
@@ -95,7 +100,7 @@ function dayVersionId(revision) {
 }
 
 function currentEditor() {
-  return E2E_AUTH_BYPASS ? 'e2e@iesjosepsuredaiblanes.com' : String(auth.currentUser?.email || '');
+  return E2E_AUTH_BYPASS ? 'e2e.admin@iesjosepsuredaiblanes.com' : String(auth.currentUser?.email || '');
 }
 
 function keepDayVersion(transaction, cursId, date, previous) {
@@ -1028,6 +1033,94 @@ export async function saveGuardiesObservationPresets(cursId, phrases) {
     updatedAt: serverTimestamp(),
   });
   return clean;
+}
+
+// ---- Correus al professorat ---------------------------------------------------------
+// Guàrdies només posa els correus a la cua («guardiesCorreus»); els envia el servei de
+// correu (Apps Script), que abans comprova que el canvi encara és vigent.
+
+function guardiesMailConfigRef(cursId) {
+  if (!cursId) throw new Error('No hi ha cap curs acadèmic disponible.');
+  return doc(db, 'cursos', cursId, 'config', 'guardies-correus');
+}
+
+export async function loadGuardiesMailConfig(cursId) {
+  if (E2E_AUTH_BYPASS) return normalizeMailConfig(getE2EData(cursId).mailConfig);
+  const snapshot = await readDoc(guardiesMailConfigRef(cursId));
+  trackReads('mailConfig', 1);
+  return normalizeMailConfig(snapshot.exists() ? snapshot.data() : {});
+}
+
+export async function saveGuardiesMailConfig(cursId, config) {
+  const clean = normalizeMailConfig(config);
+  if (E2E_AUTH_BYPASS) {
+    const data = getE2EData(cursId);
+    data.mailConfig = clean;
+    setE2EData(cursId, data);
+    return clean;
+  }
+  await setDoc(guardiesMailConfigRef(cursId), { ...clean, updatedAt: serverTimestamp(), updatedBy: currentEditor() });
+  return clean;
+}
+
+// mails: [{ id, kind, template?, date, teacherId, email, fields, check, sendAfter: Date }]
+export async function queueGuardiesMails(cursId, mails) {
+  const items = (mails || []).filter((mail) => mail?.id && mail.email);
+  if (!items.length) return 0;
+  const entry = (mail) => ({
+    courseId: cursId,
+    kind: mail.kind,
+    template: mail.template || mail.kind,
+    date: mail.date || '',
+    teacherId: String(mail.teacherId || ''),
+    email: String(mail.email).trim().toLowerCase(),
+    fields: Object.fromEntries(Object.entries(mail.fields || {}).map(([key, value]) => [key, String(value ?? '')])),
+    check: mail.check || {},
+    status: 'pendent',
+    reason: '',
+    createdBy: currentEditor(),
+  });
+  if (E2E_AUTH_BYPASS) {
+    const data = getE2EData(cursId);
+    data.mails ||= {};
+    const now = new Date().toISOString();
+    items.forEach((mail) => {
+      data.mails[mail.id] = { ...entry(mail), id: mail.id, sendAfter: mail.sendAfter.toISOString(), createdAt: now };
+    });
+    setE2EData(cursId, data);
+    return items.length;
+  }
+  const batch = writeBatch(db);
+  items.forEach((mail) => batch.set(doc(db, 'guardiesCorreus', mail.id), {
+    ...entry(mail), sendAfter: Timestamp.fromDate(mail.sendAfter), createdAt: serverTimestamp(),
+  }));
+  await batch.commit();
+  return items.length;
+}
+
+const isoTime = (value) => (typeof value === 'string' ? value : value?.toDate?.().toISOString() || '');
+
+export async function loadRecentGuardiesMails(cursId, count = 15) {
+  if (E2E_AUTH_BYPASS) {
+    return Object.values(getE2EData(cursId).mails || {})
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .slice(0, count);
+  }
+  const snapshot = await getDocs(query(collection(db, 'guardiesCorreus'), orderBy('createdAt', 'desc'), limit(count)));
+  trackReads('mailQueue', Math.max(1, snapshot.docs.length));
+  return snapshot.docs.map((item) => {
+    const data = item.data();
+    return { ...data, id: item.id, createdAt: isoTime(data.createdAt), sendAfter: isoTime(data.sendAfter), sentAt: isoTime(data.sentAt) };
+  });
+}
+
+// Darrera vegada que el servei de correu ha revisat la cua (l'escriu el mateix servei).
+export async function loadGuardiesMailServiceStatus() {
+  if (E2E_AUTH_BYPASS) return { lastRunAt: '', account: '' };
+  const snapshot = await readDoc(doc(db, 'config', 'guardies-correus'));
+  trackReads('mailService', 1);
+  const data = snapshot.exists() ? snapshot.data() : {};
+  return { lastRunAt: isoTime(data.lastRunAt), account: String(data.account || '') };
 }
 
 export async function loadGuardiesDay(cursId, date, { publishedOnly = false, signal } = {}) {

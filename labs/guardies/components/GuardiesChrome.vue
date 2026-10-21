@@ -13,6 +13,7 @@ const GuardiesTeacherStats = defineAsyncComponent(() => import('./GuardiesTeache
 const GuardiesGuardCountPanel = defineAsyncComponent(() => import('./GuardiesGuardCountPanel.vue'));
 const GuardiesTeacherExclusionsPanel = defineAsyncComponent(() => import('./GuardiesTeacherExclusionsPanel.vue'));
 const GuardiesObservationPresetsPanel = defineAsyncComponent(() => import('./GuardiesObservationPresetsPanel.vue'));
+const GuardiesMailPanel = defineAsyncComponent(() => import('./GuardiesMailPanel.vue'));
 const GuardiesAdminStatistics = defineAsyncComponent(() => import('./GuardiesAdminStatistics.vue'));
 const GuardiesReleaseNotes = defineAsyncComponent(() => import('./GuardiesReleaseNotes.vue'));
 import { signInGuardies } from '../../../src/services/guardiesStorage.js';
@@ -70,6 +71,7 @@ window.addEventListener('guardies:auth-ready', () => {
     <GuardiesTeacherExclusionsPanel v-if="contextReady && canWrite && adminSection === 'config'" />
     <GuardiesGuardCountPanel v-if="contextReady && canWrite && adminSection === 'config'" />
     <GuardiesObservationPresetsPanel v-if="contextReady && canWrite && adminSection === 'config'" />
+    <GuardiesMailPanel v-if="contextReady && canWrite && adminSection === 'config'" />
   </Teleport>
   <Teleport to="#guardies-convivencia-root">
     <GuardiesConvivenciaPanel v-if="contextReady && canWrite && adminSection === 'config'" />
