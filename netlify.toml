@@ -5,6 +5,11 @@
 [build.environment]
   NODE_VERSION = "22"
 
+# Servei de correu al professorat (funció programada; vegeu netlify/functions).
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 # Fitxers amb hash al nom: no canvien mai, no cal revalidar-los a cada càrrega.
 [[headers]]
   for = "/assets/*"

@@ -52,7 +52,7 @@ const formatTime = (value) => {
 
 const serviceLabel = computed(() => (serviceLastRun.value
   ? `Servei de correu actiu${serviceAccount.value ? ` (envia ${serviceAccount.value})` : ''} · darrera revisió ${formatTime(serviceLastRun.value)}`
-  : 'Encara no s’ha detectat el servei de correu. Fins que no s’instal·li, els correus queden a la cua.'));
+  : 'Encara no s’ha detectat el servei de correu. Mentre no estigui en marxa, els correus queden a la cua.'));
 
 // «{nom}»: dins de {{ }} de la plantilla no es pot escriure tal qual.
 const token = (field) => `{${field}}`;
@@ -141,7 +141,7 @@ async function sendTest(kind) {
       sendAfter: now,
     }]);
     recent.value = await loadRecentGuardiesMails(courseId.value).catch(() => recent.value);
-    feedback.value = `Prova a la cua per a ${viewerEmail.value}. Surt en un minut si el servei de correu està en marxa.`;
+    feedback.value = `Prova a la cua per a ${viewerEmail.value}. Un dia feiner entre les 8:00 i les 15:00 surt en un minut; si no, a les 8:00 del següent dia feiner.`;
     feedbackKind.value = 'success';
   } catch (error) {
     feedback.value = `No s'ha pogut enviar la prova. ${friendlyError(error)}`;

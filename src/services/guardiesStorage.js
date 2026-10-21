@@ -1047,7 +1047,7 @@ export async function saveGuardiesObservationPresets(cursId, phrases) {
 
 // ---- Correus al professorat ---------------------------------------------------------
 // Guàrdies només posa els correus a la cua («guardiesCorreus»); els envia el servei de
-// correu (Apps Script), que abans comprova que el canvi encara és vigent.
+// correu (funció programada de Netlify), que abans comprova que el canvi encara és vigent.
 
 function guardiesMailConfigRef(cursId) {
   if (!cursId) throw new Error('No hi ha cap curs acadèmic disponible.');

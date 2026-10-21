@@ -1,7 +1,8 @@
 // Correus automàtics al professorat: només quan se li assigna una guàrdia com a
 // alliberat/da o, a mà, una zona de pati diferent de la seva. Aquí hi ha la lògica
 // pura: quan surt cada correu, quins camps s'omplen i com queda el text. Els
-// envia el servei de correu (Apps Script) a partir de la cua de Firestore.
+// envia el servei de correu (netlify/functions/correus-guardies.mjs) a partir de la
+// cua de Firestore.
 
 export const MAIL_TIME_ZONE = 'Europe/Madrid';
 // Entre les 8:00 i les 15:00 dels dies feiners, al cap de 2 minuts (per si el canvi
