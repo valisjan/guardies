@@ -1981,6 +1981,31 @@ test.describe('Guàrdies: canvis d’horari amb la jornada oberta', () => {
   });
 });
 
+test('una jornada sense cap absència es pot publicar i tancar', async ({ page }) => {
+  await openGuardies(page);
+  await uploadConfiguration(page);
+  await expect(page.locator('#coverage-list [data-coverage-row]')).toHaveCount(0);
+  const day = () => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07'] || null);
+  expect(await day()).toBeNull();
+
+  await page.getByRole('button', { name: 'Publica' }).click();
+  await expect(page.locator('.day-status-badge')).toHaveText('Publicada');
+  await expect(page.locator('#error-box')).toBeHidden();
+  expect(await day()).toMatchObject({ status: 'published', absenceIds: [], revision: 1 });
+  expect((await page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).publicDays?.['2026-09-07']))?.status).toBe('published');
+
+  await page.getByRole('button', { name: 'Tanca jornada' }).click();
+  await expect(page.locator('.day-status-badge')).toHaveText('Tancada');
+  expect(await day()).toMatchObject({ status: 'closed', countedAssignments: [] });
+
+  // Un altre dia sense absències també es pot tancar directament.
+  await page.locator('#date-input').fill('2026-09-08');
+  await page.locator('#date-input').press('Tab');
+  await expect(page.locator('.day-status-badge')).toHaveText('Esborrany');
+  await page.getByRole('button', { name: 'Publica' }).click();
+  await expect(page.locator('.day-status-badge')).toHaveText('Publicada');
+});
+
 test.describe('Guàrdies: historial de la jornada', () => {
   const savedDay = (page) => page.evaluate(() => (
     JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07'] || null

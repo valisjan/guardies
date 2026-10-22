@@ -90,6 +90,16 @@ function guardiesStatsRef(cursId) {
   return guardiesRef(cursId, 'stats');
 }
 
+// Una jornada que encara no s'ha desat mai (p. ex. un dia sense cap absència).
+function emptyGuardiesDay(date) {
+  return {
+    schemaVersion: 1, date, status: 'draft', absenceIds: [], assignments: {}, comments: {},
+    groupsOut: [], groupTeachers: {}, groupReleasedTeachers: {}, partialGroups: [], outingAbsenceIds: [],
+    cancelledAssignments: [], overriddenCoTeacherAssignments: [], publishedAt: '', closedAt: '',
+    countedAssignments: [], clientUpdatedAt: '', revision: 0,
+  };
+}
+
 // Historial: cada canvi d'una jornada en desa la versió que substitueix, dins de la
 // mateixa transacció. Les versions ocupen 30 posicions fixes per jornada (revisió
 // % 30): desar-les no costa cap lectura, no cal esborrar-ne i mai n'hi ha més de 30.
@@ -1366,12 +1376,15 @@ export async function transitionGuardiesDay(cursId, date, action, { guardHistory
   if (E2E_AUTH_BYPASS) {
     const data = getE2EData(cursId);
     data.days ||= {};
-    const day = data.days[date];
-    if (!day) throw new Error('La jornada encara no existeix.');
+    const existing = data.days[date];
+    // Un dia sense cap absència no s'ha desat mai: publicar-lo o tancar-lo el crea.
+    if (!existing && !['publish', 'close'].includes(action)) throw new Error('La jornada encara no existeix.');
+    const day = existing || emptyGuardiesDay(date);
     if (expectedRevision !== undefined && (Number(day.revision) || 0) !== expectedRevision) {
       throw Object.assign(new Error('La jornada ha canviat en una altra pestanya.'), { code: 'guardies/conflict' });
     }
-    keepE2EDayVersion(data, date, day);
+    if (existing) keepE2EDayVersion(data, date, day);
+    else data.days[date] = day;
     const previousCounted = day.countedAssignments || [];
     if (action === 'publish') Object.assign(day, { status: 'published', publishedAt: day.publishedAt || now, closedAt: '' });
     if (action === 'unpublish') {
@@ -1415,8 +1428,10 @@ export async function transitionGuardiesDay(cursId, date, action, { guardHistory
       transaction.get(dayReference),
       transaction.get(statsReference),
     ]);
-    if (!daySnapshot.exists()) throw new Error('La jornada encara no existeix.');
-    const day = daySnapshot.data();
+    const exists = daySnapshot.exists();
+    // Un dia sense cap absència no s'ha desat mai: publicar-lo o tancar-lo el crea.
+    if (!exists && !['publish', 'close'].includes(action)) throw new Error('La jornada encara no existeix.');
+    const day = exists ? daySnapshot.data() : emptyGuardiesDay(date);
     if (expectedRevision !== undefined && (Number(day.revision) || 0) !== expectedRevision) {
       throw Object.assign(new Error('La jornada ha canviat en una altra pestanya.'), { code: 'guardies/conflict' });
     }
@@ -1446,8 +1461,12 @@ export async function transitionGuardiesDay(cursId, date, action, { guardHistory
       stats = { counts, guardHistory: changeGuardHistoryDate(stats.guardHistory, date, guardHistoryEntries), guardHistoryVersion: Number(stats.guardHistoryVersion) || 0, updatedAt: serverTimestamp() };
       transaction.set(statsReference, stats);
     }
-    keepDayVersion(transaction, cursId, date, day);
-    transaction.update(dayReference, update);
+    if (exists) {
+      keepDayVersion(transaction, cursId, date, day);
+      transaction.update(dayReference, update);
+    } else {
+      transaction.set(dayReference, { ...day, ...update });
+    }
     if (publicProjection !== undefined) writePublicGuardiesDay(transaction, cursId, date, publicProjection, { ...day, ...update });
     return { day: { ...day, ...update }, stats };
   });
