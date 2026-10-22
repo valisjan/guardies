@@ -36,6 +36,10 @@ function sortTeachers(direction) {
 const mostActiveTeachers = computed(() => sortTeachers(-1));
 const leastActiveTeachers = computed(() => sortTeachers(1));
 
+// Barres proporcionals al màxim: el repartiment es veu d'un cop d'ull.
+const maxTeacherGuards = computed(() => Math.max(1, ...teacherRows.value.map((teacher) => teacher.guard)));
+const share = (value, max) => `${Math.round((value / max) * 100)}%`;
+
 const slotRows = computed(() => {
   const hours = Array.from(new Set(sessions.value
     .map((session) => session.hora)
@@ -76,6 +80,7 @@ function sortSlots(direction) {
 
 const busiestSlots = computed(() => sortSlots(-1));
 const quietestSlots = computed(() => sortSlots(1));
+const maxSlotGuards = computed(() => Math.max(1, ...slotRows.value.map((slot) => slot.total)));
 </script>
 
 <template>
@@ -108,7 +113,10 @@ const quietestSlots = computed(() => sortSlots(1));
         <ol data-ranking-most>
           <li v-for="(teacher, index) in mostActiveTeachers" :key="teacher.teacherId">
             <b>{{ index + 1 }}</b>
-            <strong>{{ teacher.label }}</strong>
+            <div class="ranking-who">
+              <strong>{{ teacher.label }}</strong>
+              <span class="ranking-bar" aria-hidden="true"><span :style="{ width: share(teacher.guard, maxTeacherGuards) }"></span></span>
+            </div>
             <span class="guard-ranking-breakdown"><em>{{ teacher.guard }} G</em><em>{{ teacher.released }} allib.</em></span>
             <mark>{{ teacher.guard }}</mark>
           </li>
@@ -120,7 +128,10 @@ const quietestSlots = computed(() => sortSlots(1));
         <ol data-ranking-least>
           <li v-for="(teacher, index) in leastActiveTeachers" :key="teacher.teacherId">
             <b>{{ index + 1 }}</b>
-            <strong>{{ teacher.label }}</strong>
+            <div class="ranking-who">
+              <strong>{{ teacher.label }}</strong>
+              <span class="ranking-bar" aria-hidden="true"><span :style="{ width: share(teacher.guard, maxTeacherGuards) }"></span></span>
+            </div>
             <span class="guard-ranking-breakdown"><em>{{ teacher.guard }} G</em><em>{{ teacher.released }} allib.</em></span>
             <mark>{{ teacher.guard }}</mark>
           </li>
@@ -132,7 +143,10 @@ const quietestSlots = computed(() => sortSlots(1));
         <ol data-slot-most>
           <li v-for="(slot, index) in busiestSlots" :key="slot.key">
             <b>{{ index + 1 }}</b>
-            <strong>{{ slot.label }}</strong>
+            <div class="ranking-who">
+              <strong>{{ slot.label }}</strong>
+              <span class="ranking-bar" aria-hidden="true"><span :style="{ width: share(slot.total, maxSlotGuards) }"></span></span>
+            </div>
             <mark>{{ slot.total }}</mark>
           </li>
         </ol>
@@ -143,7 +157,10 @@ const quietestSlots = computed(() => sortSlots(1));
         <ol data-slot-least>
           <li v-for="(slot, index) in quietestSlots" :key="slot.key">
             <b>{{ index + 1 }}</b>
-            <strong>{{ slot.label }}</strong>
+            <div class="ranking-who">
+              <strong>{{ slot.label }}</strong>
+              <span class="ranking-bar" aria-hidden="true"><span :style="{ width: share(slot.total, maxSlotGuards) }"></span></span>
+            </div>
             <mark>{{ slot.total }}</mark>
           </li>
         </ol>

@@ -996,7 +996,7 @@ test.describe('Guàrdies: comportament existent', () => {
     await page.locator('#professor-search').fill('ADELL');
     await page.locator('#professor-results [data-professor]').first().click();
     await page.locator('#schedule-grid .schedule-item').filter({ hasText: '8:55' }).locator('[data-absence]').check();
-    await expect(page.locator('#coverage-list .co-teacher-badge')).toHaveText('Queda amb el grup');
+    await expect(page.locator('#coverage-list .coverage-status')).toHaveText('Queda amb el grup');
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07']?.revision || 0)).toBeGreaterThan(0);
     await page.waitForTimeout(400);
 
@@ -1047,7 +1047,9 @@ test.describe('Guàrdies: comportament existent', () => {
     await shared.locator('[data-absence]').check();
     const coverage = page.locator('#coverage-list .coverage-item').first();
     await expect(coverage).toContainText('Fuentes Serra, Gabriel');
-    await expect(coverage.locator('.co-teacher-badge')).toHaveText('Queda amb el grup');
+    // L'estat es diu una sola vegada, sota qui falta: sense repetir-lo sota el desplegable.
+    await expect(coverage.locator('.coverage-status')).toHaveText('Queda amb el grup');
+    await expect(coverage.locator('.co-teacher-badge')).toHaveCount(0);
     const sharedAssignment = coverage.locator('[data-assignacio]');
     await expect(sharedAssignment).toHaveCount(1);
     await expect(sharedAssignment).toHaveValue('2');
@@ -2209,4 +2211,74 @@ test('les observacions del pati i de la 7a hora es desen amb claus que Firestore
   await expect.poll(async () => page.evaluate(() => (
     JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days['2026-09-07'].comments
   ))).toEqual({ pati_observation: 'Pati antic', seventh_observation: 'Setena antiga' });
+});
+
+test.describe('Guàrdies: revisió visual', () => {
+  const startAt = (page, iso) => page.addInitScript((target) => {
+    const RealDate = Date;
+    const offset = target - RealDate.now();
+    window.Date = class extends RealDate {
+      constructor(...args) { super(...(args.length ? args : [RealDate.now() + offset])); }
+      static now() { return RealDate.now() + offset; }
+    };
+  }, new Date(iso).getTime());
+
+  // Textos visibles de menys de 12 px (la impressió A3 no compta).
+  const tinyTexts = (page) => page.evaluate(() => Array.from(document.querySelectorAll('body *')).filter((element) => {
+    const text = Array.from(element.childNodes).some((node) => node.nodeType === 3 && node.textContent.trim());
+    if (!text || !element.getClientRects().length || element.closest('.print-only, .hidden')) return false;
+    const style = getComputedStyle(element);
+    return style.visibility !== 'hidden' && parseFloat(style.fontSize) < 11.99;
+  }).map((element) => `${element.className || element.tagName}: ${element.textContent.trim().slice(0, 30)}`));
+
+  async function adellAllDay(page) {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await expect(page.locator('#coverage-list [data-assignacio]').first()).toBeVisible();
+  }
+
+  test('el professorat veu l’hora en curs destacada i no hi queden seccions buides', async ({ page }) => {
+    await startAt(page, '2026-09-07T08:30:00+02:00');
+    await adellAllDay(page);
+    await page.getByRole('button', { name: 'Publica' }).click();
+    await expect(page.locator('#day-status-action')).toHaveText('Tanca jornada');
+    await page.goto('/?data=2026-09-07&vista=professor');
+
+    const current = page.locator('#coverage-list .coverage-session.is-current');
+    await expect(current).toHaveCount(1);
+    await expect(current).toContainText('1a hora');
+    await expect(current.locator('.now-badge')).toHaveText('Ara');
+    await expect(page.locator('#coverage-list .coverage-session').filter({ hasText: '2a hora' }).locator('.session-pending')).toHaveText('1 sense cobrir');
+    // L'etiqueta diu qui es fa càrrec, sense cap G al costat del nom.
+    await expect(page.locator('.public-row .status-label').first()).toHaveText('Queda amb el grup');
+    // Sense zones de pati ni grups de sortida no queda cap capsa buida.
+    await expect(page.locator('#coverage-list .pati-session')).toHaveCount(0);
+    await expect(page.locator('.teacher-outing-panel')).toBeHidden();
+    expect(await tinyTexts(page)).toEqual([]);
+  });
+
+  test('un sol botó principal, la × al final de la fila i cap text per sota de 12 px', async ({ page }, testInfo) => {
+    await adellAllDay(page);
+    await expect(page.locator('#auto-assign-guards')).toHaveClass(/ghost/);
+    await expect(page.getByRole('button', { name: 'Aplica interval' })).toHaveClass(/ghost/);
+    expect(await tinyTexts(page)).toEqual([]);
+
+    if (testInfo.project.name === 'chromium-desktop') {
+      const row = await page.locator('#coverage-list [data-coverage-row]').first().boundingBox();
+      const remove = await page.locator('#coverage-list [data-coverage-row]').first().locator('.icon-remove').boundingBox();
+      expect(row.x + row.width - (remove.x + remove.width)).toBeLessThan(20);
+    }
+
+    await page.getByRole('tab', { name: 'Estadístiques' }).click();
+    await expect(page.locator('[data-ranking-most] li').first().locator('.ranking-bar')).toHaveCount(1);
+    expect(await tinyTexts(page)).toEqual([]);
+
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('details.admin-panel').evaluateAll((panels) => panels.forEach((panel) => { panel.open = true; }));
+    await page.waitForTimeout(500);
+    expect(await tinyTexts(page)).toEqual([]);
+  });
 });

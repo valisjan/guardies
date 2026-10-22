@@ -46,7 +46,7 @@ onBeforeUnmount(() => window.removeEventListener('guardies:auto-assign-result', 
         <h2>Absències per hora</h2>
       </div>
       <div v-if="canWrite" class="day-panel-actions">
-        <button id="auto-assign-guards" type="button" :disabled="!canAutoAssign" @click="autoAssign">Assigna automàticament</button>
+        <button id="auto-assign-guards" type="button" class="ghost" :disabled="!canAutoAssign" @click="autoAssign">Assigna automàticament</button>
         <span v-if="autoAssignmentFeedback" class="auto-assignment-feedback" :class="`is-${autoAssignmentFeedbackKind}`" role="status" aria-live="polite">{{ autoAssignmentFeedback }}</span>
       </div>
     </div>

@@ -212,6 +212,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   window.addEventListener('popstate', handlePopState);
   window.addEventListener('guardies:retry-connection', bootstrap);
   document.addEventListener('visibilitychange', handleVisibilityChange);
+  // Vista del professorat: l'hora en curs es destaca i canvia sola amb el rellotge.
+  window.setInterval(() => {
+    if (state.contextReady && !state.canWrite && state.publicDay && !document.hidden) render();
+  }, 60_000);
   window.addEventListener('guardies:pati-updated', () => parseStoredData({ resetSelection: false }));
   window.addEventListener('guardies:convivencia-ready', renderConvivenciaAdmin);
   window.addEventListener('guardies:clear-convivencia', async () => {
@@ -2979,10 +2983,18 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       const visibleDay = state.dayLoaded && Boolean(state.publicDay) && state.dayPersistenceStatus !== 'loading';
       el.workspace.classList.toggle('hidden', !visibleDay);
       el.empty.classList.toggle('hidden', visibleDay);
-      patchCoverage(renderPublicCoverage(state.publicDay), `public:${state.courseId}:${state.date}`);
+      const now = new Date();
+      patchCoverage(
+        renderPublicCoverage(state.publicDay, { now: state.date === localDateString(now) ? now : null }),
+        `public:${state.courseId}:${state.date}`,
+      );
       el.printDateLabel.textContent = formatData(state.date);
       const outings = document.getElementById('public-outing-list');
-      if (outings) outings.innerHTML = renderPublicOutings(state.publicDay);
+      if (outings) {
+        outings.innerHTML = renderPublicOutings(state.publicDay);
+        // Sense grups de sortida, el panell no es mostra (abans hi quedava un «—»).
+        outings.closest('.teacher-outing-panel')?.classList.toggle('hidden', !outings.childElementCount);
+      }
       return;
     }
     const ready = state.contextReady
@@ -4312,7 +4324,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       : state.canWrite
         ? `<select data-assignacio="${escapeHtml(item.id)}" data-co-teacher="${escapeHtml(classroomPartner)}" ${(hasCandidates || classroomPartner) && !locked ? '' : 'disabled'}>
             <option value="">${returnsToGroup ? 'Sense substitució · torna al seu grup' : 'Sense preassignar'}</option>
-            ${classroomPartner ? `<option value="${escapeHtml(classroomPartner)}" ${classroomPartner === assignat ? 'selected' : ''}>${escapeHtml(labelProfessor(classroomPartner))} · Queda amb el grup</option>` : ''}
+            ${classroomPartner ? `<option value="${escapeHtml(classroomPartner)}" ${classroomPartner === assignat ? 'selected' : ''}>${escapeHtml(labelProfessor(classroomPartner, true))} · Queda amb el grup</option>` : ''}
             ${candidates.filter((candidate) => candidate.placa !== classroomPartner).map((candidate) => `
               <option
                 class="candidate-option ${candidateOptionClass(candidate)}"
@@ -4323,7 +4335,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
                 ${escapeHtml(candidateSelectLabel(candidate))}
               </option>
             `).join('')}
-          </select>${coTeacher ? '<span class="co-teacher-badge no-print">Queda amb el grup</span>' : ''}`
+          </select>`
         : `<strong class="readonly-assignment no-print ${assignat ? 'assigned' : 'pending'}">${escapeHtml(assignat ? labelProfessor(assignat) : 'Sense cobrir')}</strong>`;
     const commentControl = state.canWrite
       ? `<div class="comment-editor">

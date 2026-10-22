@@ -5139,29 +5139,6 @@ button.ghost {
   }
 }
 
-/* Vista pública: qui cobreix és de guàrdia (G) o alliberat. */
-.guard-source-mark {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 6px;
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-size: var(--text-xs);
-  font-weight: 800;
-  text-decoration: none;
-  vertical-align: 1px;
-}
-
-.guard-source-mark.is-guard {
-  background: var(--primary);
-  color: var(--on-primary);
-}
-
-.guard-source-mark.is-released {
-  background: var(--green-soft);
-  color: var(--green);
-}
-
 /* Vista del professorat: files compactes, qui cobreix tan llegible com qui
    falta, i l'estat de cada fila amb una etiqueta i una barra de color. Només
    pantalla i només lectura: la gestió i la impressió A3 no canvien. */
@@ -5351,8 +5328,9 @@ button.ghost {
       transform var(--dur-fast) var(--ease-out);
   }
 
-  /* Botons: un relleu lleuger en passar-hi i una pressió en clicar. */
-  :is(#day-status-action:not(.ghost), #auto-assign-guards, .range-builder button:not(.ghost)):not(:disabled):hover {
+  /* Botons: un relleu lleuger en passar-hi i una pressió en clicar. Només el
+     principal («Publica», «Tanca jornada») fa ombra de color. */
+  #day-status-action:not(.ghost):not(:disabled):hover {
     transform: translateY(-1px);
     box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 30%, transparent);
   }
@@ -5568,8 +5546,9 @@ button.ghost {
 }
 
 @media screen and (min-width: 1181px) {
+  /* Qui cobreix té l'espai més ample: el desplegable mostra el nom sencer. */
   .guard-layout:not(.is-readonly) .coverage-row {
-    grid-template-columns: minmax(160px, 0.9fr) minmax(140px, 0.75fr) minmax(220px, 1.2fr) minmax(240px, 1.35fr);
+    grid-template-columns: minmax(150px, 0.85fr) minmax(130px, 0.7fr) minmax(260px, 1.45fr) minmax(220px, 1.1fr);
   }
 }
 
@@ -5643,6 +5622,239 @@ button.ghost {
 
   @keyframes pop-in {
     from { opacity: 0; transform: scale(0.7); }
+  }
+}
+
+/* ==========================================================================
+   Revisió visual (octubre 2026): un sol botó principal, cap text per sota de
+   12 px, la «×» al final de la fila, estadístiques amb l'estil nou i l'hora
+   en curs a la vista del professorat. Només pantalla.
+   ========================================================================== */
+@media screen {
+  /* «Assigna automàticament» i «Aplica interval» són secundaris. */
+  #auto-assign-guards.ghost,
+  .range-builder button.ghost {
+    min-height: 38px;
+    padding: 0 14px;
+    font-weight: 700;
+  }
+
+  .schedule-type,
+  .schedule-main small,
+  .pati-info-strip > span { font-size: var(--text-xs); }
+
+  .range-copy strong,
+  .info-only-label,
+  .pati-info-strip p { font-size: var(--text-sm); }
+
+  /* Configuració: el mateix mínim de 12 px als panells. */
+  .cache-info,
+  .admin-block-head .kicker,
+  .setup-number,
+  .setup-copy small,
+  .setup-status,
+  .setup-step .upload > span,
+  .teacher-exclusions-columns > span,
+  .teacher-exclusions-row small,
+  .teacher-email,
+  .guard-count-columns > span,
+  .pati-day-tabs button > span,
+  .source-chip,
+  .official-calendar-summary > span,
+  .pati-day-card header strong,
+  .pati-day-card header span,
+  .non-teaching-label,
+  .pati-no-roster,
+  .pati-save-message,
+  .convivencia-slot-time strong,
+  .convivencia-slot-time small,
+  .release-note time { font-size: var(--text-xs); }
+
+  .setup-copy strong,
+  .empty-small,
+  .convivencia-day h3,
+  .release-note li { font-size: var(--text-sm); }
+
+  /* Estadístiques: totals com el resum de la gestió diària i rànquings amb
+     noms llegibles i una barra que mostra el repartiment. */
+  .guard-statistics-panel {
+    gap: 18px;
+    margin-bottom: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .guard-statistics-head .kicker {
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .guard-statistics-head h2 {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .guard-statistics-totals { gap: 10px; }
+
+  .guard-statistics-totals article {
+    gap: 4px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 12px 16px;
+  }
+
+  .guard-statistics-totals span {
+    order: 2;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-transform: none;
+  }
+
+  .guard-statistics-totals strong {
+    color: var(--text);
+    font-family: var(--font-display);
+    font-size: var(--text-3xl);
+    font-weight: 700;
+  }
+
+  .guard-statistics-grid { gap: 14px; }
+
+  .guard-ranking-card {
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+
+  .guard-ranking-card > header {
+    background: var(--surface);
+    padding: 12px 16px;
+  }
+
+  .guard-ranking-card > header h3 { font-size: var(--text-md); }
+
+  .guard-ranking-card > header span {
+    padding: 2px 9px;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: none;
+  }
+
+  .guard-ranking-card li {
+    grid-template-columns: 28px minmax(0, 1fr) auto 44px;
+    gap: 12px;
+    min-height: 56px;
+    border-top-color: var(--border);
+    padding: 8px 16px;
+  }
+
+  .guard-slot-ranking li { grid-template-columns: 28px minmax(0, 1fr) 44px; }
+
+  .guard-ranking-card li > b {
+    width: 26px;
+    height: 26px;
+    font-size: var(--text-xs);
+  }
+
+  .ranking-who {
+    display: grid;
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .ranking-who strong {
+    overflow: hidden;
+    color: var(--text);
+    font-size: var(--text-base);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ranking-bar {
+    display: block;
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--surface-strong);
+  }
+
+  .ranking-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--primary);
+  }
+
+  .guard-ranking-breakdown em {
+    border-color: var(--border);
+    padding: 2px 8px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+  }
+
+  .guard-ranking-card li > mark {
+    min-width: 40px;
+    min-height: 32px;
+    border-radius: 8px;
+    font-size: var(--text-base);
+    font-weight: 800;
+  }
+
+  /* Vista del professorat: l'hora en curs, com a Pantalles. */
+  .guard-layout.is-readonly .coverage-session.is-current {
+    border: 2px solid var(--primary);
+    box-shadow: 0 0 0 4px var(--primary-soft);
+  }
+
+  .guard-layout.is-readonly .coverage-session.is-current .coverage-session-head { background: var(--primary-soft); }
+
+  .coverage-session-head .now-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-left: auto;
+    border-radius: 999px;
+    background: var(--primary);
+    padding: 3px 10px;
+    color: var(--on-primary);
+    font-size: var(--text-xs);
+    font-weight: 700;
+  }
+
+  .coverage-session-head .now-badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .coverage-session-head .now-badge + .session-pending { margin-left: 0; }
+}
+
+@media screen and (max-width: 620px) {
+  /* Recompte de guàrdies en mòbil: noms i xifres a 12 px, no a 10. */
+  .guard-count-row > * { font-size: var(--text-xs); }
+}
+
+/* La «×» per treure una absència va al final de la fila. En mòbil ja hi és,
+   perquè el nom ocupa tota l'amplada. */
+@media screen and (min-width: 621px) {
+  .guard-layout:not(.is-readonly) .coverage-row { padding-right: 56px; }
+
+  .coverage-professor-cell .icon-remove {
+    position: absolute;
+    top: 12px;
+    right: 12px;
   }
 }
 }

@@ -131,7 +131,7 @@ onBeforeUnmount(() => {
         </div>
         <label>Des de <input v-model="absenceFrom" type="date" /></label>
         <label>Fins a <input v-model="absenceTo" type="date" /></label>
-        <button type="button" :disabled="!canWrite || dayStatus === 'closed'" @click="applyAbsenceRange">Aplica interval</button>
+        <button type="button" class="ghost" :disabled="!canWrite || dayStatus === 'closed'" @click="applyAbsenceRange">Aplica interval</button>
         <p v-if="absenceFeedback" class="range-feedback" :class="`is-${absenceFeedbackKind}`" role="status" aria-live="polite">{{ absenceFeedback }}</p>
       </div>
     </section>
