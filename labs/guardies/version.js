@@ -1,6 +1,19 @@
-export const GUARDIES_VERSION = '1.6.0';
+export const GUARDIES_VERSION = '1.7.0';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.7.0',
+    date: '22 d’octubre de 2026',
+    changes: [
+      'Vista del professorat: l’hora en curs es destaca amb «Ara», cada hora diu quantes guàrdies queden sense cobrir i qui cobreix s’indica com a Pantalles («Guàrdia», «Alliberat/ada», «Queda amb el grup»).',
+      'Vista del professorat: les hores sense absències són discretes i ja no surten el pati buit ni el panell de grups de sortida quan no n’hi ha.',
+      'Gestió diària: només «Publica» (o «Tanca jornada») és el botó principal; «Assigna automàticament» i «Aplica interval» passen a ser secundaris.',
+      'El desplegable de qui cobreix té més espai i «Queda amb el grup» ja no es repeteix sota el desplegable.',
+      'La × per treure una absència és al final de la fila.',
+      'Cap text de l’aplicació és més petit de 12 px, tampoc als panells de configuració.',
+      'Les estadístiques tenen l’estil nou: totals com el resum del dia, noms més llegibles i una barra que mostra el repartiment.',
+    ],
+  },
   {
     version: '1.6.0',
     date: '22 d’octubre de 2026',
