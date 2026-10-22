@@ -1,6 +1,74 @@
-export const GUARDIES_VERSION = '1.0.0';
+export const GUARDIES_VERSION = '1.6.0';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.6.0',
+    date: '22 d’octubre de 2026',
+    changes: [
+      'Historial de cada jornada: es guarden les 30 darreres versions i, des del botó «Historial» (al costat de l’estat del dia), se’n pot recuperar qualsevol. La restauració també es pot desfer.',
+      'Pujar o treure els fitxers d’horari ja no buida la jornada oberta. Si una classe ha canviat d’aula, l’absència hi passa amb qui la cobreix; les que ja no encaixen es conserven i un avís permet revisar-les o descartar-les.',
+      'Un dia sense cap absència es pot publicar i tancar.',
+      'Les observacions del pati i de la 7a hora ja es desen sempre.',
+      'Qui cobreix la classe d’un acompanyant de sortida es conserva en tornar a obrir la jornada.',
+    ],
+  },
+  {
+    version: '1.5.0',
+    date: '18 d’octubre de 2026',
+    changes: [
+      'La jornada mostra com avança la cobertura: barra de progrés, punt d’estat i guàrdies pendents a cada hora.',
+      'Animacions suaus en canviar de vista i en aparèixer hores i absències noves.',
+      'Les observacions ocupen una sola línia que creix amb el text, amb les frases preestablertes en un botó al costat.',
+      'Les hores sense absències es mostren com una línia discreta perquè destaquin les que tenen feina.',
+      'L’assignació automàtica i les llistes de candidats responen molt més de pressa.',
+    ],
+  },
+  {
+    version: '1.4.0',
+    date: '15 d’octubre de 2026',
+    changes: [
+      'L’activitat PALIC es pot marcar com a absència, igual que una guàrdia, i entra a «Totes les hores».',
+      'La impressió en A3 deixa marges segurs i ja no comença amb pàgines en blanc.',
+    ],
+  },
+  {
+    version: '1.3.0',
+    date: '29 de setembre de 2026',
+    changes: [
+      'El torn de pati el decideix la configuració de l’aplicació (no les files GP d’Untis) i surt a les 10:45 a l’horari del professor absent.',
+      'La vista del professorat és compacta i es llegeix bé al mòbil.',
+      'La vista del professorat i les pantalles mostren qui cobreix cada guàrdia i marquen el professorat de guàrdia.',
+      'Desdoblaments flexibles: si falta un docent, l’alumnat torna al seu grup sense demanar guàrdia, i es preassigna el company de la mateixa matèria.',
+      'Es reconeix la codificació dels fitxers d’Untis (accents) i s’avisa si un fitxer pujat abans els havia perdut.',
+      'En copiar un interval, les jornades ja publicades actualitzen també la vista del professorat.',
+    ],
+  },
+  {
+    version: '1.2.0',
+    date: '26 de setembre de 2026',
+    changes: [
+      'Nou disseny: colors, tipografia, barra superior compacta i noves pantalles de gestió diària i de recompte de guàrdies.',
+      'Es pot instal·lar com una aplicació i s’obre més de pressa.',
+      'Es passa de Guàrdies a Professorat sense recarregar.',
+      'Les jornades pendents es tanquen directament des de l’avís «Dies no tancats».',
+      '«Desfés» després d’eliminar una absència o d’assignar guàrdies automàticament.',
+      'Els errors s’expliquen en català i diuen què cal fer. Sense data, s’obre el proper dia lectiu.',
+      'Les observacions es desen quan es fa una pausa, no a cada paraula, i el guardat s’atura sol si una pestanya entra en bucle.',
+      'L’horari es llegeix unes 30 vegades més de pressa.',
+    ],
+  },
+  {
+    version: '1.1.0',
+    date: '25 de setembre de 2026',
+    changes: [
+      'Historial de guàrdies de cada professor (dates i grups) i recompte amb colors per franja.',
+      'Els dies no tancats s’obren amb un clic i hi ha un botó per tornar a provar la connexió.',
+      'Estat de sincronització amb colors i resum diari més clar.',
+      'Es poden imprimir jornades sense guàrdies.',
+      'Es recupera sol quan falla la connexió i fa moltes menys lectures a Firebase; nova pestanya de diagnòstic.',
+      'Es poden editar les preassignacions de codocència, i hi ha un menú comú per canviar d’aplicació.',
+    ],
+  },
   {
     version: '1.0.0',
     date: '13 de setembre de 2026',
