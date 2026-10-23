@@ -1,6 +1,13 @@
-export const GUARDIES_VERSION = '1.7.0';
+export const GUARDIES_VERSION = '1.7.1';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.7.1',
+    date: '23 d’octubre de 2026',
+    changes: [
+      'El botó «Avui» respon sempre: també amb la pàgina oberta des del dia anterior i quan es prem mentre la jornada encara es desa o es carrega.',
+    ],
+  },
   {
     version: '1.7.0',
     date: '22 d’octubre de 2026',

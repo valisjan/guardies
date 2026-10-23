@@ -303,7 +303,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     render();
   });
   window.addEventListener('guardies:day-edited', () => commitCoverageEdit({ renderAll: true }));
-  window.addEventListener('guardies:change-date', (event) => navigateToDate(event.detail?.date));
+  window.addEventListener('guardies:change-date', (event) => requestDateChange(event.detail?.date));
   window.addEventListener('guardies:load-teacher-stats', ensureTeacherStatistics);
   window.addEventListener('guardies:release-teacher-stats', releaseTeacherStats);
   window.addEventListener('guardies:resolve-conflict', (event) => resolveDayConflict(event.detail?.choice));
@@ -312,6 +312,30 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   window.addEventListener('guardies:close-days', (event) => closeUnclosedDays(event.detail?.dates || []));
   window.addEventListener('guardies:dismiss-undo', clearUndo);
   window.addEventListener('guardies:restore-day-version', (event) => restoreDayVersion(event.detail?.version));
+
+  // Canvis de dia que demana l'usuari (fletxes, calendari, «Avui»). Si la jornada
+  // està ocupada (desant, publicant, canviant de dia o tancant jornades), la petició
+  // no es perd: es fa quan queda lliure, i si se n'acumulen, només la darrera.
+  let requestedDate = '';
+  let requestedDateTimer = null;
+
+  function requestDateChange(date) {
+    if (!date) return;
+    requestedDate = date;
+    drainDateRequest();
+  }
+
+  function drainDateRequest() {
+    window.clearTimeout(requestedDateTimer);
+    if (!requestedDate) return;
+    if (navigationInFlight || state.closingDays) {
+      requestedDateTimer = window.setTimeout(drainDateRequest, 150);
+      return;
+    }
+    const date = requestedDate;
+    requestedDate = '';
+    navigateToDate(date);
+  }
 
   async function navigateToDate(date) {
     if (!date || date === state.date || navigationInFlight) return;

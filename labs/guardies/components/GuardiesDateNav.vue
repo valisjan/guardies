@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useGuardiesStore } from '../stores/guardies.js';
 
@@ -13,13 +13,31 @@ function localDateString(value) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// La data d'avui segueix el rellotge: una pestanya oberta des d'ahir (o un
+// ordinador que s'ha despertat) no es pot quedar amb el dia anterior com a "avui".
+const today = ref(localDateString(new Date()));
+function refreshToday() {
+  today.value = localDateString(new Date());
+}
+let todayTimer = null;
+onMounted(() => {
+  todayTimer = window.setInterval(refreshToday, 30_000);
+  window.addEventListener('focus', refreshToday);
+  document.addEventListener('visibilitychange', refreshToday);
+});
+onBeforeUnmount(() => {
+  window.clearInterval(todayTimer);
+  window.removeEventListener('focus', refreshToday);
+  document.removeEventListener('visibilitychange', refreshToday);
+});
+
 const parsedDate = computed(() => {
   const parsed = new Date(`${date.value}T12:00:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 });
 const weekday = computed(() => (parsedDate.value ? weekdayFormatter.format(parsedDate.value) : ''));
 const nonTeachingDay = computed(() => parsedDate.value && [0, 6].includes(parsedDate.value.getDay()));
-const isToday = computed(() => date.value === localDateString(new Date()));
+const isToday = computed(() => date.value === today.value);
 
 function requestDate(value) {
   window.dispatchEvent(new CustomEvent('guardies:change-date', { detail: { date: value } }));
@@ -40,8 +58,10 @@ function shiftDate(days) {
   requestDate(localDateString(next));
 }
 
+// Sempre demana el dia d'avui del rellotge: si ja s'hi és, la navegació no fa res.
 function goToday() {
-  if (!isToday.value) requestDate(localDateString(new Date()));
+  refreshToday();
+  requestDate(today.value);
 }
 </script>
 

@@ -592,6 +592,38 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('#date-input')).toHaveValue('2026-09-26');
   });
 
+  test('«Avui» porta al dia d’avui encara que la pestanya estigui oberta des d’ahir', async ({ page }) => {
+    // Rellotge que el test pot avançar: la pàgina continua oberta i passa la mitjanit.
+    await page.addInitScript((target) => {
+      const RealDate = Date;
+      window.__clockOffset = target - RealDate.now();
+      window.Date = class extends RealDate {
+        constructor(...args) { super(...(args.length ? args : [RealDate.now() + window.__clockOffset])); }
+        static now() { return RealDate.now() + window.__clockOffset; }
+      };
+    }, new Date('2026-09-07T23:59:00+02:00').getTime());
+    await openGuardies(page);
+    const today = page.getByRole('button', { name: 'Avui' });
+    await expect(today).toHaveClass(/is-today/);
+
+    await page.evaluate(() => { window.__clockOffset += 24 * 60 * 60 * 1000; });
+    await today.click();
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-08');
+    await expect(today).toHaveClass(/is-today/);
+  });
+
+  test('un canvi de dia demanat mentre la jornada està ocupada no es perd', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    // Dues peticions seguides: la segona arriba mentre la primera encara desa i carrega.
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent('guardies:change-date', { detail: { date: '2026-09-08' } }));
+      window.dispatchEvent(new CustomEvent('guardies:change-date', { detail: { date: '2026-09-09' } }));
+    });
+    await expect(page.locator('#date-input')).toHaveValue('2026-09-09');
+    await expect(page).toHaveURL(/data=2026-09-09/);
+  });
+
   test('un error de permisos es mostra en català i amb què cal fer', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
