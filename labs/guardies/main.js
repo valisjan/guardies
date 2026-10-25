@@ -4366,6 +4366,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const assignatIsConvivencia = assignat && isConvivenciaProfessor(item.dia, item.hora, assignat);
     const cancelled = state.cancelledAssignments.has(item.id);
     const taskLabel = isPati ? 'Pati · GP' : isGuardiaItem(item) ? formatMateria(item) : group;
+    // Grup a dalt i, en una sola línia, matèria i aula (l'aula ben visible: és on s'ha d'anar).
+    const detailLine = [
+      isGuardiaItem(item) ? '' : escapeHtml(subject),
+      room ? `<strong class="coverage-room-label">${escapeHtml(room)}</strong>` : '',
+    ].filter(Boolean).join(' · ');
     const printSessionDetail = isGuardiaItem(item)
       ? escapeHtml(taskLabel)
       : [
@@ -4411,7 +4416,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       <article data-coverage-row="${escapeHtml(item.id)}" class="coverage-item coverage-row status-${status} ${assignat ? 'covered' : ''} ${cancelled ? 'not-completed' : ''} ${isPati ? 'informational' : ''}">
         <div class="coverage-professor-cell">
           <span class="cell-kicker">Absència</span>
-          <strong class="no-print">${escapeHtml(absentTeacherIds.map((teacherId) => labelProfessor(teacherId)).join(' · '))}</strong>
+          <strong class="no-print">${absentTeacherIds.map(professorNameHtml).join(' · ')}</strong>
           <strong class="print-only">${escapeHtml(absentTeacherIds.map((teacherId) => labelProfessor(teacherId, true)).join(' · '))}</strong>
           ${statusLabel ? `<span class="coverage-status no-print">${escapeHtml(statusLabel)}</span>` : ''}
           ${state.canWrite ? `<button type="button" class="icon-remove no-print" aria-label="Elimina aquesta absència" data-remove-absence="${escapeHtml(item.id)}" data-remove-absences="${escapeHtml((item.absenceIds || [item.id]).join(','))}" ${locked ? 'disabled' : ''}>×</button>` : ''}
@@ -4419,8 +4424,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         <div class="coverage-detail-cell">
           <span class="cell-kicker">Sessió</span>
           <strong class="no-print coverage-group-label">${escapeHtml(taskLabel)}</strong>
-          ${isGuardiaItem(item) ? '' : `<span class="no-print">${escapeHtml(subject)}</span>`}
-          ${room ? `<strong class="no-print coverage-room-label">${escapeHtml(room)}</strong>` : ''}
+          ${detailLine ? `<span class="no-print coverage-detail-line">${detailLine}</span>` : ''}
           <span class="print-only print-session-detail">${printSessionDetail}</span>
         </div>
         <div class="coverage-assignment-cell ${hasReleasedCandidates ? 'has-released-candidates' : ''} ${hasCandidates && !hasAvailableCandidates ? 'only-unavailable' : ''}">
@@ -4504,6 +4508,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (info.name && info.short && info.name !== info.short) return `${info.name} · ${info.short}`;
     if (info.name) return info.name;
     return info.short || 'Professor/a sense nom';
+  }
+
+  // Nom i codi d'Untis: el codi va en una etiqueta discreta i no fa saltar el nom de línia.
+  function professorNameHtml(placa) {
+    const info = professorInfo(placa);
+    if (!info.name || !info.short || info.name === info.short) return escapeHtml(labelProfessor(placa));
+    return `${escapeHtml(info.name)} <small class="teacher-code">${escapeHtml(info.short)}</small>`;
   }
 
   function isExcludedTeacher(teacherId) {

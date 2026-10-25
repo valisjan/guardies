@@ -2344,6 +2344,15 @@ test.describe('Guàrdies: revisió visual', () => {
     expect(position.top).toBeLessThan(position.nav + 40);
   });
 
+  test('a la gestió, cada fila és més baixa: el codi va a part i la matèria i l’aula en una línia', async ({ page }) => {
+    await adellAllDay(page);
+    const row = page.locator('#coverage-list [data-coverage-row]').first();
+    await expect(row.locator('.teacher-code')).toHaveText('ADEL');
+    await expect(row.locator('.coverage-professor-cell strong.no-print')).toContainText('Adell Domènech, Marina');
+    await expect(row.locator('.coverage-detail-line')).toHaveText('MAT · Aula 14');
+    await expect(row.locator('.coverage-detail-line .coverage-room-label')).toHaveText('Aula 14');
+  });
+
   test('un sol botó principal, la × al final de la fila i cap text per sota de 12 px', async ({ page }, testInfo) => {
     await adellAllDay(page);
     await expect(page.locator('#auto-assign-guards')).toHaveClass(/ghost/);

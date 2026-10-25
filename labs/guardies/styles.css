@@ -5546,9 +5546,10 @@ button.ghost {
 }
 
 @media screen and (min-width: 1181px) {
-  /* Qui cobreix té l'espai més ample: el desplegable mostra el nom sencer. */
+  /* Qui cobreix té l'espai més ample (el desplegable mostra el nom sencer) i el nom
+     de qui falta hi cap amb el seu codi; la sessió ja només ocupa dues línies curtes. */
   .guard-layout:not(.is-readonly) .coverage-row {
-    grid-template-columns: minmax(150px, 0.85fr) minmax(130px, 0.7fr) minmax(260px, 1.45fr) minmax(220px, 1.1fr);
+    grid-template-columns: minmax(170px, 1fr) minmax(120px, 0.6fr) minmax(260px, 1.4fr) minmax(200px, 1fr);
   }
 }
 
@@ -5842,6 +5843,26 @@ button.ghost {
 }
 
 @media screen {
+  /* Gestió diària: el codi d'Untis com a etiqueta discreta i la sessió en dues
+     línies (grup; matèria i aula), perquè les files siguin més baixes. */
+  .teacher-code {
+    display: inline-block;
+    margin-left: 4px;
+    border-radius: 6px;
+    background: var(--surface-strong);
+    padding: 0 6px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+    vertical-align: 1px;
+  }
+
+  .coverage-detail-cell .coverage-detail-line .coverage-room-label {
+    display: inline;
+    color: var(--text);
+  }
+
   /* Vista del professorat: el que et toca avui, a dalt, i «Tu» on surts. */
   .my-guards {
     display: grid;
