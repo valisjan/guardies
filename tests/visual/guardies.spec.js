@@ -2292,6 +2292,58 @@ test.describe('Guàrdies: revisió visual', () => {
     expect(await tinyTexts(page)).toEqual([]);
   });
 
+  test('el professorat veu a dalt les guàrdies que li toquen, marcades amb «Tu»', async ({ page }) => {
+    await startAt(page, '2026-09-07T08:30:00+02:00');
+    await adellAllDay(page);
+    // A les 8:55 cobreix la Clara Sanz, que és de guàrdia en aquella hora.
+    const second = page.locator('#coverage-list .coverage-session').filter({ hasText: '2a hora' }).locator('[data-assignacio]');
+    await second.selectOption('3');
+    await page.getByRole('button', { name: 'Publica' }).click();
+    await expect(page.locator('#day-status-action')).toHaveText('Tanca jornada');
+    await page.goto('/?data=2026-09-07&vista=professor');
+    await expect(page.locator('.public-row').first()).toBeVisible();
+    await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      useGuardiesStore().viewerName = 'Clara Sanz Vidal';
+      window.dispatchEvent(new CustomEvent('guardies:legacy-render'));
+    });
+
+    const summary = page.locator('.my-guards');
+    await expect(summary).toContainText('Avui et toca');
+    await expect(summary.locator('.my-guard')).toHaveCount(1);
+    await expect(summary.locator('.my-guard')).toContainText('2a hora');
+    await expect(summary.locator('.my-guard')).toContainText('1ESO-A · Aula 14');
+    const mine = page.locator('.public-row.is-mine');
+    await expect(mine).toHaveCount(1);
+    await expect(mine.locator('.mine-chip')).toHaveText('Tu');
+    await expect(mine).toContainText('Sanz Vidal, Clara');
+  });
+
+  test('en mòbil, el dia d’avui s’obre a l’hora en curs', async ({ page }) => {
+    await startAt(page, '2026-09-07T09:00:00+02:00');
+    await adellAllDay(page);
+    await page.getByRole('button', { name: 'Publica' }).click();
+    await expect(page.locator('#day-status-action')).toHaveText('Tanca jornada');
+    await page.setViewportSize({ width: 390, height: 700 });
+    // L'horari de prova és curt: espai a sota perquè l'hora en curs pugui pujar fins a dalt.
+    await page.addInitScript(() => document.addEventListener('DOMContentLoaded', () => {
+      const style = document.createElement('style');
+      style.textContent = '#coverage-list { padding-bottom: 1600px !important; }';
+      document.head.append(style);
+    }));
+    await page.goto('/?data=2026-09-07&vista=professor');
+    const current = page.locator('#coverage-list .coverage-session.is-current');
+    await expect(current).toContainText('2a hora');
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+    const position = await current.evaluate((node) => ({
+      top: node.getBoundingClientRect().top,
+      nav: document.querySelector('.app-nav').getBoundingClientRect().height,
+    }));
+    // Queda just a sota de la barra superior.
+    expect(position.top).toBeGreaterThanOrEqual(position.nav);
+    expect(position.top).toBeLessThan(position.nav + 40);
+  });
+
   test('un sol botó principal, la × al final de la fila i cap text per sota de 12 px', async ({ page }, testInfo) => {
     await adellAllDay(page);
     await expect(page.locator('#auto-assign-guards')).toHaveClass(/ghost/);

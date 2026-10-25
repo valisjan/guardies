@@ -1,6 +1,6 @@
 import { markRaw } from 'vue';
 import * as parser from './horariXmlParser.js';
-import { renderPublicCoverage, renderPublicOutings } from './publicDayRenderer.js';
+import { currentPublicHourKey, renderPublicCoverage, renderPublicOutings } from './publicDayRenderer.js';
 import { createScheduleIndex } from '../../src/modules/guardies/domain/schedule-index.js';
 import { guardHistoryGroups, guardSlotFromAssignment } from '../../src/modules/guardies/domain/guard-history.js';
 import { createKeyedRenderer } from '../../src/utils/keyedDom.js';
@@ -88,6 +88,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   let daySaveTimer = null;
   let daySaveInFlight = null;
   let navigationInFlight = false;
+  // Vista del professorat: dia (curs|data) en què ja s'ha saltat a l'hora en curs.
+  let jumpedToCurrentHour = '';
   let lastDaySignature = '';
   let lastRemoteDataSignature = '';
   let lastAppliedConfiguration = null;
@@ -212,6 +214,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   window.addEventListener('popstate', handlePopState);
   window.addEventListener('guardies:retry-connection', bootstrap);
   document.addEventListener('visibilitychange', handleVisibilityChange);
+  // Resum de les guàrdies pròpies: cada una porta a la seva hora.
+  el.coverageList.addEventListener('click', (event) => {
+    const link = event.target.closest('[data-public-jump]');
+    if (!link) return;
+    event.preventDefault();
+    scrollPublicHourIntoView(link.dataset.publicJump);
+  });
   // Vista del professorat: l'hora en curs es destaca i canvia sola amb el rellotge.
   window.setInterval(() => {
     if (state.contextReady && !state.canWrite && state.publicDay && !document.hidden) render();
@@ -3008,10 +3017,12 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       el.workspace.classList.toggle('hidden', !visibleDay);
       el.empty.classList.toggle('hidden', visibleDay);
       const now = new Date();
+      const today = state.date === localDateString(now);
       patchCoverage(
-        renderPublicCoverage(state.publicDay, { now: state.date === localDateString(now) ? now : null }),
+        renderPublicCoverage(state.publicDay, { now: today ? now : null, viewer: state.viewerName }),
         `public:${state.courseId}:${state.date}`,
       );
+      if (visibleDay && today) jumpToCurrentHourOnce(now);
       el.printDateLabel.textContent = formatData(state.date);
       const outings = document.getElementById('public-outing-list');
       if (outings) {
@@ -3042,6 +3053,31 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     renderSchedule();
     renderCoverage();
     renderReleasedList();
+  }
+
+  // Vista del professorat: porta una hora a dalt, sota la barra superior i, en mòbil,
+  // sota el resum de les guàrdies pròpies, que hi queden fixos.
+  function scrollPublicHourIntoView(key, behavior = 'smooth') {
+    const section = Array.from(el.coverageList.querySelectorAll('[data-public-hour]'))
+      .find((node) => node.dataset.publicHour === String(key));
+    if (!section) return;
+    const nav = document.querySelector('.app-nav')?.getBoundingClientRect().height || 0;
+    const summary = el.coverageList.querySelector('.my-guards');
+    const pinned = summary && getComputedStyle(summary).position === 'sticky' ? summary.getBoundingClientRect().height + 6 : 0;
+    window.scrollTo({ top: section.getBoundingClientRect().top + window.scrollY - nav - pinned - 12, behavior });
+  }
+
+  // En obrir el dia d'avui al mòbil, la vista comença a l'hora en curs (una sola
+  // vegada per dia: després no es mou mentre algú la llegeix).
+  function jumpToCurrentHourOnce(now) {
+    const key = `${state.courseId}|${state.date}`;
+    if (jumpedToCurrentHour === key) return;
+    const hours = state.publicDay?.hours || [];
+    const current = currentPublicHourKey(hours, now);
+    if (!current) return;
+    jumpedToCurrentHour = key;
+    if (current === String(hours[0]?.key) || !window.matchMedia('(max-width: 820px)').matches) return;
+    window.requestAnimationFrame(() => scrollPublicHourIntoView(current, 'auto'));
   }
 
   function renderPublicOutingGroups() {

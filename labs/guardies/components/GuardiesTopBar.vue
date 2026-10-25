@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useGuardiesStore } from '../stores/guardies.js';
 import GuardiesDateNav from './GuardiesDateNav.vue';
@@ -87,10 +87,23 @@ function toggleApps() {
 }
 document.addEventListener('click', closeAppsOnOutside);
 document.addEventListener('keydown', closeAppsOnEscape);
+
+// L'alçada de la barra (en mòbil ocupa dues files) permet fixar-hi elements a sota.
+const navElement = ref(null);
+let navObserver = null;
+onMounted(() => {
+  navObserver = new ResizeObserver(() => {
+    const height = navElement.value?.getBoundingClientRect().height || 0;
+    document.documentElement.style.setProperty('--app-nav-height', `${Math.round(height)}px`);
+  });
+  if (navElement.value) navObserver.observe(navElement.value);
+});
+
 onBeforeUnmount(() => {
   window.removeEventListener('guardies:view-settled', settleNavigation);
   document.removeEventListener('click', closeAppsOnOutside);
   document.removeEventListener('keydown', closeAppsOnEscape);
+  navObserver?.disconnect();
 });
 
 function toggleTheme() {
@@ -102,7 +115,7 @@ function toggleTheme() {
 </script>
 
 <template>
-  <nav class="app-nav" aria-label="Navegació principal">
+  <nav ref="navElement" class="app-nav" aria-label="Navegació principal">
     <div class="nav-inner">
       <a class="brand" :href="isAdmin ? guardiesHref : professoratHref" @click="openView($event, isAdmin ? guardiesHref : professoratHref, !isAdmin)">
         <img src="/logo_IESJSB_nav.png" alt="IES Josep Sureda i Blanes" />

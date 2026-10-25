@@ -77,13 +77,44 @@ test('public view highlights the current hour, counts pending guards and keeps e
     { key: 'PATI', kind: 'patio', label: 'Pati · 10:45–11:15', patio: { zones: [] } },
   ] };
   const html = renderPublicCoverage(day, { now: new Date('2026-10-22T08:30:00') });
-  assert.match(html, /class="coverage-session has-open is-current" data-public-hour="8:00"/);
+  assert.match(html, /class="coverage-session has-open is-current" id="hora-800" data-public-hour="8:00"/);
   assert.match(html, /<h3>1a hora · 8:00<\/h3><strong class="now-badge">Ara<\/strong><em class="session-pending">1 sense cobrir<\/em><span>2 absències<\/span>/);
-  assert.match(html, /class="coverage-session is-empty" data-public-hour="8:55"/);
+  assert.match(html, /class="coverage-session is-empty" id="hora-855" data-public-hour="8:55"/);
   // Un pati sense zones ni observacions no deixa cap capsa buida.
   assert.equal(html.includes('pati-session'), false);
   // Si no es mira avui, no hi ha hora en curs.
   assert.equal(renderPublicCoverage(day).includes('is-current'), false);
+});
+
+test('public view marks the viewer’s own guards and sums them up at the top', () => {
+  const day = { hours: [
+    { key: '8:00', label: '1a hora · 8:00', rows: [
+      { absent: 'A', group: '1ESO-A', room: 'Aula 14', assigned: 'Fuentes Serra, Gabriel', source: 'guard' },
+      { absent: 'B', group: '1ESO-B', room: 'Aula 15', assigned: 'Sanz Vidal, Clara', source: 'guard' },
+    ] },
+    { key: 'PATI', kind: 'patio', label: 'Pati · 10:45–11:15', patio: { zones: [{ name: 'Banys', teacher: 'Fuentes Serra, Gabriel' }] } },
+    { key: '11:15', label: '4a hora · 11:15', rows: [
+      { absent: 'C', group: '2ESO-A', assigned: 'Fuentes Serra, Gabriel', source: 'released' },
+      { absent: 'D', group: '2ESO-B', assigned: 'Fuentes Serra, Gabriel', source: 'guard', cancelled: true },
+    ] },
+  ] };
+  const html = renderPublicCoverage(day, { now: new Date('2026-10-22T08:30:00'), viewer: 'Gabriel Fuentes' });
+  const summary = html.slice(0, html.indexOf('</section>'));
+  assert.match(summary, /class="my-guards"/);
+  assert.match(summary, /Avui et toca/);
+  assert.match(summary, /href="#hora-800" data-public-jump="8:00"><strong>1a hora · 8:00<\/strong><span>1ESO-A · Aula 14<\/span><\/a>/);
+  assert.match(summary, /data-public-jump="PATI"><strong>Pati · 10:45–11:15<\/strong><span>Banys<\/span>/);
+  assert.match(summary, /<span>2ESO-A<\/span><em>Alliberat\/ada<\/em>/);
+  // Una guàrdia no realitzada no surt al resum.
+  assert.equal(summary.includes('2ESO-B'), false);
+  // A les files i a la zona, «Tu» només on toca.
+  assert.equal((html.match(/class="mine-chip"/g) || []).length, 4);
+  assert.match(html, /readonly-assignment assigned">Sanz Vidal, Clara<\/strong><\/div>/);
+  // Sense nom reconegut, ni resum ni marques.
+  const anonymous = renderPublicCoverage(day, { now: new Date('2026-10-22T08:30:00'), viewer: 'Pere Mas' });
+  assert.equal(anonymous.includes('my-guards'), false);
+  assert.equal(anonymous.includes('mine-chip'), false);
+  assert.match(renderPublicCoverage(day, { viewer: 'Gabriel Fuentes' }), /Aquest dia et toca/);
 });
 
 test('public view supports empty days, patio absences and partial outings', () => {

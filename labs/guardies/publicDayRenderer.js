@@ -1,8 +1,12 @@
+import { isSamePerson } from '../../src/modules/guardies/domain/names.js';
+
 function escape(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[char]));
 }
+
+const MINE_CHIP = '<span class="mine-chip">Tu</span>';
 
 // Estat de cada fila, amb els mateixos criteris que el full de guàrdies i Pantalles.
 export function publicRowStatus(row) {
@@ -60,25 +64,65 @@ export function currentPublicHourKey(hours, now) {
   return index >= 0 ? String(list[index].key) : '';
 }
 
-function renderRow(row) {
+function rowDetail(row) {
+  return [row.subject !== row.group ? row.subject : '', row.room].filter(Boolean).join(' · ');
+}
+
+function renderRow(row, mine) {
   const status = publicRowStatus(row);
   const cover = row.assignedDisplay || row.assigned || (status === 'open' ? 'Pendent' : 'Sense substitució');
-  const detail = [row.subject !== row.group ? row.subject : '', row.room].filter(Boolean).join(' · ');
+  const detail = rowDetail(row);
   return `
-      <article class="coverage-item coverage-row public-row status-${status} ${row.cancelled ? 'not-completed' : ''}">
+      <article class="coverage-item coverage-row public-row status-${status} ${row.cancelled ? 'not-completed' : ''} ${mine ? 'is-mine' : ''}">
         <div class="coverage-professor-cell"><span class="cell-kicker">Absència</span><strong class="no-print">${escape(row.absentDisplay || row.absent)}</strong><strong class="print-only">${escape(row.absent)}</strong></div>
         <div class="coverage-detail-cell"><strong class="coverage-group-label">${escape(row.group)}</strong>${detail ? `<span class="coverage-detail-line">${escape(detail)}</span>` : ''}</div>
-        <div class="coverage-assignment-cell"><span class="cell-kicker status-label">${statusLabel(row, status)}</span><strong class="readonly-assignment ${row.assigned ? 'assigned' : status === 'open' ? 'pending' : ''}">${escape(cover)}</strong></div>
+        <div class="coverage-assignment-cell"><span class="cell-kicker status-label">${statusLabel(row, status)}</span><strong class="readonly-assignment ${row.assigned ? 'assigned' : status === 'open' ? 'pending' : ''}">${escape(cover)}${mine ? ` ${MINE_CHIP}` : ''}</strong></div>
         ${row.comment ? `<div class="coverage-comment-cell">${escape(row.comment)}</div>` : ''}
       </article>`;
 }
 
+// Àncora de cada hora, per saltar-hi des del resum.
+export function publicHourAnchor(key) {
+  return `hora-${String(key || '').replace(/[^a-zA-Z0-9]/g, '')}`;
+}
+
+// El que li toca fer a qui mira la jornada: les files que cobreix (excepte les no
+// realitzades) i la seva zona de pati. Només surt si el nom coincideix, perquè no
+// digui mai que no hi ha res quan el nom del compte no s'ha pogut reconèixer.
+function renderMyGuards(hours, isMine, today) {
+  const items = hours.flatMap((hour) => {
+    if (isPatio(hour)) {
+      return (hour.patio?.zones || []).filter((zone) => isMine(zone.teacher)).map((zone) => ({
+        key: hour.key, hour: hour.label, detail: zone.name, role: '',
+      }));
+    }
+    return (hour.rows || []).filter((row) => !row.cancelled && isMine(row.assigned)).map((row) => {
+      const status = publicRowStatus(row);
+      return {
+        key: hour.key,
+        hour: hour.label,
+        detail: [row.group, row.room].filter(Boolean).join(' · '),
+        role: status === 'coteacher' || row.source === 'released' ? statusLabel(row, status) : '',
+      };
+    });
+  });
+  if (!items.length) return '';
+  return `<section class="my-guards" aria-label="Les teves guàrdies">
+      <strong class="my-guards-title">${today ? 'Avui et toca' : 'Aquest dia et toca'}</strong>
+      <div class="my-guards-list">${items.map((item) => `
+        <a class="my-guard" href="#${publicHourAnchor(item.key)}" data-public-jump="${escape(item.key)}"><strong>${escape(item.hour)}</strong>${item.detail ? `<span>${escape(item.detail)}</span>` : ''}${item.role ? `<em>${escape(item.role)}</em>` : ''}</a>`).join('')}
+      </div>
+    </section>`;
+}
+
 // Jornada publicada per al professorat. Amb `now` (només si es mira avui) es destaca
 // l'hora en curs; les hores sense absències són discretes i el pati buit no surt.
-export function renderPublicCoverage(day, { now = null } = {}) {
+// Amb `viewer` (el nom del compte) es marquen les guàrdies pròpies i se'n fa un resum.
+export function renderPublicCoverage(day, { now = null, viewer = '' } = {}) {
   const hours = day?.hours || [];
   const current = currentPublicHourKey(hours, now);
-  return hours.map((hour) => {
+  const isMine = (label) => Boolean(viewer && label) && isSamePerson(viewer, label);
+  return renderMyGuards(hours, isMine, Boolean(now)) + hours.map((hour) => {
     const patio = isPatio(hour);
     const zones = hour.patio?.zones || [];
     const patioObservation = hour.patio?.observation || '';
@@ -89,11 +133,14 @@ export function renderPublicCoverage(day, { now = null } = {}) {
     const progress = patio ? '' : !rows.length ? (hour.observation ? '' : 'is-empty') : open ? 'has-open' : 'is-covered';
     const count = rows.length ? `${rows.length} ${rows.length === 1 ? 'absència' : 'absències'}` : 'Sense absències';
     const classes = ['coverage-session', patio && 'pati-session', progress, isCurrent && 'is-current'].filter(Boolean).join(' ');
-    const zoneCards = zones.map((zone) => `
-      <article class="pati-zone-card ${zone.absent ? 'absent' : ''}"><strong class="pati-zone-name">${escape(zone.name)}</strong><span class="pati-teacher-name">${escape(zone.teacher)}</span>${zone.absent ? '<small class="pati-absence-badge">Absent</small>' : ''}</article>`).join('');
-    return `<section class="${classes}" data-public-hour="${escape(hour.key)}">
+    const zoneCards = zones.map((zone) => {
+      const mine = isMine(zone.teacher);
+      return `
+      <article class="pati-zone-card ${zone.absent ? 'absent' : ''} ${mine ? 'is-mine' : ''}"><strong class="pati-zone-name">${escape(zone.name)}</strong><span class="pati-teacher-name">${escape(zone.teacher)}${mine ? ` ${MINE_CHIP}` : ''}</span>${zone.absent ? '<small class="pati-absence-badge">Absent</small>' : ''}</article>`;
+    }).join('');
+    return `<section class="${classes}" id="${publicHourAnchor(hour.key)}" data-public-hour="${escape(hour.key)}">
       <header class="coverage-session-head"><h3>${escape(hour.label)}</h3>${isCurrent ? '<strong class="now-badge">Ara</strong>' : ''}${open ? `<em class="session-pending">${open} sense cobrir</em>` : ''}${patio ? '' : `<span>${count}</span>`}</header>
-      ${patio ? `${zones.length ? `<div class="pati-zone-grid">${zoneCards}</div>` : ''}${patioObservation ? `<p>${escape(patioObservation)}</p>` : ''}` : rows.map(renderRow).join('')}
+      ${patio ? `${zones.length ? `<div class="pati-zone-grid">${zoneCards}</div>` : ''}${patioObservation ? `<p>${escape(patioObservation)}</p>` : ''}` : rows.map((row) => renderRow(row, isMine(row.assigned))).join('')}
       ${hour.observation ? `<p class="seventh-observation-readonly">${escape(hour.observation)}</p>` : ''}
     </section>`;
   }).join('');

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { guardCountForSlot, guardSlotKey } from '../../../src/modules/guardies/domain/workflow.js';
 import { slotHistoryEntries } from '../../../src/modules/guardies/domain/guard-history.js';
+import { isSamePerson } from '../../../src/modules/guardies/domain/names.js';
 import { useGuardiesStore } from '../stores/guardies.js';
 
 const store = useGuardiesStore();
@@ -24,10 +25,6 @@ function normalize(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
-}
-
-function nameSignature(value) {
-  return normalize(value).split(' ').filter((token) => token.length > 1).sort().join('|');
 }
 
 function publicTeacherName(teacher) {
@@ -62,7 +59,7 @@ const dateFormatter = new Intl.DateTimeFormat('ca-ES', { day: '2-digit', month: 
 // així que canviar guardCounts no la reconstrueix.
 const guardLayout = computed(() => {
   const teachers = new Map(professorOptions.value.map((teacher) => [teacher.placa, publicTeacherName(teacher)]));
-  const viewer = nameSignature(viewerName.value);
+  const viewer = viewerName.value;
   const hours = Array.from(new Set(sessions.value
     .map((session) => session.hora)
     .filter((hour) => hour && hour !== 'PATI')))
@@ -90,7 +87,7 @@ const guardLayout = computed(() => {
         dayLabel: day.label,
         teachers: Array.from(teachersBySlot.get(key) || [], (teacherId) => {
           const label = teachers.get(teacherId) || teacherId;
-          return { teacherId, label, mine: Boolean(viewer && viewer === nameSignature(label)) };
+          return { teacherId, label, mine: isSamePerson(viewer, label) };
         }).sort((a, b) => a.label.localeCompare(b.label, 'ca', { numeric: true })),
       };
     }),

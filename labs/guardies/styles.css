@@ -5841,9 +5841,91 @@ button.ghost {
   .coverage-session-head .now-badge + .session-pending { margin-left: 0; }
 }
 
+@media screen {
+  /* Vista del professorat: el que et toca avui, a dalt, i «Tu» on surts. */
+  .my-guards {
+    display: grid;
+    gap: 8px;
+    border: 1px solid var(--primary-border);
+    border-radius: var(--radius);
+    background: var(--primary-soft);
+    padding: 12px 16px;
+  }
+
+  .my-guards-title {
+    color: var(--primary-strong);
+    font-size: var(--text-sm);
+    font-weight: 800;
+  }
+
+  .my-guards-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .my-guard {
+    display: grid;
+    gap: 1px;
+    border: 1px solid var(--primary-border);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 8px 12px;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .my-guard:hover { border-color: var(--primary); }
+  .my-guard strong { font-size: var(--text-md); }
+
+  .my-guard span {
+    color: var(--muted);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .my-guard em {
+    color: var(--primary);
+    font-size: var(--text-xs);
+    font-style: normal;
+    font-weight: 700;
+  }
+
+  .mine-chip {
+    display: inline-flex;
+    width: fit-content;
+    margin-left: 4px;
+    border-radius: 999px;
+    background: var(--primary);
+    padding: 1px 9px;
+    color: var(--on-primary);
+    font-size: var(--text-xs);
+    font-weight: 800;
+  }
+
+  .guard-layout.is-readonly .public-row.is-mine { background: color-mix(in srgb, var(--primary-soft) 75%, transparent); }
+  .guard-layout.is-readonly .public-row.is-mine::before { background: var(--primary); }
+
+  .pati-zone-card.is-mine {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+  }
+}
+
 @media screen and (max-width: 620px) {
   /* Recompte de guàrdies en mòbil: noms i xifres a 12 px, no a 10. */
   .guard-count-row > * { font-size: var(--text-xs); }
+}
+
+/* En mòbil, el resum de les guàrdies pròpies queda fix sota la barra superior
+   mentre es baixa pel full (la vista s'obre a l'hora en curs). */
+@media screen and (max-width: 820px) {
+  .my-guards {
+    position: sticky;
+    z-index: 5;
+    top: calc(var(--app-nav-height, 0px) + 6px);
+    box-shadow: var(--shadow);
+  }
 }
 
 /* La «×» per treure una absència va al final de la fila. En mòbil ja hi és,
