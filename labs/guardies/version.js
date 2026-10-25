@@ -1,6 +1,15 @@
-export const GUARDIES_VERSION = '1.7.1';
+export const GUARDIES_VERSION = '1.8.0';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.8.0',
+    date: '25 d’octubre de 2026',
+    changes: [
+      'Vista del professorat: les guàrdies que et toquen surten a dalt («Avui et toca», amb l’hora, el grup i l’aula) i marcades amb «Tu» a la seva fila i a la zona de pati. Cada una porta a la seva hora.',
+      'En el mòbil, el full d’avui s’obre a l’hora en curs, i el resum de les teves guàrdies queda fix a dalt.',
+      'Gestió diària: files més baixes. El codi del professorat va en una etiqueta al costat del nom i la matèria i l’aula van en una sola línia.',
+    ],
+  },
   {
     version: '1.7.1',
     date: '23 d’octubre de 2026',
