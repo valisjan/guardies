@@ -2880,6 +2880,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const blocks = groupTeachingBlocksForGroup(codi).filter((item) => item.placa === placa);
     if (blocks.length) blocks.forEach((item) => professors.add(groupProfessorKey(item.hora, placa)));
     else professors.add(groupProfessorKey('*', placa));
+    // Si ja cobria alguna guàrdia aquell dia, la deixa: aquelles files tornen a
+    // quedar sense cobrir perquè s'hi assigni algú altre.
+    state.assignacions.forEach((assigned, absenceId) => {
+      if (assigned !== placa) return;
+      state.assignacions.delete(absenceId);
+      state.assignmentSources.delete(absenceId);
+      state.cancelledAssignments.delete(absenceId);
+    });
     refreshAutomaticReleasedSelections(exclusions);
     syncOutingAbsences();
     renderGroupPicker();
@@ -4062,6 +4070,15 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       });
     });
 
+    // Qui acompanya una sortida és fora tot el dia: no pot cobrir cap hora, tampoc
+    // les que tenia lliures (on sortiria com a «ni G ni alliberat»).
+    const companions = allCompanionTeacherIds();
+    candidates.forEach((candidate) => {
+      if (!companions.has(candidate.placa)) return;
+      candidate.unavailable = true;
+      candidate.outing = true;
+    });
+
     // Les claus d'ordenació es calculen una vegada per candidat, no a cada comparació.
     return Array.from(candidates.values())
       .map((candidate) => {
@@ -4569,7 +4586,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const source = candidate.alliberaments?.length ? 'released' : candidate.outsideDuty ? 'other' : 'guard';
     const count = guardCountLabel(candidate.placa, source, candidate.dia, candidate.hora);
     if (candidate.unavailable) {
-      const reason = candidate.outsideDuty ? ' · ni G ni alliberat' : '';
+      const reason = candidate.outing ? ' · de sortida' : candidate.outsideDuty ? ' · ni G ni alliberat' : '';
       return `No disponible${reason} - ${labelProfessor(candidate.placa)}`;
     }
     if (candidate.alliberaments?.length) return `Alliberat · ${count} - ${labelProfessor(candidate.placa)}`;

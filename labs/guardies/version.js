@@ -1,6 +1,13 @@
-export const GUARDIES_VERSION = '1.8.0';
+export const GUARDIES_VERSION = '1.8.1';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.8.1',
+    date: '25 d’octubre de 2026',
+    changes: [
+      'El professorat que acompanya una sortida ja no surt com a disponible per cobrir guàrdies aquell dia, tampoc a les hores que tenia lliures: apareix com a «No disponible · de sortida». Si ja cobria alguna guàrdia, en afegir-lo com a acompanyant aquella fila torna a quedar sense cobrir.',
+    ],
+  },
   {
     version: '1.8.0',
     date: '25 d’octubre de 2026',

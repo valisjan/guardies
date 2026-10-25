@@ -1749,6 +1749,32 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('[data-public-outing-group="10"]')).toContainText('Fora del centre');
   });
 
+  test('qui acompanya una sortida no pot cobrir cap guàrdia aquell dia, ni a les hores lliures', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    // L'Adell falta a 2a hora; el Fuentes (2) no hi té classe ni G.
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#schedule-grid .schedule-item').filter({ hasText: '8:55' }).locator('[data-absence]').check();
+    const cover = page.locator('#coverage-list [data-assignacio]').first();
+    await cover.selectOption('2');
+    await expect(cover).toHaveValue('2');
+
+    // El Fuentes acompanya l'1ESO-B: deixa de cobrir-la i ja no surt com a disponible.
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await page.locator('#group-search').selectOption('11');
+    await page.locator('[data-add-group-companion="11"]').selectOption('2');
+    await expect(page.locator('[data-group-companion="11"][data-teacher="2"]')).toBeVisible();
+    await expect(cover).toHaveValue('');
+    const fuentes = cover.locator('option[value="2"]');
+    await expect(fuentes).toBeDisabled();
+    await expect(fuentes).toContainText('No disponible · de sortida');
+
+    // L'assignació automàtica tampoc no el tria.
+    await page.locator('#auto-assign-guards').click();
+    await expect(cover).not.toHaveValue('2');
+  });
+
   test('decideix per cada grup si la sortida és completa o parcial', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
