@@ -1691,6 +1691,28 @@ test.describe('Guàrdies: comportament existent', () => {
     expect(texts[patioIndex]).not.toContain('Sense grup');
   });
 
+  test('una sortida desada amb el codi de grup d\'Untis es manté en obrir el dia', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.evaluate(() => {
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const data = JSON.parse(localStorage.getItem(key));
+      data.days ||= {};
+      data.days['2026-09-08'] = {
+        schemaVersion: 1, date: '2026-09-08', status: 'draft', absenceIds: [], assignments: {}, comments: {},
+        groupsOut: ['1ESO-A'], groupTeachers: {}, groupReleasedTeachers: {}, partialGroups: [], outingAbsenceIds: [],
+        cancelledAssignments: [], publishedAt: '', closedAt: '', countedAssignments: [], revision: 1,
+        clientUpdatedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(key, JSON.stringify(data));
+    });
+    await page.locator('#date-input').fill('2026-09-08');
+    await page.locator('#date-input').press('Tab');
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await expect(page.locator('[data-remove-group="10"]')).toBeVisible();
+    await expect(page.locator('[data-group-released="10"]')).toHaveCount(1);
+  });
+
   test('una sortida completa allibera professorat i els acompanyants generen absències', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

@@ -128,6 +128,27 @@ test('usa GPU001 com a horari complet i conserva els noms de GPU004', async ({ p
   ]);
 });
 
+test('relaciona els grups d Untis de tots els cursos d ESO amb GestIB', async ({ page }) => {
+  const result = await runParser(page, (parser, { reference, duties }) => parser.parseUntisHorari(duties, {
+    referencia: parser.parseGestibReference(reference),
+  }).sessions.map((session) => [session.grup, session.grupVisible]), {
+    reference: `<CENTRE codi="E2E" any="2026"><CURSOS>
+      <CURS codi="1" descripcio="1r ESO"><GRUP codi="10" nom="A" /></CURS>
+      <CURS codi="2" descripcio="2n ESO"><GRUP codi="20" nom="A" /></CURS>
+      <CURS codi="3" descripcio="3r ESO"><GRUP codi="30" nom="A" /></CURS>
+      <CURS codi="4" descripcio="4t ESO"><GRUP codi="40" nom="C" /></CURS>
+    </CURSOS><PLACES><PLACA codi="101" curta="PROF1" /></PLACES></CENTRE>`,
+    duties: [
+      '1,"1ESO-A","PROF1","MAT",,1,1,,',
+      '2,"2ESO-A","PROF1","MAT",,1,2,,',
+      '3,"3ESO-A","PROF1","MAT",,1,3,,',
+      '4,"4ESO-C","PROF1","MAT",,1,4,,',
+    ].join('\n'),
+  });
+
+  expect(result.map(([grup]) => grup)).toEqual(['10', '20', '30', '40']);
+});
+
 test('resol els codis especials d aula amb el nom complet del catàleg', async ({ page }) => {
   const result = await runParser(page, (parser, { reference, duties }) => {
     const parsedReference = parser.parseGestibReference(reference);

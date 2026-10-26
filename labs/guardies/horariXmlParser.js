@@ -514,7 +514,7 @@
       .replace(/[\u0300-\u036f]/g, '')
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, '');
-    const eso = text.match(/^([1-4])r?\s*ESO$/i) || text.match(/^([1-4])n\s*ESO$/i);
+    const eso = text.match(/^([1-4])(?:r|n|t)?\s*ESO$/i);
     if (eso) return `${eso[1]}ESO`;
     const batx = text.match(/^([12])(?:r|n)?\s*Batx/i);
     if (batx) return `${batx[1]}BAT`;
@@ -705,6 +705,11 @@
     const curs = resoldreCurs(referencia, cursCodi);
     if (!curs) return candidats[0];
     return candidats.find((grup) => grup.curs === curs.codi) || candidats[0];
+  }
+
+  // Les sortides desades amb el codi d'Untis (p. ex. 4ESO-C) segueixen apuntant al grup de GestIB.
+  function codiGrup(referencia, codi) {
+    return resoldreGrup(referencia, codi, '')?.codi || codi;
   }
 
   function resoldreMateria(referencia, codi) {
@@ -951,6 +956,7 @@ export {
   DIA_LABELS,
   HorariXmlParser,
   agruparSessionsCobertura,
+  codiGrup,
   diaLabel,
   franjaKey,
   ocupacioFranja,

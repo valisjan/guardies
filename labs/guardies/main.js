@@ -1408,14 +1408,16 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         state.comentaris.set(shownAs(id), comment);
       }
     });
-    (saved?.groupsOut || []).forEach((groupId) => state.grupsFora.add(groupId));
-    Object.entries(saved?.groupTeachers || {}).forEach(([groupId, teachers]) => {
-      state.grupProfessorsFora.set(groupId, new Set(Array.isArray(teachers) ? teachers : []));
+    const groupId = (id) => parser.codiGrup(state.referencia, id);
+    const addTeachers = (target, groups) => Object.entries(groups || {}).forEach(([id, teachers]) => {
+      const set = target.get(groupId(id)) || new Set();
+      (Array.isArray(teachers) ? teachers : []).forEach((teacher) => set.add(teacher));
+      target.set(groupId(id), set);
     });
-    Object.entries(saved?.groupReleasedTeachers || {}).forEach(([groupId, teachers]) => {
-      state.grupProfessorsAlliberats.set(groupId, new Set(Array.isArray(teachers) ? teachers : []));
-    });
-    state.partialGroups = new Set(saved?.partialGroups || []);
+    (saved?.groupsOut || []).forEach((id) => state.grupsFora.add(groupId(id)));
+    addTeachers(state.grupProfessorsFora, saved?.groupTeachers);
+    addTeachers(state.grupProfessorsAlliberats, saved?.groupReleasedTeachers);
+    state.partialGroups = new Set((saved?.partialGroups || []).map(groupId));
     state.outingAbsenceIds = new Set((saved?.outingAbsenceIds || [])
       .filter((id) => !state.unmatchedAbsences.has(id)).map(shownAs));
     if (saved && !Object.prototype.hasOwnProperty.call(saved, 'groupReleasedTeachers')) {
