@@ -299,8 +299,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.grupProfessorsFora.clear();
     state.grupProfessorsAlliberats.clear();
     state.partialGroups.clear();
-    state.outingAbsenceIds.forEach((id) => state.absencies.delete(id));
-    state.outingAbsenceIds.clear();
+    // Sense acompanyants, les seves absències marxen amb la cobertura i l'observació.
+    syncOutingAbsences();
     renderGroupPicker();
     commitCoverageEdit();
     renderReleasedList();
@@ -1007,7 +1007,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function publicGuardiesDay() {
     const selected = selectedAbsenceItems();
-    const coverageItems = mergeSharedClassroomAbsences({ sessions: state.sessions, absences: selected });
+    // Les classes d'un grup que és fora no es fan: al professorat i a les pantalles no cal mostrar-les.
+    const completeOut = completeGroupsOut();
+    const coverageItems = mergeSharedClassroomAbsences({ sessions: state.sessions, absences: selected })
+      .filter((item) => !classWithGroupsOut(item, completeOut));
     const byHour = new Map(groupBySession(coverageItems).map((group) => [group.hora, group.items]));
     const patioAssignments = state.patiConfig && !nonTeachingReason(state.date, state.patiConfig)
       ? patioAssignmentsForDate(state.date, state.patiConfig)
@@ -2076,21 +2079,30 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       return;
     }
     const groupTeachers = {};
-    const groupReleasedTeachers = {};
     state.grupProfessorsFora.forEach((teachers, groupId) => {
       groupTeachers[groupId] = Array.from(teachers);
     });
-    state.grupProfessorsAlliberats.forEach((teachers, groupId) => {
-      groupReleasedTeachers[groupId] = Array.from(teachers);
-    });
-    const patch = {
-      groupsOut: Array.from(state.grupsFora), groupTeachers, groupReleasedTeachers,
+    // El professorat que queda lliure depèn de l'horari de cada dia: el mateix dia de la
+    // setmana conserva el que s'ha triat aquí; els altres dies, el que toca segons el seu horari.
+    const releasedFor = (date) => {
+      const sameWeekday = xmlDayForDate(date) === diaXmlSeleccionat();
+      return Object.fromEntries(Array.from(state.grupsFora).map((groupId) => [
+        groupId,
+        Array.from(sameWeekday
+          ? state.grupProfessorsAlliberats.get(groupId) || defaultReleasedGroupKeys(groupId)
+          : defaultReleasedGroupKeys(groupId, xmlDayForDate(date))),
+      ]));
+    };
+    const patchFor = (date) => ({
+      groupsOut: Array.from(state.grupsFora),
+      groupTeachers,
+      groupReleasedTeachers: releasedFor(date),
       partialGroups: Array.from(state.partialGroups),
       completeGroups: Array.from(state.grupsFora).filter((groupId) => !state.partialGroups.has(groupId)),
-    };
+    });
     try {
       state.dayPersistenceStatus = 'saving';
-      const results = await applyPlanToOtherDays(dates.map((date) => ({ date, patch })));
+      const results = await applyPlanToOtherDays(dates.map((date) => ({ date, patch: patchFor(date) })));
       await hydrateGuardiesDay(state.date);
       const issues = otherDaysIssues(results);
       const copied = results.length - issues.failed.length;
@@ -2802,6 +2814,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.grupsFora.add(codi);
       ensureGroupProfessorSelection(codi);
       state.partialGroups.delete(codi);
+      syncOutingAbsences();
     }
     refreshAutomaticReleasedSelections(exclusions);
     renderGroupPicker();
@@ -2816,6 +2829,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     state.grupsFora.add(codi);
     ensureGroupProfessorSelection(codi);
     state.partialGroups.delete(codi);
+    syncOutingAbsences();
     refreshAutomaticReleasedSelections(exclusions);
     el.groupSearch.value = '';
     renderGroupPicker();
@@ -2828,14 +2842,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const exclusions = releasedSelectionExclusions();
     if (complete) state.partialGroups.delete(codi);
     else state.partialGroups.add(codi);
+    syncOutingAbsences();
     refreshAutomaticReleasedSelections(exclusions);
     renderGroupPicker();
     commitCoverageEdit();
     renderReleasedList();
   }
 
-  function groupTeachingBlocksForGroup(codi) {
-    const dia = diaXmlSeleccionat();
+  function groupTeachingBlocksForGroup(codi, dia = diaXmlSeleccionat()) {
     if (!dia) return [];
     return groupTeachingBlocks(
       state.sessions.filter((sessio) => sessio.dia === dia && sessio.teClasse),
@@ -2910,10 +2924,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     renderReleasedList();
   }
 
-  function defaultReleasedGroupKeys(codi) {
+  function defaultReleasedGroupKeys(codi, dia = diaXmlSeleccionat()) {
     const completeGroups = new Set(Array.from(state.grupsFora).filter((groupId) => !state.partialGroups.has(groupId)));
     const companions = allCompanionTeacherIds();
-    return new Set(groupTeachingBlocksForGroup(codi)
+    return new Set(groupTeachingBlocksForGroup(codi, dia)
       .filter((block) => !companions.has(block.placa) && block.grups.every((groupId) => completeGroups.has(groupId)))
       .map((block) => groupProfessorKey(block.hora, block.placa)));
   }
@@ -3550,7 +3564,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
     const pending = mergeSharedClassroomAbsences({ sessions: state.sessions, absences: selectedAbsenceItems() }).filter((item) => (
       !item.sessions?.some(isPatiGuardiaSession) && !isGuardiaItem(item) && !state.assignacions.has(item.id)
-      && !returnsToOwnGroup(item)
+      && !returnsToOwnGroup(item) && !classWithGroupsOut(item)
     ));
     if (!pending.length) {
       reportResult(false, 'No hi ha guàrdies pendents.');
@@ -4176,13 +4190,42 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       .sort(sortCoverageItems);
   }
 
+  // Grups que han sortit sencers (no els de sortida parcial, que continuen fent classe).
+  function completeGroupsOut() {
+    return new Set(Array.from(state.grupsFora).filter((groupId) => !state.partialGroups.has(groupId)));
+  }
+
+  // Una classe amb tots els grups fora del centre no es fa: no cal cobrir-la, falti qui falti.
+  function classWithGroupsOut(item, groupsOut = completeGroupsOut()) {
+    if (!groupsOut.size || !item || isGuardiaItem(item)) return false;
+    const groups = item.grups?.length
+      ? item.grups
+      : Array.from(new Set((item.sessions || []).map((session) => session.grup).filter(Boolean)));
+    return groups.length > 0 && groups.every((groupId) => groupsOut.has(groupId));
+  }
+
+  // Si el grup ja no hi és, qui cobria aquella classe queda lliure.
+  function dropCoverageOfClassesOut() {
+    const groupsOut = completeGroupsOut();
+    if (!groupsOut.size) return;
+    state.absencies.forEach((item, id) => {
+      if (!classWithGroupsOut(item, groupsOut)) return;
+      state.assignacions.delete(id);
+      state.assignmentSources.delete(id);
+      state.cancelledAssignments.delete(id);
+    });
+  }
+
+  // Qui acompanya una sortida falta tot el dia: s'han de cobrir les seves classes amb grups
+  // que es queden al centre (o que surten només en part), però no les dels grups que ha tret.
   function syncOutingAbsences() {
     const accompanyingTeachers = new Set();
     state.grupProfessorsFora.forEach((keys) => keys.forEach((key) => accompanyingTeachers.add(key.split('|').slice(1).join('|'))));
     const day = diaXmlSeleccionat();
+    const groupsOut = completeGroupsOut();
     const items = Array.from(accompanyingTeachers).flatMap((teacherId) => parser.agruparSessionsCobertura(
       state.sessions.filter((session) => session.placa === teacherId && session.dia === day && isMeaningfulSession(session)),
-    ).filter(isAbsenceSelectable));
+    ).filter((item) => isAbsenceSelectable(item) && !classWithGroupsOut(item, groupsOut)));
     const current = new Set(items.map((item) => item.id));
     // Les classes que continuen sent d'un acompanyant conserven qui les cobreix i
     // l'observació; les que ja no ho són es treuen amb la seva cobertura.
@@ -4198,6 +4241,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.absencies.set(item.id, item);
       state.outingAbsenceIds.add(item.id);
     });
+    dropCoverageOfClassesOut();
   }
 
   function releasedItemsForSlot(dia, hora) {
@@ -4342,6 +4386,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function coverageStatus(item) {
     if (item.sessions?.some(isPatiGuardiaSession) || isGuardiaItem(item)) return 'info';
+    if (classWithGroupsOut(item)) return 'outing';
     const assignat = state.assignacions.get(item.id) || '';
     if (!assignat) return returnsToOwnGroup(item) ? 'returns' : 'open';
     if (state.cancelledAssignments.has(item.id)) return 'not-done';
@@ -4353,6 +4398,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     covered: 'Coberta',
     coteacher: 'Queda amb el grup',
     returns: 'Torna al seu grup',
+    outing: 'Grup de sortida',
     'not-done': 'No realitzada',
   };
 
@@ -4399,6 +4445,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const returnsToGroup = status === 'returns';
     const assignmentControl = isPati || isGuardiaItem(item)
       ? '<span class="info-only-label">Sense substitució</span>'
+      : status === 'outing'
+        ? '<span class="info-only-label">Sense substitució · el grup és fora</span>'
       : !state.canWrite && coTeacher
         ? `<strong class="readonly-assignment assigned no-print">${escapeHtml(labelProfessor(coTeacher))}</strong><span class="co-teacher-badge no-print">Queda amb el grup</span>`
       : !state.canWrite && returnsToGroup
@@ -4430,7 +4478,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       : `<span class="readonly-comment">${escapeHtml(comentari || 'Sense observacions')}</span>`;
 
     return `
-      <article data-coverage-row="${escapeHtml(item.id)}" class="coverage-item coverage-row status-${status} ${assignat ? 'covered' : ''} ${cancelled ? 'not-completed' : ''} ${isPati ? 'informational' : ''}">
+      <article data-coverage-row="${escapeHtml(item.id)}" class="coverage-item coverage-row status-${status} ${assignat ? 'covered' : ''} ${cancelled ? 'not-completed' : ''} ${isPati || status === 'outing' ? 'informational' : ''}">
         <div class="coverage-professor-cell">
           <span class="cell-kicker">Absència</span>
           <strong class="no-print">${absentTeacherIds.map(professorNameHtml).join(' · ')}</strong>

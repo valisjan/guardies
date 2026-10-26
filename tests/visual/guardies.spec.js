@@ -1716,10 +1716,12 @@ test.describe('Guàrdies: comportament existent', () => {
     await releasedCandidates.nth(1).check();
     await expect(page.locator('#released-count')).toContainText('1 professor');
 
+    // L'Adell acompanya l'1ESO-A: les seves classes amb aquest grup no es cobreixen (el grup
+    // és fora amb ell); només queda la seva guàrdia de 3a hora, que no podrà fer.
     await page.locator('[data-add-group-companion="10"]').selectOption('1');
     await expect(page.locator('[data-group-companion="10"][data-teacher="1"]')).toBeVisible();
     await expect(page.locator('#released-count')).toContainText('0 professors');
-    await expect(page.locator('#coverage-list .coverage-item.coverage-row:not(.not-completed)')).toHaveCount(3);
+    await expect(page.locator('#coverage-list .coverage-item.coverage-row:not(.not-completed)')).toHaveCount(1);
 
     await page.waitForTimeout(500);
     await page.reload();
@@ -1731,7 +1733,7 @@ test.describe('Guàrdies: comportament existent', () => {
 
     await page.locator('[data-add-group-companion="10"]').selectOption('2');
     await expect(page.locator('[data-group-companion="10"][data-teacher="2"]')).toBeVisible();
-    await expect(page.locator('#coverage-list .coverage-item.coverage-row:not(.not-completed)')).toHaveCount(4);
+    await expect(page.locator('#coverage-list .coverage-item.coverage-row:not(.not-completed)')).toHaveCount(2);
 
     await page.locator('#outing-to').fill('2026-09-08');
     await page.getByRole('button', { name: 'Copia als dies de l’interval' }).click();
@@ -1747,6 +1749,79 @@ test.describe('Guàrdies: comportament existent', () => {
     await page.getByRole('link', { name: 'Professorat', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Grups de sortida' })).toBeVisible();
     await expect(page.locator('[data-public-outing-group="10"]')).toContainText('Fora del centre');
+  });
+
+  test('una sortida: es cobreixen les classes dels grups que es queden i no les dels grups que són fora', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    // Dilluns: MAT1 fa 1ESO-A+B a 1a hora i 1ESO-B a 3a; l'Adell fa 1ESO-A a 1a i 2a.
+    const files = page.locator('#coverage-list [data-coverage-row]');
+    const fila = (text) => files.filter({ hasText: text });
+    const obertes = page.locator('#coverage-list [data-coverage-row].status-open');
+
+    // L'1ESO-A surt sencer i MAT1 l'acompanya: s'han de cobrir les seves classes amb l'1ESO-B.
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await page.locator('#group-search').selectOption('10');
+    await page.locator('[data-add-group-companion="10"]').selectOption('4');
+    await expect(obertes).toHaveCount(2);
+    await expect(fila('1ESO-B')).toHaveCount(2);
+
+    // Si també surt sencer l'1ESO-B, cap classe de MAT1 no es fa: res a cobrir.
+    await page.locator('#group-search').selectOption('11');
+    await expect(obertes).toHaveCount(0);
+
+    // Si l'1ESO-B només surt en part, les classes amb l'1ESO-B es tornen a cobrir.
+    await page.locator('[data-group-complete="11"]').uncheck();
+    await expect(obertes).toHaveCount(2);
+
+    // Un professor que falta amb un grup que és fora sencer: la classe no es cobreix.
+    await page.getByRole('tab', { name: 'Professor/a' }).click();
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#schedule-grid .schedule-item').filter({ hasText: '8:55' }).locator('[data-absence]').check();
+    const adell = page.locator('#coverage-list [data-coverage-row].status-outing');
+    await expect(adell).toHaveCount(1);
+    await expect(adell).toContainText('Grup de sortida');
+    await expect(adell).toContainText('Sense substitució · el grup és fora');
+    await expect(adell.locator('[data-assignacio]')).toHaveCount(0);
+    await expect(obertes).toHaveCount(2);
+    // L'assignació automàtica no hi posa ningú.
+    await page.locator('#auto-assign-guards').click();
+    await expect(adell).toHaveCount(1);
+    await expect(adell).not.toHaveClass(/covered/);
+
+    // A la vista del professorat no surt: aquella classe no es fa.
+    await page.getByRole('button', { name: 'Publica' }).click();
+    const publicat = () => page.evaluate(() => (
+      JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).publicDays?.['2026-09-07']
+    ));
+    await expect.poll(async () => (await publicat())?.status).toBe('published');
+    const filesPubliques = (await publicat()).hours.flatMap((hour) => hour.rows);
+    expect(filesPubliques.some((row) => row.absent.includes('Adell') && row.group.includes('1ESO-A'))).toBe(false);
+    expect(filesPubliques.filter((row) => row.group.includes('1ESO-B'))).toHaveLength(2);
+
+    // Sense grups de sortida, les absències de l'acompanyant marxen amb la seva cobertura.
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await page.locator('#clear-groups').click();
+    await expect(page.locator('#coverage-list [data-coverage-row]')).toHaveCount(1);
+    await expect(page.locator('#coverage-list [data-coverage-row].status-open')).toHaveCount(1);
+  });
+
+  test('en copiar una sortida a altres dies, cada dia allibera el professorat del seu horari', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    // Dilluns l'Adell fa 1ESO-A a 1a i 2a hora; dimarts, a 5a.
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await page.locator('#group-search').selectOption('10');
+    await expect(page.locator('#released-count')).toContainText('1 professor');
+    await page.locator('#outing-to').fill('2026-09-08');
+    await page.getByRole('button', { name: 'Copia als dies de l’interval' }).click();
+    await expect(page.getByText('Sortida copiada a 1 dia lectiu.')).toBeVisible();
+    await page.locator('#date-input').fill('2026-09-08');
+    await page.locator('#date-input').press('Tab');
+    await expect(page.locator('[data-remove-group="10"]')).toBeVisible();
+    await expect(page.locator('#released-count')).toContainText('1 professor');
+    await expect(page.locator('[data-group-released="10"]:checked')).toHaveCount(1);
   });
 
   test('qui acompanya una sortida no pot cobrir cap guàrdia aquell dia, ni a les hores lliures', async ({ page }) => {

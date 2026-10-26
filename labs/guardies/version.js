@@ -1,6 +1,16 @@
-export const GUARDIES_VERSION = '1.8.1';
+export const GUARDIES_VERSION = '1.8.2';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.8.2',
+    date: '26 d’octubre de 2026',
+    changes: [
+      'Sortides: les classes dels grups que surten sencers ja no surten com a absències per cobrir, tampoc les de qui els acompanya. Sí que es cobreixen les classes de l’acompanyant amb grups que es queden o que només surten en part.',
+      'Si falta algú que tenia classe amb un grup que és fora, la fila diu «Grup de sortida» i no s’hi assigna ningú; a la vista del professorat i a les pantalles no surt.',
+      'En copiar una sortida a altres dies, cada dia allibera el professorat que hi tenia classe segons el seu horari.',
+      'En treure tots els grups de sortida, les absències dels acompanyants marxen juntament amb qui les cobria.',
+    ],
+  },
   {
     version: '1.8.1',
     date: '25 d’octubre de 2026',
