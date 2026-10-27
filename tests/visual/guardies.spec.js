@@ -1713,6 +1713,73 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('[data-group-released="10"]')).toHaveCount(1);
   });
 
+  test('treure un acompanyant no esborra les absències que s\'havien marcat a mà', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    const absences = () => page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      return Array.from(useGuardiesStore().absencies.keys()).sort();
+    });
+    const before = await absences();
+    expect(before.length).toBeGreaterThan(0);
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await page.locator('#group-search').selectOption('11');
+    await page.locator('[data-add-group-companion="11"]').selectOption('1');
+    await expect(page.locator('[data-remove-group-companion="11"]')).toHaveCount(1);
+    await page.locator('[data-remove-group-companion="11"]').click();
+    await expect(page.locator('[data-remove-group-companion="11"]')).toHaveCount(0);
+    expect(await absences()).toEqual(before);
+  });
+
+  test('si el grup ja és fora i el professor alliberat falta, consta absent i no es proposa', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await page.locator('#group-search').selectOption('10');
+    await expect(page.locator('[data-remove-group="10"]')).toBeVisible();
+    await page.getByRole('tab', { name: 'Professor/a' }).click();
+    for (const name of ['MAT', 'ADELL']) {
+      await page.locator('#professor-search').fill(name);
+      await page.locator('#professor-results [data-professor]').first().click();
+      await page.locator('#add-all-hours').click();
+    }
+    const adellRows = page.locator('#coverage-list .coverage-item')
+      .filter({ has: page.locator('.coverage-professor-cell', { hasText: 'Adell Domènech' }) });
+    await expect(adellRows).toHaveCount(3);
+    await expect(adellRows.filter({ hasText: 'Grup de sortida' })).toHaveCount(2);
+    const mathRow = page.locator('#coverage-list .coverage-item').filter({ hasText: 'MAT1' }).first();
+    await expect(mathRow.locator('option').filter({ hasText: 'Adell Domènech' })).toContainText('No disponible');
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await expect(page.locator('#released-count')).toHaveText('0 professors');
+    await expect(page.locator('#released-list .released-item.absent')).toHaveCount(2);
+  });
+
+  test('qui ja acompanya i es marca a mà continua absent si es treu de la sortida', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await page.locator('#group-search').selectOption('11');
+    await page.locator('[data-add-group-companion="11"]').selectOption('1');
+    await expect(page.locator('[data-remove-group-companion="11"]')).toHaveCount(1);
+    await page.getByRole('tab', { name: 'Professor/a' }).click();
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    const absences = () => page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      return Array.from(useGuardiesStore().absencies.keys()).sort();
+    });
+    const before = await absences();
+    expect(before.length).toBeGreaterThan(0);
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await page.locator('[data-remove-group-companion="11"]').click();
+    await expect(page.locator('[data-remove-group-companion="11"]')).toHaveCount(0);
+    expect(await absences()).toEqual(before);
+  });
+
   test('una sortida completa allibera professorat i els acompanyants generen absències', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

@@ -2348,6 +2348,15 @@ h3 {
   padding: 5px 6px;
 }
 
+.released-item.absent {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-left-color: var(--coral);
+}
+
+.released-item .pati-absence-badge {
+  align-self: center;
+}
+
 .released-item strong,
 .released-item span {
   display: block;

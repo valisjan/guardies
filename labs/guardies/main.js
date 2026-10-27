@@ -3169,8 +3169,10 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     el.scheduleGrid.querySelectorAll('[data-absence]').forEach((input) => {
       input.addEventListener('change', () => {
         const item = items.find((candidate) => candidate.id === input.dataset.absence);
-        if (input.checked && item) state.absencies.set(item.id, item);
-        else {
+        if (input.checked && item) {
+          state.absencies.set(item.id, item);
+          state.outingAbsenceIds.delete(item.id);
+        } else {
           state.absencies.delete(input.dataset.absence);
           state.assignacions.delete(input.dataset.absence);
           state.assignmentSources.delete(input.dataset.absence);
@@ -4229,6 +4231,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.sessions.filter((session) => session.placa === teacherId && session.dia === day && isMeaningfulSession(session)),
     ).filter((item) => isAbsenceSelectable(item) && !classWithGroupsOut(item, groupsOut)));
     const current = new Set(items.map((item) => item.id));
+    const previous = new Set(state.outingAbsenceIds);
     // Les classes que continuen sent d'un acompanyant conserven qui les cobreix i
     // l'observació; les que ja no ho són es treuen amb la seva cobertura.
     state.outingAbsenceIds.forEach((id) => {
@@ -4240,6 +4243,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     });
     state.outingAbsenceIds.clear();
     items.forEach((item) => {
+      // Una absència marcada a mà no és de la sortida: ha de sobreviure si es treu l'acompanyant.
+      if (state.absencies.has(item.id) && !previous.has(item.id)) return;
       state.absencies.set(item.id, item);
       state.outingAbsenceIds.add(item.id);
     });
@@ -4283,6 +4288,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       .filter(isAbsenceSelectable)
       .forEach((item) => {
         state.absencies.set(item.id, item);
+        // Marcada a mà: ja no depèn de la sortida i es manté si es treu l'acompanyant.
+        state.outingAbsenceIds.delete(item.id);
       });
   }
 
@@ -4311,7 +4318,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function renderReleasedList() {
     const released = releasedItemsForDay();
-    const professors = new Set(released.map((item) => item.placa));
+    const available = (items) => items.filter((item) => !isProfessorAbsentAtHour(item.dia, item.hora, item.placa));
+    const professors = new Set(available(released).map((item) => item.placa));
     el.releasedCount.textContent = plural(professors.size, 'professor', 'professors');
     el.clearGroups.disabled = !state.canWrite || state.dayStatus === 'closed' || !state.grupsFora.size;
 
@@ -4328,7 +4336,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         <section class="released-session">
           <div class="coverage-session-head">
             <h3>${escapeHtml(horaLabel(hora))}</h3>
-            <span>${items.length ? plural(new Set(items.map((item) => item.placa)).size, 'professor', 'professors') : 'Sense alliberats'}</span>
+            <span>${items.length ? plural(new Set(available(items).map((item) => item.placa)).size, 'professor', 'professors') : 'Sense alliberats'}</span>
           </div>
           <div class="released-session-list">
             ${items.length ? items.map(renderReleasedItem).join('') : '<div class="coverage-empty">Cap classe dels grups seleccionats.</div>'}
@@ -4339,12 +4347,14 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   function renderReleasedItem(item) {
+    const absent = isProfessorAbsentAtHour(item.dia, item.hora, item.placa);
     return `
-      <article class="released-item">
+      <article class="released-item ${absent ? 'absent' : ''}">
         <div>
           <strong>${escapeHtml(labelProfessor(item.placa))}</strong>
           <span>${escapeHtml(formatMateria(item))} · ${escapeHtml(formatBlocCurt(item))}</span>
         </div>
+        ${absent ? '<small class="pati-absence-badge">Absent</small>' : ''}
       </article>
     `;
   }
