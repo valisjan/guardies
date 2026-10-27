@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  groupDaySpan,
   classroomPartnerForAbsence,
   completeGuardDutyHours,
   dateForXmlDayInSameWeek,
@@ -258,4 +259,17 @@ test('agrupa en una sola cobertura els dos professors absents del mateix grup i 
   assert.deepEqual(result[0].absenceIds, ['P1|1|8:55', 'P2|1|8:55']);
   assert.deepEqual(result[0].absentTeacherIds, ['P1', 'P2']);
   assert.deepEqual(result[0].grupsVisibles, ['1ESO-A']);
+});
+
+test('groupDaySpan va de la primera classe del grup al final de l\'última', () => {
+  const sessions = [
+    { dia: '1', hora: '9:50', grup: '10', teClasse: true },
+    { dia: '1', hora: '8:00', grup: '10', teClasse: true },
+    { dia: '1', hora: '13:05', grup: '10', teClasse: true },
+    { dia: '1', hora: '14:00', grup: '11', teClasse: true },
+    { dia: '1', hora: '14:00', grup: '10', teClasse: false },
+    { dia: '2', hora: '14:00', grup: '10', teClasse: true },
+  ];
+  assert.deepEqual(groupDaySpan(sessions, '10', '1'), { from: '8:00', to: '14:00' });
+  assert.equal(groupDaySpan(sessions, '10', '3'), null);
 });

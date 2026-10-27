@@ -1,6 +1,6 @@
 import { markRaw } from 'vue';
 import * as parser from './horariXmlParser.js';
-import { currentPublicHourKey, renderPublicCoverage, renderPublicOutings } from './publicDayRenderer.js';
+import { currentPublicHourKey, renderOutingsLine, renderPublicCoverage } from './publicDayRenderer.js';
 import { createScheduleIndex } from '../../src/modules/guardies/domain/schedule-index.js';
 import { guardHistoryGroups, guardSlotFromAssignment } from '../../src/modules/guardies/domain/guard-history.js';
 import { createKeyedRenderer } from '../../src/utils/keyedDom.js';
@@ -11,6 +11,7 @@ import {
   classroomPartnerForAbsence,
   completeGuardDutyHours,
   dateForXmlDayInSameWeek,
+  groupDaySpan,
   groupTeachingBlocks,
   isTeacherAbsentAtSlot,
   mergeSharedClassroomAbsences,
@@ -189,7 +190,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     printDateLabel: document.getElementById('print-date-label'),
     scheduleGrid: document.getElementById('schedule-grid'),
     coverageList: document.getElementById('coverage-list'),
-    publicOutingList: document.getElementById('public-outing-list'),
+    outingsLine: document.getElementById('outings-line'),
     groupSearch: document.getElementById('group-search'),
     selectedGroups: document.getElementById('selected-groups'),
     releasedCount: document.getElementById('released-count'),
@@ -1063,14 +1064,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         }),
       };
     });
-    const groupLabels = new Map(grupsOrdenatsAmbLabel().map((group) => [String(group.codi), group.label]));
-    const groupsOut = Array.from(state.grupsFora)
-      .map((groupId) => ({
-        id: String(groupId),
-        label: groupLabels.get(String(groupId)) || String(groupId),
-        partial: state.partialGroups.has(groupId),
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'ca', { numeric: true }));
+    const groupsOut = outingGroups();
     return {
       schemaVersion: 1,
       date: state.date,
@@ -3048,12 +3042,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       );
       if (visibleDay && today) jumpToCurrentHourOnce(now);
       el.printDateLabel.textContent = formatData(state.date);
-      const outings = document.getElementById('public-outing-list');
-      if (outings) {
-        outings.innerHTML = renderPublicOutings(state.publicDay);
-        // Sense grups de sortida, el panell no es mostra (abans hi quedava un «—»).
-        outings.closest('.teacher-outing-panel')?.classList.toggle('hidden', !outings.childElementCount);
-      }
+      if (el.outingsLine) el.outingsLine.innerHTML = renderOutingsLine(state.publicDay?.groupsOut);
       return;
     }
     const ready = state.contextReady
@@ -3073,7 +3062,6 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
     renderInitialData();
     renderGroupPicker();
-    renderPublicOutingGroups();
     renderSchedule();
     renderCoverage();
     renderReleasedList();
@@ -3104,25 +3092,19 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     window.requestAnimationFrame(() => scrollPublicHourIntoView(current, 'auto'));
   }
 
-  function renderPublicOutingGroups() {
-    if (!el.publicOutingList) return;
+  function outingGroups() {
     const labels = new Map(grupsOrdenatsAmbLabel().map((group) => [String(group.codi), group.label]));
-    const groups = Array.from(state.grupsFora)
+    const day = diaXmlSeleccionat();
+    return Array.from(state.grupsFora)
       .map((groupId) => ({
         id: String(groupId),
         label: labels.get(String(groupId)) || String(groupId),
         partial: state.partialGroups.has(groupId),
+        ...(groupDaySpan(state.sessions, groupId, day) || {}),
       }))
       .sort((a, b) => a.label.localeCompare(b.label, 'ca', { numeric: true }));
-    el.publicOutingList.innerHTML = groups.length
-      ? groups.map((group) => `
-          <article class="teacher-outing-group" data-public-outing-group="${escapeHtml(group.id)}">
-            <strong>${escapeHtml(group.label)}</strong>
-            <span>${group.partial ? 'Sortida parcial' : 'Fora del centre'}</span>
-          </article>
-        `).join('')
-      : '<div class="empty-small">—</div>';
   }
+
 
 
   function renderSchedule() {
@@ -3336,6 +3318,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   function renderCoverage() {
+    if (el.outingsLine && state.canWrite) el.outingsLine.innerHTML = renderOutingsLine(outingGroups());
     // A metadata refresh or an unrelated UI action must not recalculate every
     // candidate list. Small mutable inputs are compared by value; parsed
     // schedule inputs are replaced/reindexed together at configuration loads.

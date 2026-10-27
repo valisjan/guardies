@@ -2414,57 +2414,28 @@ h3 {
   padding: 7px;
 }
 
-.teacher-outing-panel {
-  margin: 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface);
-  overflow: hidden;
-}
-
-.teacher-outing-panel > header {
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-subtle);
-  padding: 9px 11px;
-}
-
-.teacher-outing-panel h2 {
-  margin: 1px 0 0;
-  font-size: 0.95rem;
-}
-
-.teacher-outing-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 6px;
-  padding: 8px;
-}
-
-.teacher-outing-group {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  border: 1px solid var(--border);
+.outings-line {
+  margin: 7px 7px 0;
+  border: 1px solid var(--amber-border);
   border-radius: 5px;
-  background: var(--surface-subtle);
-  padding: 8px 9px;
-}
-
-.teacher-outing-group strong {
-  overflow: hidden;
+  background: var(--amber-soft);
   color: var(--text);
-  font-size: 0.76rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding: 6px 9px;
+  font-size: 0.74rem;
+  line-height: 1.35;
 }
 
-.teacher-outing-group span {
-  flex: 0 0 auto;
+.outings-line-title {
+  color: var(--amber-strong);
+  font-weight: 900;
+}
+
+.outing-item strong {
+  font-weight: 850;
+}
+
+.outing-separator {
   color: var(--muted);
-  font-size: 0.62rem;
-  font-weight: 800;
 }
 
 .coverage-session {
@@ -6073,6 +6044,15 @@ button.ghost {
     display: none !important;
     color: #444;
   }
+  .outings-line {
+    flex: 0 0 auto;
+    margin: 0 0 2mm;
+    border: 1px solid #333;
+    background: #fff !important;
+    padding: 1mm 2mm;
+    font-size: 10pt;
+  }
+
   .print-header h1 { margin: 0; font-size: 12pt; line-height: 1; }
   .print-header p {
     margin: 0;

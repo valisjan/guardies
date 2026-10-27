@@ -240,6 +240,19 @@ function hourFromMinutes(value, padded) {
   return `${padded ? hours.padStart(2, '0') : hours}:${minutes}`;
 }
 
+const SESSION_MINUTES = 55;
+
+// Horari d'un grup en un dia: de l'inici de la primera classe al final de l'última.
+export function groupDaySpan(sessions, groupId, day) {
+  const starts = (sessions || [])
+    .filter((session) => session.dia === day && session.teClasse && session.grup === groupId)
+    .map((session) => minutesFromHour(session.hora))
+    .filter((minutes) => minutes !== null);
+  if (!starts.length) return null;
+  const text = (minutes) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
+  return { from: text(Math.min(...starts)), to: text(Math.max(...starts) + SESSION_MINUTES) };
+}
+
 export function completeGuardDutyHours(values = []) {
   const source = Array.from(new Set(values.filter((value) => value && value !== 'PATI')));
   const byMinutes = new Map();

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { currentPublicHourKey, renderPublicCoverage, renderPublicOutings } from '../../labs/guardies/publicDayRenderer.js';
+import { currentPublicHourKey, renderOutingsLine, renderPublicCoverage } from '../../labs/guardies/publicDayRenderer.js';
 
 test('public view escapes all user content and preserves coverage and observations', () => {
   const html = renderPublicCoverage({ hours: [{ label: '7a hora', observation: '<script>alert(1)</script>', rows: [{
@@ -125,8 +125,14 @@ test('public view supports empty days, patio absences and partial outings', () =
   assert.ok(html.includes('Sense absències'));
   assert.ok(html.includes('pati-absence-badge'));
   assert.ok(html.includes('Avís'));
-  const outings = renderPublicOutings({ groupsOut: [{ id: '10', label: '1ESO-A', partial: true }] });
-  assert.ok(outings.includes('data-public-outing-group="10"'));
-  assert.ok(outings.includes('Sortida parcial'));
-  assert.equal(renderPublicOutings({ groupsOut: [] }), '');
+  const outings = renderOutingsLine([
+    { id: '10', label: '1ESO-A', from: '8:00', to: '14:00' },
+    { id: '11', label: '1ESO-B', partial: true },
+  ]);
+  assert.ok(outings.includes('Sortides complementàries:'));
+  assert.ok(outings.includes('data-outing-group="10"'));
+  assert.match(outings, /1ESO-A<\/strong> de 8:00 a 14:00/);
+  assert.match(outings, /1ESO-B<\/strong> \(part del grup\)/);
+  assert.equal(renderOutingsLine([]), '');
+  assert.equal(renderOutingsLine(undefined), '');
 });

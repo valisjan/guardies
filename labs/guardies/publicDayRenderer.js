@@ -146,8 +146,12 @@ export function renderPublicCoverage(day, { now = null, viewer = '' } = {}) {
   }).join('');
 }
 
-// Sense grups de sortida no es mostra res: el panell s'amaga.
-export function renderPublicOutings(day) {
-  return (day?.groupsOut || []).map((group) => `
-    <article class="teacher-outing-group" data-public-outing-group="${escape(group.id)}"><strong>${escape(group.label)}</strong><span>${group.partial ? 'Sortida parcial' : 'Fora del centre'}</span></article>`).join('');
+// Línia de capçal: «Sortides complementàries: 3ESO-A de 8:00 a 14:00 · …». Sense sortides, res.
+export function renderOutingsLine(groups = []) {
+  if (!groups?.length) return '';
+  const items = groups.map((group) => {
+    const detail = `${group.partial ? ' (part del grup)' : ''}${group.from && group.to ? ` de ${group.from} a ${group.to}` : ''}`;
+    return `<span class="outing-item" data-outing-group="${escape(group.id)}"><strong>${escape(group.label)}</strong>${escape(detail)}</span>`;
+  }).join('<span class="outing-separator" aria-hidden="true"> · </span>');
+  return `<p class="outings-line"><span class="outings-line-title">Sortides complementàries:</span> ${items}</p>`;
 }

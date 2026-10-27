@@ -1835,9 +1835,14 @@ test.describe('Guàrdies: comportament existent', () => {
       JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days['2026-09-08'].groupsOut
     ));
     expect(publishedGroups).toContain('10');
+    const adminLine = page.locator('#outings-line .outings-line');
+    await expect(adminLine).toContainText('Sortides complementàries:');
+    await expect(adminLine.locator('[data-outing-group="10"]')).toHaveText(/^1ESO-A de \d{1,2}:\d{2} a \d{1,2}:\d{2}$/);
+    const adminText = await adminLine.locator('[data-outing-group="10"]').textContent();
     await page.getByRole('link', { name: 'Professorat', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Grups de sortida' })).toBeVisible();
-    await expect(page.locator('[data-public-outing-group="10"]')).toContainText('Fora del centre');
+    const teacherLine = page.locator('#outings-line .outings-line');
+    await expect(teacherLine).toContainText('Sortides complementàries:');
+    await expect(teacherLine.locator('[data-outing-group="10"]')).toHaveText(adminText);
   });
 
   test('una sortida: es cobreixen les classes dels grups que es queden i no les dels grups que són fora', async ({ page }) => {
@@ -2478,7 +2483,7 @@ test.describe('Guàrdies: revisió visual', () => {
     await expect(page.locator('.public-row .status-label').first()).toHaveText('Queda amb el grup');
     // Sense zones de pati ni grups de sortida no queda cap capsa buida.
     await expect(page.locator('#coverage-list .pati-session')).toHaveCount(0);
-    await expect(page.locator('.teacher-outing-panel')).toBeHidden();
+    await expect(page.locator('#outings-line .outings-line')).toHaveCount(0);
     expect(await tinyTexts(page)).toEqual([]);
   });
 
