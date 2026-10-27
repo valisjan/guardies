@@ -169,6 +169,8 @@ async function sendTest(kind) {
         </p>
         <p class="mail-service" :class="{ 'is-missing': loaded && !serviceLastRun }">{{ loading ? 'Carregant…' : serviceLabel }}</p>
 
+        <!-- Fins que no arriba la configuració desada, editar-la seria perdre-ho en carregar. -->
+        <fieldset class="mail-form" :disabled="!loaded">
         <div class="mail-sender">
           <label>
             <span>Nom del remitent</span>
@@ -220,6 +222,7 @@ async function sendTest(kind) {
             {{ testing === item.kind ? 'Enviant…' : 'Envia’m una prova' }}
           </button>
         </article>
+        </fieldset>
 
         <div class="mail-actions">
           <button type="button" :disabled="!dirty || saving" @click="save">{{ saving ? 'Desant…' : 'Desa' }}</button>

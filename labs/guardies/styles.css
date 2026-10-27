@@ -4942,7 +4942,15 @@ button.ghost {
 
   .mail-service.is-missing { color: var(--amber); font-weight: 700; }
 
-  .mail-sender {
+  .mail-form {
+  display: contents;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.mail-sender {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 10px;
