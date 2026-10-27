@@ -3042,7 +3042,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       );
       if (visibleDay && today) jumpToCurrentHourOnce(now);
       el.printDateLabel.textContent = formatData(state.date);
-      if (el.outingsLine) el.outingsLine.innerHTML = renderOutingsLine(state.publicDay?.groupsOut);
+      setOutingsLine(renderOutingsLine(state.publicDay?.groupsOut));
       return;
     }
     const ready = state.contextReady
@@ -3090,6 +3090,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     jumpedToCurrentHour = key;
     if (current === String(hours[0]?.key) || !window.matchMedia('(max-width: 820px)').matches) return;
     window.requestAnimationFrame(() => scrollPublicHourIntoView(current, 'auto'));
+  }
+
+  // La línia queda fixa sota la barra; el resum de guàrdies pròpies (mòbil) es col·loca a sota.
+  function setOutingsLine(html) {
+    if (!el.outingsLine) return;
+    if (el.outingsLine.innerHTML !== html) el.outingsLine.innerHTML = html;
+    document.documentElement.style.setProperty('--outings-line-height', `${el.outingsLine.offsetHeight}px`);
   }
 
   function outingGroups() {
@@ -3318,7 +3325,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   function renderCoverage() {
-    if (el.outingsLine && state.canWrite) el.outingsLine.innerHTML = renderOutingsLine(outingGroups());
+    if (state.canWrite) setOutingsLine(renderOutingsLine(outingGroups()));
     // A metadata refresh or an unrelated UI action must not recalculate every
     // candidate list. Small mutable inputs are compared by value; parsed
     // schedule inputs are replaced/reindexed together at configuration loads.

@@ -274,6 +274,9 @@ h3 {
 /* Barra fina de càrrega sobre la franja de marca mentre canvia la vista. */
 .app-nav { position: sticky; }
 
+/* Sense això la barra només es fixa dins del seu contenidor, que fa la seva mateixa alçada. */
+#guardies-chrome-root { display: contents; }
+
 .nav-progress {
   position: absolute;
   left: 0;
@@ -2379,6 +2382,8 @@ h3 {
 .day-panel {
   min-width: 0;
   overflow: hidden;
+  /* clip retalla igual però deixa fixa la línia de sortides en desplaçar-se. */
+  overflow: clip;
 }
 
 .day-panel-head {
@@ -2414,8 +2419,19 @@ h3 {
   padding: 7px;
 }
 
+.outings-line-slot {
+  position: sticky;
+  z-index: 6;
+  top: var(--app-nav-height, 0px);
+}
+
+.outings-line-slot:not(:empty) {
+  background: var(--surface-strong);
+  padding: 7px 7px 0;
+}
+
 .outings-line {
-  margin: 7px 7px 0;
+  margin: 0;
   border: 1px solid var(--amber-border);
   border-radius: 5px;
   background: var(--amber-soft);
@@ -5932,7 +5948,7 @@ button.ghost {
   .my-guards {
     position: sticky;
     z-index: 5;
-    top: calc(var(--app-nav-height, 0px) + 6px);
+    top: calc(var(--app-nav-height, 0px) + var(--outings-line-height, 0px) + 6px);
     box-shadow: var(--shadow);
   }
 }
@@ -6052,6 +6068,8 @@ button.ghost {
     display: none !important;
     color: #444;
   }
+  .outings-line-slot { position: static; padding: 0 !important; }
+
   .outings-line {
     flex: 0 0 auto;
     margin: 0 0 2mm;
