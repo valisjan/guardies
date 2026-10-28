@@ -103,6 +103,18 @@ export function firestoreRest({ base = FIRESTORE_BASE, token }) {
       }
     },
 
+    // Fitxes del professorat del curs amb aquest correu (per no escriure a qui és de baixa).
+    async teacherRecords(courseId, email) {
+      const rows = await request('POST', `${base}/cursos/${encodeURIComponent(courseId)}:runQuery`, {
+        structuredQuery: {
+          from: [{ collectionId: 'professors' }],
+          where: { fieldFilter: { field: { fieldPath: 'email' }, op: 'EQUAL', value: { stringValue: email } } },
+          limit: 10,
+        },
+      }) || [];
+      return rows.filter((row) => row.document).map((row) => decodeFields(row.document.fields));
+    },
+
     // Senyal perquè Guàrdies mostri que el servei funciona i des de quin compte envia.
     async heartbeat(now, account) {
       await request('PATCH', `${base}/config/guardies-correus?updateMask.fieldPaths=lastRunAt&updateMask.fieldPaths=account`, {

@@ -29,6 +29,10 @@ function fakeFirestore(docs) {
       statuses.push(`${mail.id}:${status}`);
       return true;
     },
+    async teacherRecords(courseId, email) {
+      return [...store].filter(([path, doc]) => path.startsWith(`cursos/${courseId}/professors/`) && doc.data.email === email)
+        .map(([, doc]) => structuredClone(doc.data));
+    },
     async heartbeat() { heartbeats += 1; },
   };
 }
@@ -144,6 +148,37 @@ test('mentre l\'enviament està aturat, un avís previst i vigent es manté fins
   assert.deepEqual(statusOf(firestore, 'dema'), ['pendent', '']);
   await run(firestore, async () => {}, new Date('2026-10-22T08:00:00+02:00'));
   assert.deepEqual(statusOf(firestore, 'dema'), ['cancel·lat', 'Enviament al professorat aturat']);
+});
+
+test('no s\'escriu a una adreça que només és d\'una fitxa de professorat de baixa', async () => {
+  // Cas real: l'avís de Capellà (plaça TORR) s'havia programat amb el correu de Torres, de baixa.
+  const docs = world({
+    'a-baixa': { email: 'atorres@iesjosepsuredaiblanes.com' },
+    'a-qui-hi-es': { email: 'acapella@iesjosepsuredaiblanes.com', check: { absenceId: 'D' } },
+  });
+  docs['cursos/2026-2027/professors/1syXb'] = { codiUntis: 'TORR', email: 'atorres@iesjosepsuredaiblanes.com', motiuBaixa: 'Baixa', eliminatDelFull: true };
+  docs['cursos/2026-2027/professors/TORR'] = { codiUntis: 'TORR', email: 'acapella@iesjosepsuredaiblanes.com', eliminatDelFull: false };
+  const firestore = fakeFirestore(docs);
+  const sent = [];
+  await run(firestore, async (message) => sent.push(message));
+  assert.deepEqual(sent.map((message) => message.to), ['acapella@iesjosepsuredaiblanes.com']);
+  assert.deepEqual(statusOf(firestore, 'a-baixa'), ['cancel·lat', 'Adreça d’una fitxa de professorat de baixa']);
+});
+
+test('un avís programat a mà surt encara que l\'enviament estigui aturat, si continua vigent', async () => {
+  const docs = world({
+    manual: { manual: true, date: '2026-10-22', check: { absenceId: 'E' }, sendAfter: '2026-10-22T06:00:00.000Z' },
+    'manual-ja-no-cal': { manual: true, date: '2026-10-22', teacherId: '5', email: 'c@iesjosepsuredaiblanes.com', check: { absenceId: 'E' }, sendAfter: '2026-10-22T06:00:00.000Z' },
+    normal: { date: '2026-10-22', email: 'altre@iesjosepsuredaiblanes.com', check: { absenceId: 'E' } },
+  });
+  docs['cursos/2026-2027/config/guardies-correus'].active = false;
+  const firestore = fakeFirestore(docs);
+  const sent = [];
+  await run(firestore, async (message) => sent.push(message), new Date('2026-10-22T08:00:00+02:00'));
+  assert.deepEqual(sent.map((message) => message.to), ['sergio.lopez@iesjosepsuredaiblanes.com']);
+  assert.deepEqual(statusOf(firestore, 'manual'), ['enviat', '']);
+  assert.deepEqual(statusOf(firestore, 'manual-ja-no-cal'), ['cancel·lat', 'Ja no és vigent']);
+  assert.deepEqual(statusOf(firestore, 'normal'), ['cancel·lat', 'Enviament al professorat aturat']);
 });
 
 test('les proves surten a qualsevol hora, també el cap de setmana', async () => {

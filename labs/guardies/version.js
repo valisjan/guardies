@@ -1,6 +1,13 @@
-export const GUARDIES_VERSION = '1.9.7';
+export const GUARDIES_VERSION = '1.9.8';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.9.8',
+    date: '28 d’octubre de 2026',
+    changes: [
+      'Correus al professorat: abans d’enviar un avís, el servei comprova que l’adreça no sigui d’una fitxa de professorat de baixa; si ho és, no l’envia.',
+    ],
+  },
   {
     version: '1.9.7',
     date: '28 d’octubre de 2026',

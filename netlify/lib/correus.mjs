@@ -1,7 +1,9 @@
 // Servei de correu de Guàrdies: revisa la cua «guardiesCorreus» i envia els correus que
 // ja toquen. Abans d'enviar-ne cap comprova que el canvi encara és vigent: si la guàrdia
 // o la zona de pati ja no són les mateixes, el dia ja ha passat, l'enviament al
-// professorat està aturat o aquell correu s'ha desactivat, no s'envia. Cada 5 minuts
+// professorat està aturat, aquell correu s'ha desactivat o l'adreça és d'una fitxa de
+// professorat de baixa, no s'envia. Un avís programat a mà per l'administració
+// («manual») surt encara que l'enviament estigui aturat, si continua vigent. Cada 5 minuts
 // també revisa els previstos que encara no toquen i anul·la els que ja no calen (la
 // guàrdia o la zona han canviat). Els avisos d'un mateix professor per a un mateix dia
 // que surten alhora van en un sol correu. Cada avís s'envia com a molt una vegada:
@@ -15,8 +17,9 @@ import {
   mailToday,
   normalizeMailConfig,
 } from '../../src/modules/guardies/domain/mail.js';
+import { isActiveTeacherRecord } from '../../src/modules/guardies/domain/teacherDirectory.js';
 
-// firestore: { read, pendingMails, setStatus, heartbeat } (vegeu firestore-rest.mjs).
+// firestore: { read, pendingMails, setStatus, teacherRecords, heartbeat } (vegeu firestore-rest.mjs).
 // send({ to, subject, text, senderName, replyTo }) envia un correu.
 export async function processMailQueue({ firestore, send, account = '', now = new Date(), log = () => {} }) {
   const pending = await firestore.pendingMails();
@@ -111,9 +114,15 @@ async function decide(mail, today, firestore, cache, due = true) {
   if (!isSchoolEmail(mail.email)) return { status: 'error', reason: 'Adreça de fora del centre' };
   if (mail.kind !== 'prova') {
     if (mail.date && mail.date < today) return { status: 'cancel·lat', reason: 'El dia ja ha passat' };
-    if (due && !config.active) return { status: 'cancel·lat', reason: 'Enviament al professorat aturat' };
-    if (due && !config[mail.kind].enabled) return { status: 'cancel·lat', reason: 'Correu desactivat' };
+    if (due && !config.active && !mail.manual) return { status: 'cancel·lat', reason: 'Enviament al professorat aturat' };
+    if (due && !config[mail.kind].enabled && !mail.manual) return { status: 'cancel·lat', reason: 'Correu desactivat' };
     if (!(await stillValid(mail, firestore, cache))) return { status: 'cancel·lat', reason: 'Ja no és vigent' };
+    // Una plaça amb substitut conserva la fitxa de qui és de baixa amb el mateix codi:
+    // si l'adreça només és d'una fitxa de baixa, el correu no és per a qui fa la guàrdia.
+    if (due) {
+      const records = await firestore.teacherRecords(mail.courseId, mail.email);
+      if (records.length && !records.some(isActiveTeacherRecord)) return { status: 'cancel·lat', reason: 'Adreça d’una fitxa de professorat de baixa' };
+    }
   }
   return {};
 }
