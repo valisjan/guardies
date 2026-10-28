@@ -1,6 +1,15 @@
-export const GUARDIES_VERSION = '1.8.3';
+export const GUARDIES_VERSION = '1.9.0';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.9.0',
+    date: '28 d’octubre de 2026',
+    changes: [
+      'Correus al professorat: qui queda alliberat/ada per una sortida i ha de cobrir una guàrdia, o té per a un dia una zona de pati diferent de la seva, en rep un correu des de guardies@iesjosepsuredaiblanes.com.',
+      'Entre les 8:00 i les 15:00 dels dies feiners, el correu surt al cap de 2 minuts; fora d’aquest horari, a les 8:00 del següent dia feiner. Abans d’enviar-lo es comprova que el canvi encara és vigent; si s’ha desfet o el dia ja ha passat, no s’envia.',
+      'Les plantilles es poden editar a Configuració › Correus al professorat, on també es veuen els darrers correus, l’estat del servei i el botó «Envia’m una prova».',
+    ],
+  },
   {
     version: '1.8.3',
     date: '28 d’octubre de 2026',
