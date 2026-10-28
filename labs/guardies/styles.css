@@ -5286,6 +5286,14 @@ button.ghost {
 
   .mail-recent h3 { margin: 0 0 6px; }
 
+  .mail-recent h4 {
+    margin: 10px 0 4px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
   .mail-recent ul {
     display: grid;
     margin: 0;
@@ -5315,8 +5323,7 @@ button.ghost {
 
   .mail-recent li.is-enviat small { color: var(--green); }
   .mail-recent li.is-pendent small { color: var(--amber); }
-  .mail-recent li.is-error small { color: var(--coral); }
-  .mail-recent li.is-cancelled small { color: var(--muted); }
+  .mail-recent li.is-enviant small { color: var(--amber); }
 }
 
 @media screen and (max-width: 900px) {

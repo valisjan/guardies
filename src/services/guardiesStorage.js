@@ -1110,7 +1110,8 @@ export async function queueGuardiesMails(cursId, mails) {
 
 const isoTime = (value) => (typeof value === 'string' ? value : value?.toDate?.().toISOString() || '');
 
-export async function loadRecentGuardiesMails(cursId, count = 15) {
+// En llegeix més dels que es mostren: el panell només ensenya els previstos i els enviats.
+export async function loadRecentGuardiesMails(cursId, count = 50) {
   if (E2E_AUTH_BYPASS) {
     return Object.values(getE2EData(cursId).mails || {})
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))

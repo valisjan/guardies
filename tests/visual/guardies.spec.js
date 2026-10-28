@@ -2425,12 +2425,39 @@ test.describe('Guàrdies: correus al professorat', () => {
     await expect(panel.locator('.mail-common-preview .mail-preview-subject')).toHaveText('Avisos de guàrdies per al dimarts 20/10/2026');
     await panel.locator('.mail-common-preview').getByRole('button', { name: 'Envia una prova' }).click();
     await expect(page.locator('.mail-feedback')).toContainText('Prova a la cua per a jaerustes@iessureda.com');
-    await expect(page.locator('.mail-recent li').first()).toContainText('dos avisos');
+    await expect(page.locator('[data-mail-list="previstos"] li').filter({ hasText: 'dos avisos' })).toHaveCount(1);
     expect((await mails(page)).map((mail) => [mail.kind, mail.template, mail.email]).sort()).toEqual([
       ['prova', 'alliberat', 'e2e.admin@iesjosepsuredaiblanes.com'],
       ['prova', 'combinat', 'jaerustes@iessureda.com'],
     ]);
     expect((await e2eData(page)).mailConfig.testEmail).toBe('jaerustes@iessureda.com');
+  });
+
+  test('a «Darrers correus» només hi ha els previstos (per ordre de sortida) i els enviats', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.evaluate(() => {
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const data = JSON.parse(localStorage.getItem(key));
+      const mail = (id, status, extra) => ({
+        id, kind: 'alliberat', template: 'alliberat', date: '2026-09-08', status, reason: '', createdAt: `2026-09-07T0${id.length}:00:00.000Z`,
+        fields: { nom_complet: `Professor ${id}`, data: '08/09/2026', hora: '1a hora' }, ...extra,
+      });
+      data.mails = Object.fromEntries([
+        mail('tard', 'pendent', { sendAfter: '2026-09-09T06:00:00.000Z' }),
+        mail('aviat', 'pendent', { sendAfter: '2026-09-08T06:00:00.000Z' }),
+        mail('enviat', 'enviat', { sendAfter: '2026-09-07T06:00:00.000Z', sentAt: '2026-09-07T06:01:00.000Z' }),
+        mail('descartat', 'cancel·lat', { reason: 'Enviament al professorat aturat' }),
+        mail('fallat', 'error', { reason: 'Daily user sending limit exceeded' }),
+      ].map((item) => [item.id, item]));
+      localStorage.setItem(key, JSON.stringify(data));
+    });
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#mail-panel summary').click();
+    await expect(page.locator('[data-mail-list="previstos"] li strong')).toHaveText(['Professor aviat', 'Professor tard']);
+    await expect(page.locator('[data-mail-list="enviats"] li strong')).toHaveText(['Professor enviat']);
+    await expect(page.locator('.mail-recent')).not.toContainText('descartat');
+    await expect(page.locator('.mail-recent')).not.toContainText('fallat');
   });
 });
 

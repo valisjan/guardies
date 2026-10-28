@@ -28,7 +28,6 @@ const KINDS = [
   { kind: 'alliberat', title: 'Guàrdia com a alliberat/da', help: 'Quan s’assigna una guàrdia a qui queda lliure perquè el seu grup és de sortida.' },
   { kind: 'pati', title: 'Canvi de zona de pati', help: 'Quan es canvia a mà la zona de pati d’un professor per a un dia concret.' },
 ];
-const STATUS = { pendent: 'Pendent', enviant: 'Enviant', enviat: 'Enviat', 'cancel·lat': 'No enviat', error: 'Error' };
 const KIND_LABELS = { alliberat: 'Alliberat/da', pati: 'Pati', prova: 'Prova' };
 const EXAMPLE_NAME = MAIL_EXAMPLE_FIELDS.alliberat.nom_complet;
 
@@ -65,13 +64,26 @@ const serviceLabel = computed(() => (serviceLastRun.value
 // «{nom}»: dins de {{ }} de la plantilla no es pot escriure tal qual.
 const token = (field) => `{${field}}`;
 
+// Darrers correus: només els que han de sortir (per ordre de sortida) i els enviats.
+const scheduledMails = computed(() => recent.value
+  .filter((mail) => mail.status === 'pendent' || mail.status === 'enviant')
+  .sort((a, b) => String(a.sendAfter).localeCompare(String(b.sendAfter))));
+const sentMails = computed(() => recent.value
+  .filter((mail) => mail.status === 'enviat')
+  .sort((a, b) => String(b.sentAt).localeCompare(String(a.sentAt)))
+  .slice(0, 15));
+const mailLists = computed(() => [
+  { key: 'previstos', title: 'Previstos', mails: scheduledMails.value },
+  { key: 'enviats', title: 'Enviats', mails: sentMails.value },
+].filter((list) => list.mails.length));
+
 const preview = (kind) => composeMail(config, [{ kind, fields: MAIL_EXAMPLE_FIELDS[kind] }]);
 const combinedPreview = computed(() => composeMail(config, KINDS.map(({ kind }) => ({ kind, fields: MAIL_EXAMPLE_FIELDS[kind] }))));
 
 function statusLabel(mail) {
   if (mail.status === 'pendent') return `Pendent · surt ${formatTime(mail.sendAfter)}`;
   if (mail.status === 'enviat') return `Enviat ${formatTime(mail.sentAt)}`;
-  return `${STATUS[mail.status] || mail.status}${mail.reason ? ` · ${mail.reason}` : ''}`;
+  return 'Enviant';
 }
 
 async function load() {
@@ -186,7 +198,7 @@ async function sendTest(template) {
                 <span>
                   <strong>Enviament al professorat: {{ config.active ? 'actiu' : 'aturat' }}</strong>
                   <small v-if="config.active">Els avisos arriben al professorat.</small>
-                  <small v-else>No s’envia res al professorat; les proves sí. Els avisos surten a «Darrers correus» com a no enviats.</small>
+                  <small v-else>No s’envia res al professorat; les proves sí. Fins a la seva hora, els avisos es veuen a «Darrers correus», a «Previstos».</small>
                 </span>
               </label>
               <p class="mail-service" :class="{ 'is-missing': loaded && !serviceLastRun }">
@@ -348,15 +360,18 @@ async function sendTest(template) {
           <span v-if="feedback" class="mail-feedback" :class="`is-${feedbackKind}`" role="status" aria-live="polite">{{ feedback }}</span>
         </div>
 
-        <section v-if="recent.length" class="mail-recent" aria-labelledby="mail-recent-title">
+        <section v-if="mailLists.length" class="mail-recent" aria-labelledby="mail-recent-title">
           <h3 id="mail-recent-title">Darrers correus</h3>
-          <ul>
-            <li v-for="mail in recent" :key="mail.id" :class="`is-${mail.status === 'cancel·lat' ? 'cancelled' : mail.status}`">
-              <strong>{{ mail.kind === 'prova' ? mail.email : mail.fields?.nom_complet || mail.email }}</strong>
-              <span>{{ KIND_LABELS[mail.kind] || mail.kind }}{{ mail.kind === 'prova' && mail.template === 'combinat' ? ' · dos avisos' : '' }}{{ mail.kind !== 'prova' && mail.fields?.data ? ` · ${mail.fields.data}` : '' }}{{ mail.kind !== 'prova' && mail.fields?.hora ? ` · ${mail.fields.hora}` : '' }}{{ mail.kind !== 'prova' && mail.fields?.zona ? ` · ${mail.fields.zona}` : '' }}</span>
-              <small>{{ statusLabel(mail) }}</small>
-            </li>
-          </ul>
+          <template v-for="list in mailLists" :key="list.key">
+            <h4>{{ list.title }}</h4>
+            <ul :data-mail-list="list.key">
+              <li v-for="mail in list.mails" :key="mail.id" :class="`is-${mail.status}`">
+                <strong>{{ mail.kind === 'prova' ? mail.email : mail.fields?.nom_complet || mail.email }}</strong>
+                <span>{{ KIND_LABELS[mail.kind] || mail.kind }}{{ mail.kind === 'prova' && mail.template === 'combinat' ? ' · dos avisos' : '' }}{{ mail.kind !== 'prova' && mail.fields?.data ? ` · ${mail.fields.data}` : '' }}{{ mail.kind !== 'prova' && mail.fields?.hora ? ` · ${mail.fields.hora}` : '' }}{{ mail.kind !== 'prova' && mail.fields?.zona ? ` · ${mail.fields.zona}` : '' }}</span>
+                <small>{{ statusLabel(mail) }}</small>
+              </li>
+            </ul>
+          </template>
         </section>
       </section>
     </div>

@@ -1,6 +1,13 @@
-export const GUARDIES_VERSION = '1.9.1';
+export const GUARDIES_VERSION = '1.9.2';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.9.2',
+    date: '28 d’octubre de 2026',
+    changes: [
+      'Correus al professorat: «Darrers correus» només mostra els previstos (per ordre de sortida) i els enviats.',
+    ],
+  },
   {
     version: '1.9.1',
     date: '28 d’octubre de 2026',
