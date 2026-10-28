@@ -3577,6 +3577,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
     let assigned = 0;
     pending.forEach((item) => {
+      // Inclou les assignades en aquesta mateixa passada (ja són a state.assignacions).
+      const releasedToday = releasedCountsToday(item.id);
       const candidates = guardiesPerFranja(item.dia, item.hora, item.placa, item.id)
         .map((candidate) => ({
           ...candidate,
@@ -3586,6 +3588,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         .sort((a, b) => {
           const sourceRank = (a.source === 'released' ? 0 : 1) - (b.source === 'released' ? 0 : 1);
           if (sourceRank) return sourceRank;
+          // Alliberats: primer qui menys en fa aquest dia (només aquest dia).
+          if (a.source === 'released') {
+            const todayRank = (releasedToday.get(a.placa) || 0) - (releasedToday.get(b.placa) || 0);
+            return todayRank || catalanCollator.compare(labelProfessor(a.placa), labelProfessor(b.placa));
+          }
           const keyA = projectedGuardCountKey(a.placa, a.source, item.dia, item.hora);
           const keyB = projectedGuardCountKey(b.placa, b.source, item.dia, item.hora);
           const countRank = (guardCount(a.placa, a.source, item.dia, item.hora) + (projectedCounts.get(keyA) || 0))
@@ -4088,18 +4095,34 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     });
 
     // Les claus d'ordenació es calculen una vegada per candidat, no a cada comparació.
+    // Entre els alliberats, primer qui menys guàrdies com a alliberat/da fa aquest dia
+    // (només aquest dia); entre la resta, el recompte de guàrdies.
+    const releasedToday = releasedCountsToday(currentAbsenceId);
     return Array.from(candidates.values())
       .map((candidate) => {
         const source = candidate.alliberaments.length ? 'released' : candidate.outsideDuty ? 'other' : 'guard';
+        const today = releasedToday.get(candidate.placa) || 0;
         return {
-          candidate: { ...candidate, dia, hora },
+          candidate: { ...candidate, dia, hora, releasedToday: today },
           rank: candidate.unavailable ? 4 : candidate.convivencia ? 2 : candidate.alliberaments.length ? 0 : candidate.outsideDuty ? 3 : 1,
-          count: guardCount(candidate.placa, source, dia, hora),
+          count: source === 'released' ? today : guardCount(candidate.placa, source, dia, hora),
           name: professorShort(candidate.placa) || candidate.placa,
         };
       })
       .sort((a, b) => (a.rank - b.rank) || (a.count - b.count) || catalanCollator.compare(a.name, b.name))
       .map(({ candidate }) => candidate);
+  }
+
+  // Guàrdies com a alliberat/da que cada professor ja fa aquest dia, sense comptar
+  // l'absència que s'està cobrint ni les marcades com a no realitzades.
+  function releasedCountsToday(exceptAbsenceId = '') {
+    const counts = new Map();
+    state.assignacions.forEach((teacherId, absenceId) => {
+      if (absenceId === exceptAbsenceId || state.cancelledAssignments.has(absenceId)) return;
+      if (state.assignmentSources.get(absenceId) !== 'released') return;
+      counts.set(teacherId, (counts.get(teacherId) || 0) + 1);
+    });
+    return counts;
   }
 
   // Professorat que no pot cobrir la franja: absent a aquesta hora o ja assignat a
@@ -4639,7 +4662,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       const reason = candidate.outing ? ' · de sortida' : candidate.outsideDuty ? ' · ni G ni alliberat' : '';
       return `No disponible${reason} - ${labelProfessor(candidate.placa)}`;
     }
-    if (candidate.alliberaments?.length) return `Alliberat · ${count} - ${labelProfessor(candidate.placa)}`;
+    if (candidate.alliberaments?.length) return `Alliberat · ${candidate.releasedToday || 0} avui - ${labelProfessor(candidate.placa)}`;
     if (candidate.outsideDuty) return `Ni G ni alliberat · ${count} - ${labelProfessor(candidate.placa)}`;
     const prefix = candidate.convivencia ? 'Convivència - ' : 'Guàrdia - ';
     return `${prefix}${count} - ${labelProfessor(candidate.placa)}`;

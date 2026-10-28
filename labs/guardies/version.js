@@ -1,6 +1,13 @@
-export const GUARDIES_VERSION = '1.9.5';
+export const GUARDIES_VERSION = '1.9.6';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.9.6',
+    date: '28 d’octubre de 2026',
+    changes: [
+      'Alliberats: per cobrir un grup, primer surt qui menys guàrdies com a alliberat/da fa aquell dia (només aquell dia). Qui ja n’ha fet una passa al darrere si n’hi ha d’altres; si és l’únic, continua sortint primer. Ho fan igual el desplegable i l’assignació automàtica, i el desplegable diu quantes en fa avui cadascú.',
+    ],
+  },
   {
     version: '1.9.5',
     date: '28 d’octubre de 2026',

@@ -1379,6 +1379,63 @@ test.describe('Guàrdies: comportament existent', () => {
     await expect(page.locator('#coverage-list [data-assignacio]')).toHaveValue('3');
   });
 
+  test('entre alliberats, primer qui menys en fa aquell dia (no el recompte de tot el curs)', async ({ page }) => {
+    // 1r ESO A surt: ADEL i FUEN queden alliberats a 1a i 2a hora; MAT1 falta a les dues.
+    const releasedTwiceDutiesFile = {
+      name: 'GPU001.TXT',
+      mimeType: 'text/plain',
+      buffer: Buffer.from([
+        '30,"1ESO-A","ADEL","MAT","AUL14",1,1,,',
+        '31,"1ESO-A","ADEL","MAT","AUL14",1,2,,',
+        '32,"1ESO-A","FUEN","MAT","AUL14",1,1,,',
+        '33,"1ESO-A","FUEN","MAT","AUL14",1,2,,',
+        '34,"1ESO-B","MAT1","MAT","AUL14",1,1,,',
+        '35,"1ESO-B","MAT1","MAT","AUL14",1,2,,',
+      ].join('\n')),
+    };
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.evaluate(() => {
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const data = JSON.parse(localStorage.getItem(key));
+      // Al llarg del curs, FUEN ja n'ha fet 5 com a alliberat i ADEL cap.
+      data.stats = { counts: {
+        1: { total: 0, released: 0, guard: 0, other: 0, guardSlots: {} },
+        2: { total: 5, released: 5, guard: 0, other: 0, guardSlots: {} },
+      } };
+      localStorage.setItem(key, JSON.stringify(data));
+    });
+    await page.reload();
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#duties-file').setInputFiles(releasedTwiceDutiesFile);
+    await expect(page.locator('[data-upload-status="duties"]')).toHaveText('OK');
+    await page.getByRole('tab', { name: 'Gestió diària' }).click();
+    await page.locator('#date-input').fill('2026-09-07');
+    await page.locator('#date-input').press('Tab');
+
+    await page.getByRole('tab', { name: 'Grup de sortida' }).click();
+    await page.locator('#group-search').selectOption('10');
+    await page.getByRole('tab', { name: 'Professor/a', exact: true }).click();
+    await page.locator('#professor-search').fill('MAT1');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await page.locator('#auto-assign-guards').click();
+    await expect(page.locator('.auto-assignment-feedback')).toHaveText('2 assignades');
+    // ADEL fa la 1a hora; la 2a ja no la hi torna a donar encara que en tot el curs en faci menys.
+    const selects = page.locator('#coverage-list [data-assignacio]');
+    await expect(selects.first()).toHaveValue('1');
+    await expect(selects.nth(1)).toHaveValue('2');
+
+    // Al desplegable de la 2a hora, primer qui no n'ha fet cap aquell dia.
+    const released = await selects.nth(1).locator('option').evaluateAll((options) => options
+      .map((option) => option.textContent.trim())
+      .filter((text) => text.startsWith('Alliberat')));
+    expect(released).toEqual([
+      'Alliberat · 0 avui - Fuentes Serra, Gabriel · FUEN',
+      'Alliberat · 1 avui - Adell Domènech, Marina · ADEL',
+    ]);
+  });
+
   test('selecciona un professor absent, crea cobertures i conserva la jornada', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);
