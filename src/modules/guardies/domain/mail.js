@@ -15,13 +15,6 @@ export const MAIL_KINDS = ['alliberat', 'pati'];
 // Les proves i els avisos només poden anar a adreces del centre.
 export const MAIL_DOMAINS = ['@iesjosepsuredaiblanes.com', '@iessureda.com'];
 
-export const MAIL_COMMON_FIELDS = [
-  ['nom', 'nom de pila'],
-  ['nom_complet', 'nom i llinatges'],
-  ['data', 'data (dd/mm/aaaa)'],
-  ['dia', 'dia de la setmana'],
-];
-
 export const MAIL_FIELDS = {
   alliberat: [
     ['nom', 'nom de pila'],
@@ -55,27 +48,26 @@ export const MAIL_EXAMPLE_FIELDS = {
   },
 };
 
-// Cada correu és: salutació, l'avís (o els avisos del dia, si n'hi ha més d'un) i comiat.
 // Mentre «active» és fals no s'envia res al professorat (les proves sí).
 export const DEFAULT_MAIL_CONFIG = {
   active: false,
   testEmail: '',
   senderName: 'Guàrdies · IES Josep Sureda i Blanes',
   replyTo: '',
-  greeting: 'Benvolgut/da {nom},',
-  closing: 'Gràcies.',
-  combinedSubject: 'Avisos de guàrdies per al {dia} {data}',
   alliberat: {
     enabled: true,
     subject: 'Guàrdia com a alliberat/da el {data} a {hora}',
-    notice: 'Se us ha assignat una guàrdia amb el grup {grup}, com a alliberat/da, el {data} a {hora}.',
+    body: 'Benvolgut/da {nom},\n\nSe us ha assignat una guàrdia amb el grup {grup}, com a alliberat/da, el {data} a {hora}.\n\nGràcies.',
   },
   pati: {
     enabled: true,
     subject: 'Zona de guàrdia de pati el {data}',
-    notice: 'Se us ha assignat la zona {zona} de guàrdia de pati el {data}, en lloc de la vostra zona habitual ({zona_habitual}).',
+    body: 'Benvolgut/da {nom},\n\nSe us ha assignat la zona {zona} de guàrdia de pati el {data}, en lloc de la vostra zona habitual ({zona_habitual}).\n\nGràcies.',
   },
 };
+
+// Assumpte del correu que porta més d'un avís del mateix dia.
+export const MAIL_COMBINED_SUBJECT = 'Avisos de guàrdies per al {dia} {data}';
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const text = (value, max) => String(value ?? '').slice(0, max);
@@ -94,7 +86,7 @@ export function normalizeMailConfig(raw = {}) {
     return {
       enabled: typeof value.enabled === 'boolean' ? value.enabled : fallback.enabled,
       subject: textOr(value.subject, fallback.subject, 200),
-      notice: textOr(value.notice, fallback.notice, 2000),
+      body: textOr(value.body, fallback.body, 4000),
     };
   };
   const replyTo = text(config.replyTo, 320).trim();
@@ -104,9 +96,6 @@ export function normalizeMailConfig(raw = {}) {
     testEmail: isSchoolEmail(testEmail) ? testEmail : '',
     senderName: textOr(config.senderName, DEFAULT_MAIL_CONFIG.senderName, 120).trim(),
     replyTo: EMAIL.test(replyTo) ? replyTo : '',
-    greeting: textOr(config.greeting, DEFAULT_MAIL_CONFIG.greeting, 500),
-    closing: textOr(config.closing, DEFAULT_MAIL_CONFIG.closing, 1000),
-    combinedSubject: textOr(config.combinedSubject, DEFAULT_MAIL_CONFIG.combinedSubject, 200),
     alliberat: template('alliberat'),
     pati: template('pati'),
   };
@@ -127,22 +116,36 @@ function noticeMinutes(notice) {
   return match ? Number(match[1]) * 60 + Number(match[2]) : 24 * 60;
 }
 
-// Correu d'un professor per a un dia. notices: [{ kind, fields }]. Amb un sol avís,
-// l'assumpte és el d'aquell avís; amb més d'un, l'assumpte comú i els avisos per ordre
-// d'hora.
+const paragraphs = (value) => String(value || '').split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+
+// Correu d'un professor per a un dia. notices: [{ kind, fields }]. Amb un sol avís, és la
+// seva plantilla tal qual. Amb més d'un, els paràgrafs que tots els textos tenen igual al
+// principi (salutació) i al final (comiat) hi surten una sola vegada, i al mig hi van els
+// de cada avís per ordre d'hora.
 export function composeMail(config, notices) {
   const ordered = [...notices]
     .filter((notice) => config[notice.kind])
     .sort((a, b) => noticeMinutes(a) - noticeMinutes(b));
   if (!ordered.length) return null;
-  const fields = ordered[0].fields || {};
-  const subject = ordered.length === 1 ? config[ordered[0].kind].subject : config.combinedSubject;
-  const parts = [
-    renderMailTemplate(config.greeting, fields),
-    ...ordered.map((notice) => renderMailTemplate(config[notice.kind].notice, notice.fields || {})),
-    renderMailTemplate(config.closing, fields),
-  ].map((part) => part.trim()).filter(Boolean);
-  return { subject: renderMailTemplate(subject, fields).trim(), text: parts.join('\n\n') };
+  const rendered = ordered.map((notice) => ({
+    subject: renderMailTemplate(config[notice.kind].subject, notice.fields || {}).trim(),
+    parts: paragraphs(renderMailTemplate(config[notice.kind].body, notice.fields || {})),
+  })).filter((mail, index, all) => all.findIndex((other) => other.parts.join('\n') === mail.parts.join('\n')) === index);
+  if (rendered.length === 1) return { subject: rendered[0].subject, text: rendered[0].parts.join('\n\n') };
+  const shortest = Math.min(...rendered.map(({ parts }) => parts.length));
+  const same = (index) => rendered.every(({ parts }) => parts[index] === rendered[0].parts[index]);
+  let head = 0;
+  while (head < shortest - 1 && same(head)) head += 1;
+  let tail = 0;
+  const fromEnd = (parts, index) => parts[parts.length - 1 - index];
+  while (head + tail < shortest - 1 && rendered.every(({ parts }) => fromEnd(parts, tail) === fromEnd(rendered[0].parts, tail))) tail += 1;
+  const first = rendered[0].parts;
+  const text = [
+    ...first.slice(0, head),
+    ...rendered.flatMap(({ parts }) => parts.slice(head, parts.length - tail)),
+    ...first.slice(first.length - tail),
+  ].join('\n\n');
+  return { subject: renderMailTemplate(MAIL_COMBINED_SUBJECT, ordered[0].fields || {}).trim(), text };
 }
 
 function zonedParts(date, timeZone) {

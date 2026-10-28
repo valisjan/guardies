@@ -45,9 +45,8 @@ const world = (mails) => ({
   'cursos/2026-2027/config/guardies-correus': {
     active: true,
     senderName: 'Guàrdies JSB', replyTo: 'caps.estudis@iesjosepsuredaiblanes.com',
-    greeting: 'Benvolgut {nom},', closing: '', combinedSubject: 'Avisos del {data}',
-    alliberat: { enabled: true, subject: 'Guàrdia el {data} a {hora}', notice: 'Grup {grup} a {hora}.' },
-    pati: { enabled: false, subject: 'Pati {data}', notice: 'Zona {zona}.' },
+    alliberat: { enabled: true, subject: 'Guàrdia el {data} a {hora}', body: 'Benvolgut {nom},\n\nGrup {grup} a {hora}.' },
+    pati: { enabled: false, subject: 'Pati {data}', body: 'Benvolgut {nom},\n\nZona {zona}.' },
   },
   'cursos/2026-2027/guardiesDays/2026-10-21': {
     absenceIds: ['A', 'B', 'C', 'D'], cancelledAssignments: ['C'],
@@ -159,23 +158,12 @@ test('els avisos d\'un professor per al mateix dia van en un sol correu', async 
   const sent = [];
   const summary = await run(firestore, async (message) => sent.push(message));
   assert.deepEqual(sent.map((message) => message.to), ['sergio.lopez@iesjosepsuredaiblanes.com', 'gabriel@iesjosepsuredaiblanes.com']);
-  assert.equal(sent[0].subject, 'Avisos del 21/10/2026');
+  assert.equal(sent[0].subject, 'Avisos de guàrdies per al dimecres 21/10/2026');
   assert.equal(sent[0].text, 'Benvolgut Sergio,\n\nZona Porxada.\n\nGrup 3ESO-B a 4a hora.\n\nGrup 4ESO-A a 6a hora.');
   assert.equal(sent[1].subject, 'Pati 21/10/2026');
   for (const id of ['sisena', 'quarta', 'pati', 'altre']) assert.deepEqual(statusOf(firestore, id), ['enviat', '']);
   assert.equal(summary.enviats, 4);
   assert.equal(summary.correus, 2);
-});
-
-test('la prova amb dos avisos mostra com queda un correu combinat', async () => {
-  const firestore = fakeFirestore(enablePatio(world({
-    prova: { kind: 'prova', template: 'combinat', date: '', email: 'jaerustes@iessureda.com' },
-  })));
-  const sent = [];
-  await run(firestore, async (message) => sent.push(message));
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].subject, '[Prova] Avisos del 20/10/2026');
-  assert.match(sent[0].text, /^Benvolgut Marina,\n\nZona Porxada\.\n\nGrup 3ESO-B a 4a hora\.$/);
 });
 
 test('cada avís s\'envia com a molt una vegada encara que alguna cosa falli', async () => {

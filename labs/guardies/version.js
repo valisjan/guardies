@@ -1,6 +1,14 @@
-export const GUARDIES_VERSION = '1.9.2';
+export const GUARDIES_VERSION = '1.9.3';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.9.3',
+    date: '28 d’octubre de 2026',
+    changes: [
+      'Correus al professorat més senzills: cada tipus d’avís torna a tenir el seu assumpte i el seu text sencers, en dues columnes, amb un sol botó de prova. Ja no hi ha salutació, comiat ni assumpte comuns.',
+      'Quan un professor té més d’un avís el mateix dia, el correu els porta tots i la salutació i el comiat hi surten una sola vegada.',
+    ],
+  },
   {
     version: '1.9.2',
     date: '28 d’octubre de 2026',

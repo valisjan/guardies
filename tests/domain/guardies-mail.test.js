@@ -54,7 +54,7 @@ test('omple els camps de la plantilla i deixa a la vista els que no existeixen',
   assert.equal(renderMailTemplate('Zona {zona} {zonaa}', { zona: 'Pista' }), 'Zona Pista {zonaa}');
 });
 
-test('un correu és salutació, avís i comiat', () => {
+test('amb un sol avís, el correu és la plantilla tal qual', () => {
   const mail = composeMail(DEFAULT_MAIL_CONFIG, [{ kind: 'alliberat', fields: MAIL_EXAMPLE_FIELDS.alliberat }]);
   assert.deepEqual(mail, {
     subject: 'Guàrdia com a alliberat/da el 20/10/2026 a 4a hora',
@@ -62,7 +62,7 @@ test('un correu és salutació, avís i comiat', () => {
   });
 });
 
-test('diversos avisos del mateix dia van en un sol correu, per ordre d\'hora', () => {
+test('diversos avisos del mateix dia van en un sol correu, amb la salutació i el comiat una vegada i per ordre d\'hora', () => {
   const later = { ...MAIL_EXAMPLE_FIELDS.alliberat, hora: '6a hora', horari: '13:05', grup: '4ESO-A' };
   const early = { ...MAIL_EXAMPLE_FIELDS.alliberat, hora: '1a hora', horari: '8:00', grup: '1ESO-C' };
   const mail = composeMail(DEFAULT_MAIL_CONFIG, [
@@ -78,8 +78,17 @@ test('diversos avisos del mateix dia van en un sol correu, per ordre d\'hora', (
     'Se us ha assignat una guàrdia amb el grup 4ESO-A, com a alliberat/da, el 20/10/2026 a 6a hora.',
     'Gràcies.',
   ].join('\n\n'));
-  const bare = composeMail({ ...DEFAULT_MAIL_CONFIG, greeting: '', closing: ' ' }, [{ kind: 'pati', fields: MAIL_EXAMPLE_FIELDS.pati }]);
-  assert.equal(bare.text, 'Se us ha assignat la zona Porxada de guàrdia de pati el 20/10/2026, en lloc de la vostra zona habitual (Pista).');
+  // Si les plantilles no comencen ni acaben igual, cada text hi va sencer.
+  const different = composeMail({
+    ...DEFAULT_MAIL_CONFIG,
+    alliberat: { ...DEFAULT_MAIL_CONFIG.alliberat, body: 'Hola {nom}.\n\nGrup {grup}.' },
+    pati: { ...DEFAULT_MAIL_CONFIG.pati, body: 'Bon dia.\n\nZona {zona}.\n\nSalut.' },
+  }, [{ kind: 'pati', fields: MAIL_EXAMPLE_FIELDS.pati }, { kind: 'alliberat', fields: early }]);
+  assert.equal(different.text, 'Hola Marina.\n\nGrup 1ESO-C.\n\nBon dia.\n\nZona Porxada.\n\nSalut.');
+  // El mateix avís dues vegades hi surt una sola vegada.
+  const once = composeMail(DEFAULT_MAIL_CONFIG, [{ kind: 'pati', fields: MAIL_EXAMPLE_FIELDS.pati }]);
+  const twice = composeMail(DEFAULT_MAIL_CONFIG, [{ kind: 'pati', fields: MAIL_EXAMPLE_FIELDS.pati }, { kind: 'pati', fields: MAIL_EXAMPLE_FIELDS.pati }]);
+  assert.equal(twice.text, once.text);
 });
 
 test('les adreces del centre són les dels dos dominis', () => {
@@ -140,7 +149,7 @@ test('la configuració sempre té les dues plantilles i un remitent vàlid', () 
   assert.equal(config.replyTo, '');
   assert.equal(config.pati.enabled, false);
   assert.equal(config.pati.subject, 'Pati');
-  assert.equal(config.pati.notice, DEFAULT_MAIL_CONFIG.pati.notice);
+  assert.equal(config.pati.body, DEFAULT_MAIL_CONFIG.pati.body);
   assert.deepEqual(config.alliberat, DEFAULT_MAIL_CONFIG.alliberat);
   assert.equal(normalizeMailConfig(null).senderName, DEFAULT_MAIL_CONFIG.senderName);
 });

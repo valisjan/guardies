@@ -7,7 +7,7 @@
 // s'envia; si alguna cosa falla a mig camí, queda així (es veu a Guàrdies) i no es torna
 // a enviar mai.
 import {
-  MAIL_EXAMPLE_FIELDS,
+  MAIL_KINDS,
   composeMail,
   isSchoolEmail,
   mailDueAt,
@@ -80,12 +80,7 @@ export async function processMailQueue({ firestore, send, account = '', now = ne
 function message(mails, config) {
   const [first] = mails;
   const test = first.kind === 'prova';
-  // La prova «combinat» mostra com queda un correu amb dos avisos del mateix dia.
-  const notices = test
-    ? (first.template === 'combinat' ? ['alliberat', 'pati'] : [first.template])
-      .map((kind) => ({ kind, fields: first.template === 'combinat' ? MAIL_EXAMPLE_FIELDS[kind] : first.fields }))
-    : mails.map((mail) => ({ kind: mail.kind, fields: mail.fields }));
-  const mail = composeMail(config, notices);
+  const mail = composeMail(config, mails.map((item) => ({ kind: test ? item.template : item.kind, fields: item.fields })));
   return {
     to: first.email,
     subject: (test ? '[Prova] ' : '') + mail.subject,
@@ -100,8 +95,7 @@ async function decide(mail, today, firestore, cache) {
     cache.configs.set(mail.courseId, normalizeMailConfig(await firestore.read(`cursos/${mail.courseId}/config/guardies-correus`) || {}));
   }
   const config = cache.configs.get(mail.courseId);
-  const known = mail.kind === 'prova' ? [...Object.keys(MAIL_EXAMPLE_FIELDS), 'combinat'].includes(mail.template) : Boolean(config[mail.kind]);
-  if (!known) return { status: 'error', reason: 'Plantilla desconeguda' };
+  if (!MAIL_KINDS.includes(mail.kind === 'prova' ? mail.template : mail.kind)) return { status: 'error', reason: 'Plantilla desconeguda' };
   if (!isSchoolEmail(mail.email)) return { status: 'error', reason: 'Adreça de fora del centre' };
   if (mail.kind !== 'prova') {
     if (mail.date && mail.date < today) return { status: 'cancel·lat', reason: 'El dia ja ha passat' };
