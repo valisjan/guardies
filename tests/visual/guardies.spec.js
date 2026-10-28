@@ -1028,7 +1028,7 @@ test.describe('Guàrdies: comportament existent', () => {
     await page.locator('#professor-search').fill('ADELL');
     await page.locator('#professor-results [data-professor]').first().click();
     await page.locator('#schedule-grid .schedule-item').filter({ hasText: '8:55' }).locator('[data-absence]').check();
-    await expect(page.locator('#coverage-list .coverage-status')).toHaveText('Queda amb el grup');
+    await expect(page.locator('#coverage-list .coverage-status')).toHaveText('Queden amb el seu grup');
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).days?.['2026-09-07']?.revision || 0)).toBeGreaterThan(0);
     await page.waitForTimeout(400);
 
@@ -1080,7 +1080,7 @@ test.describe('Guàrdies: comportament existent', () => {
     const coverage = page.locator('#coverage-list .coverage-item').first();
     await expect(coverage).toContainText('Fuentes Serra, Gabriel');
     // L'estat es diu una sola vegada, sota qui falta: sense repetir-lo sota el desplegable.
-    await expect(coverage.locator('.coverage-status')).toHaveText('Queda amb el grup');
+    await expect(coverage.locator('.coverage-status')).toHaveText('Queden amb el seu grup');
     await expect(coverage.locator('.co-teacher-badge')).toHaveCount(0);
     const sharedAssignment = coverage.locator('[data-assignacio]');
     await expect(sharedAssignment).toHaveCount(1);
@@ -2480,7 +2480,7 @@ test.describe('Guàrdies: revisió visual', () => {
     await expect(current.locator('.now-badge')).toHaveText('Ara');
     await expect(page.locator('#coverage-list .coverage-session').filter({ hasText: '2a hora' }).locator('.session-pending')).toHaveText('1 sense cobrir');
     // L'etiqueta diu qui es fa càrrec, sense cap G al costat del nom.
-    await expect(page.locator('.public-row .status-label').first()).toHaveText('Queda amb el grup');
+    await expect(page.locator('.public-row .status-label').first()).toHaveText('Queden amb el seu grup');
     // Sense zones de pati ni grups de sortida no queda cap capsa buida.
     await expect(page.locator('#coverage-list .pati-session')).toHaveCount(0);
     await expect(page.locator('#outings-line .outings-line')).toHaveCount(0);

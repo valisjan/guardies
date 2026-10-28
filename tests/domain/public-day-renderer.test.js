@@ -10,7 +10,7 @@ test('public view escapes all user content and preserves coverage and observatio
     absent: 'Marta', group: '1ESO-B', subject: 'MAT', room: 'A15', assigned: 'Pere', source: 'guard', cancelled: true,
   }] }] });
   assert.ok(html.includes('Anna &amp; Pere'));
-  assert.ok(html.includes('Queda amb el grup'));
+  assert.ok(html.includes('Queden amb el seu grup'));
   assert.ok(html.includes('No realitzada'));
   assert.ok(html.includes('1ESO-A'));
   assert.ok(html.includes('&lt;script&gt;'));
@@ -52,7 +52,7 @@ test('public view names the role like Pantalles, without a separate G mark', () 
   ] }] });
   assert.match(html, /status-label">Guàrdia<\/span><strong class="readonly-assignment assigned">Pere Blanes<\/strong>/);
   assert.match(html, /status-label">Alliberat\/ada<\/span><strong class="readonly-assignment assigned">Joana Mas<\/strong>/);
-  assert.match(html, /status-label">Queda amb el grup<\/span><strong class="readonly-assignment assigned">Llucia Pons<\/strong>/);
+  assert.match(html, /status-label">Queden amb el seu grup<\/span><strong class="readonly-assignment assigned">Llucia Pons<\/strong>/);
   assert.equal(html.includes('guard-source-mark'), false);
 });
 

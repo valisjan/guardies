@@ -4398,7 +4398,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   const COVERAGE_STATUS_LABELS = {
     open: 'Sense cobrir',
     covered: 'Coberta',
-    coteacher: 'Queda amb el grup',
+    coteacher: 'Queden amb el seu grup',
     returns: 'Torna al seu grup',
     outing: 'Grup de sortida',
     'not-done': 'No realitzada',
@@ -4450,13 +4450,13 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       : status === 'outing'
         ? '<span class="info-only-label">Sense substitució · el grup és fora</span>'
       : !state.canWrite && coTeacher
-        ? `<strong class="readonly-assignment assigned no-print">${escapeHtml(labelProfessor(coTeacher))}</strong><span class="co-teacher-badge no-print">Queda amb el grup</span>`
+        ? `<strong class="readonly-assignment assigned no-print">${escapeHtml(labelProfessor(coTeacher))}</strong><span class="co-teacher-badge no-print">Queden amb el seu grup</span>`
       : !state.canWrite && returnsToGroup
         ? '<strong class="readonly-assignment no-print">Sense substitució</strong><span class="co-teacher-badge no-print">Torna al seu grup</span>'
       : state.canWrite
         ? `<select data-assignacio="${escapeHtml(item.id)}" data-co-teacher="${escapeHtml(classroomPartner)}" ${(hasCandidates || classroomPartner) && !locked ? '' : 'disabled'}>
             <option value="">${returnsToGroup ? 'Sense substitució · torna al seu grup' : 'Sense preassignar'}</option>
-            ${classroomPartner ? `<option value="${escapeHtml(classroomPartner)}" ${classroomPartner === assignat ? 'selected' : ''}>${escapeHtml(labelProfessor(classroomPartner, true))} · Queda amb el grup</option>` : ''}
+            ${classroomPartner ? `<option value="${escapeHtml(classroomPartner)}" ${classroomPartner === assignat ? 'selected' : ''}>${escapeHtml(labelProfessor(classroomPartner, true))} · Queden amb el seu grup</option>` : ''}
             ${candidates.filter((candidate) => candidate.placa !== classroomPartner).map((candidate) => `
               <option
                 class="candidate-option ${candidateOptionClass(candidate)}"
@@ -4497,7 +4497,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         <div class="coverage-assignment-cell ${hasReleasedCandidates ? 'has-released-candidates' : ''} ${hasCandidates && !hasAvailableCandidates ? 'only-unavailable' : ''}">
           ${assignmentControl}
           ${assignatIsConvivencia ? '<span class="convivencia-badge">Convivència · ús excepcional</span>' : ''}
-          <span class="print-only print-assignment">${escapeHtml(assignat ? `${labelProfessor(assignat, true)}${coTeacher ? ' · Queda amb el grup' : ''}` : returnsToGroup ? 'Torna al seu grup' : '')}</span>
+          <span class="print-only print-assignment">${escapeHtml(assignat ? `${labelProfessor(assignat, true)}${coTeacher ? ' · Queden amb el seu grup' : ''}` : returnsToGroup ? 'Torna al seu grup' : '')}</span>
           ${state.canWrite && assignat && !isPati && !coTeacher ? `<label class="completion-toggle no-print"><input type="checkbox" data-cancel-assignment="${escapeHtml(item.id)}" ${cancelled ? 'checked' : ''} ${locked ? 'disabled' : ''} /> No realitzada</label>` : ''}
         </div>
         <div class="coverage-comment-cell">

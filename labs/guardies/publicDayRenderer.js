@@ -21,7 +21,7 @@ export function publicRowStatus(row) {
 const STATUS_LABELS = {
   open: 'Sense cobrir',
   covered: 'Cobreix',
-  coteacher: 'Queda amb el grup',
+  coteacher: 'Queden amb el seu grup',
   returns: 'Torna al seu grup',
   'not-done': 'No realitzada',
   info: 'No cal cobrir-la',

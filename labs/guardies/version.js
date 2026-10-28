@@ -1,6 +1,13 @@
-export const GUARDIES_VERSION = '1.8.2';
+export const GUARDIES_VERSION = '1.8.3';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.8.3',
+    date: '28 d’octubre de 2026',
+    changes: [
+      'Quan el company de codocència es fa càrrec de la classe, ara diu «Queden amb el seu grup» (abans, «Queda amb el grup»).',
+    ],
+  },
   {
     version: '1.8.2',
     date: '26 d’octubre de 2026',
