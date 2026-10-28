@@ -1,11 +1,12 @@
 // Servei de correu de Guàrdies: revisa la cua «guardiesCorreus» i envia els correus que
 // ja toquen. Abans d'enviar-ne cap comprova que el canvi encara és vigent: si la guàrdia
 // o la zona de pati ja no són les mateixes, el dia ja ha passat, l'enviament al
-// professorat està aturat o aquell correu s'ha desactivat, no s'envia. Els avisos d'un
-// mateix professor per a un mateix dia que surten alhora van en un sol correu. Cada avís
-// s'envia com a molt una vegada: primer es marca «enviant» i només si això funciona
-// s'envia; si alguna cosa falla a mig camí, queda així (es veu a Guàrdies) i no es torna
-// a enviar mai.
+// professorat està aturat o aquell correu s'ha desactivat, no s'envia. Cada 5 minuts
+// també revisa els previstos que encara no toquen i anul·la els que ja no calen (la
+// guàrdia o la zona han canviat). Els avisos d'un mateix professor per a un mateix dia
+// que surten alhora van en un sol correu. Cada avís s'envia com a molt una vegada:
+// primer es marca «enviant» i només si això funciona s'envia; si alguna cosa falla a
+// mig camí, queda així (es veu a Guàrdies) i no es torna a enviar mai.
 import {
   MAIL_KINDS,
   composeMail,
@@ -33,11 +34,16 @@ export async function processMailQueue({ firestore, send, account = '', now = ne
     }
   };
 
+  // Els previstos que encara no toquen es revisen cada 5 minuts (per no llegir els dies
+  // a cada minut); les proves no cal.
+  const reviewScheduled = now.getUTCMinutes() % 5 === 0;
   const groups = new Map();
-  for (const mail of pending.filter((item) => mailDueAt(item).getTime() <= now.getTime())) {
+  for (const mail of pending) {
+    const due = mailDueAt(mail).getTime() <= now.getTime();
+    if (!due && (!reviewScheduled || mail.kind === 'prova')) continue;
     let decision;
     try {
-      decision = await decide(mail, today, firestore, cache);
+      decision = await decide(mail, today, firestore, cache, due);
     } catch (error) {
       // No s'ha pogut llegir Firestore: es torna a provar a la propera revisió.
       log(`No s'ha pogut revisar ${mail.id}: ${error.message}`);
@@ -50,6 +56,8 @@ export async function processMailQueue({ firestore, send, account = '', now = ne
       else summary.cancellats += 1;
       continue;
     }
+    // Encara vigent però no toca: es queda a la cua.
+    if (!due) continue;
     // Un correu per professor i dia; cada prova, a part.
     const key = mail.kind === 'prova' ? `prova:${mail.id}` : [mail.courseId, mail.email, mail.date].join('|');
     if (!groups.has(key)) groups.set(key, []);
@@ -90,7 +98,9 @@ function message(mails, config) {
   };
 }
 
-async function decide(mail, today, firestore, cache) {
+// due: el correu ja toca. Si encara no, només s'anul·la si ja no cal; l'interruptor i
+// l'activació de cada tipus es miren a l'hora d'enviar-lo (es poden canviar abans).
+async function decide(mail, today, firestore, cache, due = true) {
   if (!cache.configs.has(mail.courseId)) {
     cache.configs.set(mail.courseId, normalizeMailConfig(await firestore.read(`cursos/${mail.courseId}/config/guardies-correus`) || {}));
   }
@@ -99,8 +109,8 @@ async function decide(mail, today, firestore, cache) {
   if (!isSchoolEmail(mail.email)) return { status: 'error', reason: 'Adreça de fora del centre' };
   if (mail.kind !== 'prova') {
     if (mail.date && mail.date < today) return { status: 'cancel·lat', reason: 'El dia ja ha passat' };
-    if (!config.active) return { status: 'cancel·lat', reason: 'Enviament al professorat aturat' };
-    if (!config[mail.kind].enabled) return { status: 'cancel·lat', reason: 'Correu desactivat' };
+    if (due && !config.active) return { status: 'cancel·lat', reason: 'Enviament al professorat aturat' };
+    if (due && !config[mail.kind].enabled) return { status: 'cancel·lat', reason: 'Correu desactivat' };
     if (!(await stillValid(mail, firestore, cache))) return { status: 'cancel·lat', reason: 'Ja no és vigent' };
   }
   return {};

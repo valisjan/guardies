@@ -1,6 +1,7 @@
-// Funció programada de Netlify: de dilluns a divendres en horari escolar, cada minut revisa
-// la cua de correus de Guàrdies i envia els que toquen des del compte del centre
-// (vegeu netlify/lib/correus.mjs). Variables d'entorn (només per a funcions):
+// Funció programada de Netlify: cada minut revisa la cua de correus de Guàrdies i envia
+// els que toquen des del compte del centre (vegeu netlify/lib/correus.mjs). Quan toca
+// cada avís ho decideix la seva hora de sortida; les proves surten sempre al moment.
+// Variables d'entorn (només per a funcions):
 //   CORREU_COMPTE, CORREU_CONTRASENYA          compte que envia i contrasenya d'aplicació
 //   GUARDIES_FIRESTORE_COMPTE, GUARDIES_FIRESTORE_CLAU   compte de servei amb accés a Firestore
 import nodemailer from 'nodemailer';
@@ -35,6 +36,5 @@ export default async () => {
   if (summary.pendents) console.log(JSON.stringify(summary));
 };
 
-// Hora UTC. De 6 a 14 h cobreix de 8:00 a 15:00 tant a l'hivern (UTC+1) com a l'estiu
-// (UTC+2): els correus programats per a les 8:00 i els del migdia hi caben sempre.
-export const config = { schedule: '* 6-14 * * 1-5' };
+// Cada minut, tots els dies: unes 43.000 execucions al mes (el pla gratuït en permet 125.000).
+export const config = { schedule: '* * * * *' };

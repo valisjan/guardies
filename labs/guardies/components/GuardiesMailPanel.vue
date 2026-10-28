@@ -159,7 +159,7 @@ async function sendTest(kind) {
       sendAfter: now,
     }]);
     recent.value = await loadRecentGuardiesMails(courseId.value).catch(() => recent.value);
-    feedback.value = `Prova a la cua per a ${recipient}. Un dia feiner entre les 8:00 i les 15:00 surt en un minut; si no, a les 8:00 del següent dia feiner.`;
+    feedback.value = `Prova a la cua per a ${recipient}. Surt en un minut.`;
     feedbackKind.value = 'success';
   } catch (error) {
     feedback.value = `No s'ha pogut enviar la prova. ${friendlyError(error)}`;
@@ -200,6 +200,7 @@ async function sendTest(kind) {
             <ul class="mail-rules">
               <li><b>Canvis per a avui:</b> surten al cap de 2 minuts (dies feiners, de 8:00 a 15:00).</li>
               <li><b>Canvis per a un altre dia:</b> surten a les 8:00 d’aquell dia.</li>
+              <li>Si la guàrdia o la zona canvien abans d’hora, el correu previst s’anul·la.</li>
               <li>Amb més d’un avís el mateix dia, el professor rep un sol correu.</li>
             </ul>
           </div>

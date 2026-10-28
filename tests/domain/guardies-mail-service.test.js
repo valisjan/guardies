@@ -123,6 +123,36 @@ test('els avisos d\'un altre dia esperen fins a les 8:00 d\'aquell dia', async (
   assert.deepEqual(statusOf(firestore, 'dema'), ['enviat', '']);
 });
 
+test('un avís previst que ja no cal s\'anul·la abans d\'hora, a la revisió de cada 5 minuts', async () => {
+  // Per a demà, però la guàrdia E ara la fa un altre professor.
+  const docs = world({ 'ja-no-cal': { date: '2026-10-22', teacherId: '5', check: { absenceId: 'E' } }, 'encara-cal': { date: '2026-10-22', check: { absenceId: 'E' } } });
+  const firestore = fakeFirestore(docs);
+  const sent = [];
+  await run(firestore, async (message) => sent.push(message), new Date('2026-10-21T10:01:00+02:00'));
+  assert.deepEqual(statusOf(firestore, 'ja-no-cal'), ['pendent', ''], 'entre revisions no es llegeix res');
+  await run(firestore, async (message) => sent.push(message), new Date('2026-10-21T10:05:00+02:00'));
+  assert.deepEqual(statusOf(firestore, 'ja-no-cal'), ['cancel·lat', 'Ja no és vigent']);
+  assert.deepEqual(statusOf(firestore, 'encara-cal'), ['pendent', '']);
+  assert.equal(sent.length, 0);
+});
+
+test('mentre l\'enviament està aturat, un avís previst i vigent es manté fins a la seva hora', async () => {
+  const docs = world({ dema: { date: '2026-10-22', check: { absenceId: 'E' } } });
+  docs['cursos/2026-2027/config/guardies-correus'].active = false;
+  const firestore = fakeFirestore(docs);
+  await run(firestore, async () => {}, new Date('2026-10-21T10:05:00+02:00'));
+  assert.deepEqual(statusOf(firestore, 'dema'), ['pendent', '']);
+  await run(firestore, async () => {}, new Date('2026-10-22T08:00:00+02:00'));
+  assert.deepEqual(statusOf(firestore, 'dema'), ['cancel·lat', 'Enviament al professorat aturat']);
+});
+
+test('les proves surten a qualsevol hora, també el cap de setmana', async () => {
+  const firestore = fakeFirestore(world({ prova: { kind: 'prova', template: 'alliberat', date: '', email: 'jaerustes@iessureda.com', sendAfter: '2026-10-24T20:00:00.000Z' } }));
+  const sent = [];
+  await run(firestore, async (message) => sent.push(message), new Date('2026-10-24T22:01:00+02:00'));
+  assert.deepEqual(sent.map((message) => message.to), ['jaerustes@iessureda.com']);
+});
+
 test('amb l\'enviament al professorat aturat, els avisos no surten i les proves sí', async () => {
   const docs = world({
     avis: {},

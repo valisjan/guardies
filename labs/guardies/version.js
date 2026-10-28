@@ -1,6 +1,14 @@
-export const GUARDIES_VERSION = '1.9.3';
+export const GUARDIES_VERSION = '1.9.4';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.9.4',
+    date: '28 d’octubre de 2026',
+    changes: [
+      'Correus al professorat: si la guàrdia o la zona de pati canvien abans que surti el correu, el correu previst s’anul·la (en uns 5 minuts) i deixa de sortir a «Previstos».',
+      'Les proves surten en un minut a qualsevol hora i qualsevol dia.',
+    ],
+  },
   {
     version: '1.9.3',
     date: '28 d’octubre de 2026',
