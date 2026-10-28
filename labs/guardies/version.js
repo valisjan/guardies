@@ -1,6 +1,13 @@
-export const GUARDIES_VERSION = '1.9.6';
+export const GUARDIES_VERSION = '1.9.7';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.9.7',
+    date: '28 d’octubre de 2026',
+    changes: [
+      'Correus al professorat: en una plaça amb substitut, el correu va a qui ocupa la plaça i ja no a qui és de baixa (les fitxes de baixa conserven el mateix codi Untis).',
+    ],
+  },
   {
     version: '1.9.6',
     date: '28 d’octubre de 2026',

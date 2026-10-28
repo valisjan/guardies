@@ -96,7 +96,7 @@ test('identical server confirmation restores metadata without re-emitting config
     const { subscribeGuardiesData, subscribeDirectoryVersion } = await import('/src/services/guardiesStorage.js');
     const f = window.__firestoreTest;
     let changes = 0, metadata, invalidations = 0;
-    localStorage.setItem('quota_guardies_teacher_dir:test', JSON.stringify({ version: 1, data: [], savedAt: Date.now() }));
+    localStorage.setItem('quota_guardies_teacher_dir_v2:test', JSON.stringify({ version: 1, data: [], savedAt: Date.now() }));
     const stop = subscribeGuardiesData('test', () => changes++, () => {}, { onMetadata: (value) => { metadata = value; } });
     const stopVersion = subscribeDirectoryVersion('test', () => invalidations++);
     const cache = { fromCache: true, hasPendingWrites: false };

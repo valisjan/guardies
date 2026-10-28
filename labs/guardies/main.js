@@ -27,6 +27,7 @@ import {
   patioAssignmentsForDate,
 } from '../../src/modules/guardies/domain/patio.js';
 import { applyPatioZoneOverride } from '../../src/modules/guardies/domain/patio-edit.js';
+import { findDirectoryTeacher } from '../../src/modules/guardies/domain/teacherDirectory.js';
 import {
   mailDateFields,
   mailHourFields,
@@ -4562,9 +4563,9 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const aliases = new Set([placa, short, place?.curta]
       .map(normalizeSearch)
       .filter(Boolean));
-    const directory = state.teacherDirectory.find((teacher) => (
-      [teacher.id, teacher.codiUntis].some((alias) => aliases.has(normalizeSearch(alias)))
-    ));
+    // Primer la fitxa amb aquest identificador i després la del codi Untis: amb un
+    // substitut, la fitxa de qui és de baixa pot tenir el mateix codi.
+    const directory = findDirectoryTeacher(state.teacherDirectory, aliases);
     const untis = state.professoratUntis?.professors?.get(short)
       || Array.from(state.professoratUntis?.professors?.values?.() || [])
         .find((professor) => normalizeSearch(professor.codi) === normalizeSearch(short));

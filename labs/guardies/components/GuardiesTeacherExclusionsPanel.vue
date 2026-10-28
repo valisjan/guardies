@@ -2,6 +2,7 @@
 import { friendlyError } from '../../../src/utils/friendlyError.js';
 import { computed, ref } from 'vue';
 import { saveGuardiesExcludedTeachers } from '../../../src/services/guardiesStorage.js';
+import { findDirectoryTeacher } from '../../../src/modules/guardies/domain/teacherDirectory.js';
 import { useGuardiesStore } from '../stores/guardies.js';
 
 const state = useGuardiesStore();
@@ -18,13 +19,10 @@ function normalize(value) {
 }
 
 const rows = computed(() => {
-  const directoryByCode = new Map(state.teacherDirectory
-    .map((teacher) => [normalize(teacher.codiUntis || teacher.id), teacher]));
   const combined = state.allProfessorOptions
     .filter((teacher) => teacher.name && normalize(teacher.name) !== normalize(teacher.short || teacher.placa))
     .map((teacher) => {
-      const code = normalize(teacher.short || teacher.placa);
-      const directory = directoryByCode.get(code);
+      const directory = findDirectoryTeacher(state.teacherDirectory, [teacher.short || teacher.placa]);
       return {
         teacherId: teacher.placa,
         code: teacher.short || teacher.placa,

@@ -41,13 +41,15 @@ import {
 } from '../modules/guardies/domain/workflow';
 import { GUARD_HISTORY_VERSION } from '../modules/guardies/domain/guard-history.js';
 import { normalizeMailConfig } from '../modules/guardies/domain/mail.js';
+import { isActiveTeacherRecord } from '../modules/guardies/domain/teacherDirectory.js';
 
 const FILE_KINDS = new Set(['reference', 'untis', 'duties']);
 const DELETABLE_FILE_KINDS = new Set([...FILE_KINDS, 'schedule']);
 const MAX_FILE_BYTES = 850 * 1024;
 const E2E_PREFIX = 'quota-e2e-guardies:';
 const STAFF_DOMAIN = 'iesjosepsuredaiblanes.com';
-const DIR_CACHE_PREFIX = 'quota_guardies_teacher_dir:';
+// v2: el directori ja no inclou les fitxes de baixa (una còpia d'abans les podria tenir).
+const DIR_CACHE_PREFIX = 'quota_guardies_teacher_dir_v2:';
 const DIR_CACHE_TTL = 60 * 60 * 1000;
 
 function getE2EData(cursId) {
@@ -661,7 +663,7 @@ export async function loadGuardiesTeacherDirectory(cursId) {
       { id: 'FUEN', codiUntis: 'FUEN', name: 'Fuentes Serra, Gabriel', email: 'gabriel.fuentes@iesjosepsuredaiblanes.com' },
       { id: 'SANZ', codiUntis: 'SANZ', name: 'Sanz Vidal, Clara', email: 'clara.sanz@iesjosepsuredaiblanes.com' },
       { id: 'MAT1', codiUntis: 'MAT1', name: 'Professor Matemàtiques', email: 'matematiques@iesjosepsuredaiblanes.com' },
-      ...getE2ECollection('professors').map((teacher) => ({
+      ...getE2ECollection('professors').filter(isActiveTeacherRecord).map((teacher) => ({
         id: teacher.id,
         codiUntis: teacher.codiUntis || teacher.id,
         name: teacher.nom || '',
@@ -709,7 +711,8 @@ export async function loadGuardiesTeacherDirectory(cursId) {
     if (code) emailByCode.set(code.toLowerCase(), email);
     if (nameKey) emailByName.set(nameKey, email);
   });
-  const directory = courseSnapshot.docs.map((item) => {
+  // Les fitxes de baixa conserven el codi Untis de la plaça que ocupa el substitut.
+  const directory = courseSnapshot.docs.filter((item) => isActiveTeacherRecord(item.data())).map((item) => {
     const data = item.data();
     const codiUntis = String(data.codiUntis || item.id).trim();
     const name = String(data.nom || '').trim();
