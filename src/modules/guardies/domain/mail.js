@@ -5,11 +5,22 @@
 // cua de Firestore.
 
 export const MAIL_TIME_ZONE = 'Europe/Madrid';
-// Entre les 8:00 i les 15:00 dels dies feiners, al cap de 2 minuts (per si el canvi
-// es desfà); fora d'aquest horari, a les 8:00 del següent dia feiner.
+// Un correu surt el mateix dia de l'avís: els canvis per a avui, entre les 8:00 i les
+// 15:00, al cap de 2 minuts (per si el canvi es desfà); els d'un altre dia, a les 8:00
+// d'aquell dia.
 export const MAIL_WINDOW = { start: 8 * 60, end: 15 * 60, delayMinutes: 2 };
 
 export const MAIL_KINDS = ['alliberat', 'pati'];
+
+// Les proves i els avisos només poden anar a adreces del centre.
+export const MAIL_DOMAINS = ['@iesjosepsuredaiblanes.com', '@iessureda.com'];
+
+export const MAIL_COMMON_FIELDS = [
+  ['nom', 'nom de pila'],
+  ['nom_complet', 'nom i llinatges'],
+  ['data', 'data (dd/mm/aaaa)'],
+  ['dia', 'dia de la setmana'],
+];
 
 export const MAIL_FIELDS = {
   alliberat: [
@@ -44,23 +55,36 @@ export const MAIL_EXAMPLE_FIELDS = {
   },
 };
 
+// Cada correu és: salutació, l'avís (o els avisos del dia, si n'hi ha més d'un) i comiat.
+// Mentre «active» és fals no s'envia res al professorat (les proves sí).
 export const DEFAULT_MAIL_CONFIG = {
+  active: false,
+  testEmail: '',
   senderName: 'Guàrdies · IES Josep Sureda i Blanes',
   replyTo: '',
+  greeting: 'Benvolgut/da {nom},',
+  closing: 'Gràcies.',
+  combinedSubject: 'Avisos de guàrdies per al {dia} {data}',
   alliberat: {
     enabled: true,
     subject: 'Guàrdia com a alliberat/da el {data} a {hora}',
-    body: 'Benvolgut/da {nom},\n\nSe us ha assignat una guàrdia amb el grup {grup}, com a alliberat/da, el {data} a {hora}.\n\nGràcies.',
+    notice: 'Se us ha assignat una guàrdia amb el grup {grup}, com a alliberat/da, el {data} a {hora}.',
   },
   pati: {
     enabled: true,
     subject: 'Zona de guàrdia de pati el {data}',
-    body: 'Benvolgut/da {nom},\n\nSe us ha assignat la zona {zona} de guàrdia de pati el {data}, en lloc de la vostra zona habitual ({zona_habitual}).\n\nGràcies.',
+    notice: 'Se us ha assignat la zona {zona} de guàrdia de pati el {data}, en lloc de la vostra zona habitual ({zona_habitual}).',
   },
 };
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const text = (value, max) => String(value ?? '').slice(0, max);
+const textOr = (value, fallback, max) => text(typeof value === 'string' ? value : fallback, max);
+
+export function isSchoolEmail(value) {
+  const email = String(value || '').trim().toLowerCase();
+  return EMAIL.test(email) && MAIL_DOMAINS.some((domain) => email.endsWith(domain));
+}
 
 export function normalizeMailConfig(raw = {}) {
   const config = raw && typeof raw === 'object' ? raw : {};
@@ -69,14 +93,20 @@ export function normalizeMailConfig(raw = {}) {
     const fallback = DEFAULT_MAIL_CONFIG[kind];
     return {
       enabled: typeof value.enabled === 'boolean' ? value.enabled : fallback.enabled,
-      subject: text(typeof value.subject === 'string' ? value.subject : fallback.subject, 200),
-      body: text(typeof value.body === 'string' ? value.body : fallback.body, 4000),
+      subject: textOr(value.subject, fallback.subject, 200),
+      notice: textOr(value.notice, fallback.notice, 2000),
     };
   };
   const replyTo = text(config.replyTo, 320).trim();
+  const testEmail = text(config.testEmail, 320).trim().toLowerCase();
   return {
-    senderName: text(typeof config.senderName === 'string' ? config.senderName : DEFAULT_MAIL_CONFIG.senderName, 120).trim(),
+    active: config.active === true,
+    testEmail: isSchoolEmail(testEmail) ? testEmail : '',
+    senderName: textOr(config.senderName, DEFAULT_MAIL_CONFIG.senderName, 120).trim(),
     replyTo: EMAIL.test(replyTo) ? replyTo : '',
+    greeting: textOr(config.greeting, DEFAULT_MAIL_CONFIG.greeting, 500),
+    closing: textOr(config.closing, DEFAULT_MAIL_CONFIG.closing, 1000),
+    combinedSubject: textOr(config.combinedSubject, DEFAULT_MAIL_CONFIG.combinedSubject, 200),
     alliberat: template('alliberat'),
     pati: template('pati'),
   };
@@ -88,6 +118,31 @@ export function renderMailTemplate(template, fields = {}) {
   return String(template || '').replace(/\{([a-z_]+)\}/g, (match, key) => (
     Object.prototype.hasOwnProperty.call(fields, key) ? String(fields[key] ?? '') : match
   ));
+}
+
+// Minuts des de mitjanit de «8:00»; el pati és a les 10:45.
+function noticeMinutes(notice) {
+  const value = notice.kind === 'pati' ? '10:45' : String(notice.fields?.horari || '');
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : 24 * 60;
+}
+
+// Correu d'un professor per a un dia. notices: [{ kind, fields }]. Amb un sol avís,
+// l'assumpte és el d'aquell avís; amb més d'un, l'assumpte comú i els avisos per ordre
+// d'hora.
+export function composeMail(config, notices) {
+  const ordered = [...notices]
+    .filter((notice) => config[notice.kind])
+    .sort((a, b) => noticeMinutes(a) - noticeMinutes(b));
+  if (!ordered.length) return null;
+  const fields = ordered[0].fields || {};
+  const subject = ordered.length === 1 ? config[ordered[0].kind].subject : config.combinedSubject;
+  const parts = [
+    renderMailTemplate(config.greeting, fields),
+    ...ordered.map((notice) => renderMailTemplate(config[notice.kind].notice, notice.fields || {})),
+    renderMailTemplate(config.closing, fields),
+  ].map((part) => part.trim()).filter(Boolean);
+  return { subject: renderMailTemplate(subject, fields).trim(), text: parts.join('\n\n') };
 }
 
 function zonedParts(date, timeZone) {
@@ -110,8 +165,33 @@ function zonedTime(year, month, day, minutes, timeZone) {
   return new Date(guess - (shownUtc - guess));
 }
 
-export function mailSendAfter(now = new Date(), { timeZone = MAIL_TIME_ZONE, start, end, delayMinutes } = MAIL_WINDOW) {
+const isoDay = ({ year, month, day }) => `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+export function mailToday(now = new Date(), timeZone = MAIL_TIME_ZONE) {
+  return isoDay(zonedParts(now, timeZone));
+}
+
+// Les 8:00 del dia «aaaa-mm-dd».
+export function mailDayStart(date, { timeZone = MAIL_TIME_ZONE, start } = MAIL_WINDOW) {
+  const [year, month, day] = String(date || '').split('-').map(Number);
+  return zonedTime(year, month, day, start, timeZone);
+}
+
+// Quan pot sortir un correu de la cua: mai abans de les 8:00 del seu dia, encara que
+// s'hagués programat abans (amb la regla antiga o des d'un altre dia).
+export function mailDueAt(mail) {
+  const sendAfter = new Date(mail?.sendAfter || 0).getTime();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(mail?.date || ''))) return new Date(sendAfter);
+  return new Date(Math.max(sendAfter, mailDayStart(mail.date).getTime()));
+}
+
+// date: dia de l'avís. Si és un altre dia, a les 8:00 d'aquell dia. Si és avui (o és una
+// prova, sense dia): dins de l'horari, al cap de 2 minuts; abans de les 8:00, a les 8:00;
+// després, a les 8:00 del següent dia feiner (i el servei el descarta perquè el dia ja
+// ha passat).
+export function mailSendAfter(now = new Date(), date = '', { timeZone = MAIL_TIME_ZONE, start, end, delayMinutes } = MAIL_WINDOW) {
   const local = zonedParts(now, timeZone);
+  if (date && date > isoDay(local)) return mailDayStart(date, { timeZone, start });
   const weekday = local.weekday >= 1 && local.weekday <= 5;
   if (weekday && local.minutes >= start && local.minutes <= end) {
     return new Date(now.getTime() + delayMinutes * 60 * 1000);

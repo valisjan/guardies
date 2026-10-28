@@ -33,92 +33,158 @@ function fakeFirestore(docs) {
   };
 }
 
+// Dimecres 21/10/2026 a les 10:00.
 const NOW = new Date('2026-10-21T10:00:00+02:00');
 const ago = (minutes) => new Date(NOW.getTime() - minutes * 60_000).toISOString();
 const base = {
-  courseId: '2026-2027', kind: 'alliberat', template: 'alliberat', date: '2026-10-22', teacherId: '91051',
-  email: 'sergio.lopez@iesjosepsuredaiblanes.com', fields: { nom: 'Sergio', grup: '3ESO-B', data: '22/10/2026', hora: '4a hora' },
+  courseId: '2026-2027', kind: 'alliberat', template: 'alliberat', date: '2026-10-21', teacherId: '91051',
+  email: 'sergio.lopez@iesjosepsuredaiblanes.com', fields: { nom: 'Sergio', grup: '3ESO-B', data: '21/10/2026', dia: 'dimecres', hora: '4a hora', horari: '11:15' },
   check: { absenceId: 'A' }, status: 'pendent', reason: '', sendAfter: ago(1),
 };
 const world = (mails) => ({
   'cursos/2026-2027/config/guardies-correus': {
+    active: true,
     senderName: 'Guàrdies JSB', replyTo: 'caps.estudis@iesjosepsuredaiblanes.com',
-    alliberat: { enabled: true, subject: 'Guàrdia el {data} a {hora}', body: 'Benvolgut {nom}, grup {grup}.' },
-    pati: { enabled: false, subject: 'Pati {data}', body: 'Zona {zona}' },
+    greeting: 'Benvolgut {nom},', closing: '', combinedSubject: 'Avisos del {data}',
+    alliberat: { enabled: true, subject: 'Guàrdia el {data} a {hora}', notice: 'Grup {grup} a {hora}.' },
+    pati: { enabled: false, subject: 'Pati {data}', notice: 'Zona {zona}.' },
+  },
+  'cursos/2026-2027/guardiesDays/2026-10-21': {
+    absenceIds: ['A', 'B', 'C', 'D'], cancelledAssignments: ['C'],
+    assignments: {
+      A: { teacherId: '91051', source: 'released' },
+      B: { teacherId: '2', source: 'guard' },
+      C: { teacherId: '5', source: 'released' },
+      D: { teacherId: '91051', source: 'released' },
+    },
   },
   'cursos/2026-2027/guardiesDays/2026-10-22': {
-    absenceIds: ['A', 'B', 'C'], cancelledAssignments: ['C'],
-    assignments: { A: { teacherId: '91051', source: 'released' }, B: { teacherId: '2', source: 'guard' }, C: { teacherId: '5', source: 'released' } },
+    absenceIds: ['E'], cancelledAssignments: [], assignments: { E: { teacherId: '91051', source: 'released' } },
   },
-  'cursos/2026-2027/guardies/pati': { weekdayTeachers: { 4: [{ teacherId: '7', zoneOverrides: { '2026-10-22': 'zona-2' } }] } },
+  'cursos/2026-2027/guardies/pati': {
+    weekdayTeachers: { 3: [{ teacherId: '7', zoneOverrides: { '2026-10-21': 'zona-2' } }, { teacherId: '91051', zoneOverrides: { '2026-10-21': 'zona-2' } }] },
+  },
   ...Object.fromEntries(Object.entries(mails).map(([id, extra]) => [`guardiesCorreus/${id}`, { ...base, ...extra }])),
 });
+const enablePatio = (docs) => {
+  docs['cursos/2026-2027/config/guardies-correus'].pati.enabled = true;
+  return docs;
+};
 const run = (firestore, send, now = NOW) => processMailQueue({ firestore, send, now, account: 'guardies@iesjosepsuredaiblanes.com' });
+const statusOf = (firestore, id) => {
+  const { status, reason } = firestore.store.get(`guardiesCorreus/${id}`).data;
+  return [status, reason];
+};
 
 test('envia només els correus que ja toquen i que encara són vigents', async () => {
   const firestore = fakeFirestore(world({
     envia: {},
     'encara-no': { sendAfter: new Date(NOW.getTime() + 60_000).toISOString() },
-    'ja-no-hi-es': { teacherId: '2', check: { absenceId: 'B' } },
-    anul_lada: { teacherId: '5', check: { absenceId: 'C' } },
+    'ja-no-hi-es': { teacherId: '2', email: 'b@iesjosepsuredaiblanes.com', check: { absenceId: 'B' } },
+    anul_lada: { teacherId: '5', email: 'c@iesjosepsuredaiblanes.com', check: { absenceId: 'C' } },
     passat: { date: '2026-10-01' },
-    'pati-desactivat': { kind: 'pati', template: 'pati', teacherId: '7', check: { day: '4', zoneId: 'zona-2' } },
+    'pati-desactivat': { kind: 'pati', template: 'pati', teacherId: '7', check: { day: '3', zoneId: 'zona-2' } },
     fora: { email: 'algu@gmail.com' },
-    prova: { kind: 'prova', template: 'alliberat', date: '', email: 'admin@iesjosepsuredaiblanes.com' },
+    prova: { kind: 'prova', template: 'alliberat', date: '', email: 'jaerustes@iessureda.com' },
   }));
   const sent = [];
   const summary = await run(firestore, async (message) => sent.push(message));
   assert.deepEqual(sent.map((message) => [message.to, message.subject]), [
-    ['sergio.lopez@iesjosepsuredaiblanes.com', 'Guàrdia el 22/10/2026 a 4a hora'],
-    ['admin@iesjosepsuredaiblanes.com', '[Prova] Guàrdia el 22/10/2026 a 4a hora'],
+    ['sergio.lopez@iesjosepsuredaiblanes.com', 'Guàrdia el 21/10/2026 a 4a hora'],
+    ['jaerustes@iessureda.com', '[Prova] Guàrdia el 21/10/2026 a 4a hora'],
   ]);
   assert.deepEqual(sent[0], {
-    to: 'sergio.lopez@iesjosepsuredaiblanes.com', subject: 'Guàrdia el 22/10/2026 a 4a hora', text: 'Benvolgut Sergio, grup 3ESO-B.',
+    to: 'sergio.lopez@iesjosepsuredaiblanes.com', subject: 'Guàrdia el 21/10/2026 a 4a hora', text: 'Benvolgut Sergio,\n\nGrup 3ESO-B a 4a hora.',
     senderName: 'Guàrdies JSB', replyTo: 'caps.estudis@iesjosepsuredaiblanes.com',
   });
-  const status = (id) => [firestore.store.get(`guardiesCorreus/${id}`).data.status, firestore.store.get(`guardiesCorreus/${id}`).data.reason];
-  assert.deepEqual(status('envia'), ['enviat', '']);
-  assert.deepEqual(status('encara-no'), ['pendent', '']);
-  assert.deepEqual(status('ja-no-hi-es'), ['cancel·lat', 'Ja no és vigent']);
-  assert.deepEqual(status('anul_lada'), ['cancel·lat', 'Ja no és vigent']);
-  assert.deepEqual(status('passat'), ['cancel·lat', 'El dia ja ha passat']);
-  assert.deepEqual(status('pati-desactivat'), ['cancel·lat', 'Correu desactivat']);
-  assert.deepEqual(status('fora'), ['error', 'Adreça de fora del centre']);
+  assert.deepEqual(statusOf(firestore, 'envia'), ['enviat', '']);
+  assert.deepEqual(statusOf(firestore, 'encara-no'), ['pendent', '']);
+  assert.deepEqual(statusOf(firestore, 'ja-no-hi-es'), ['cancel·lat', 'Ja no és vigent']);
+  assert.deepEqual(statusOf(firestore, 'anul_lada'), ['cancel·lat', 'Ja no és vigent']);
+  assert.deepEqual(statusOf(firestore, 'passat'), ['cancel·lat', 'El dia ja ha passat']);
+  assert.deepEqual(statusOf(firestore, 'pati-desactivat'), ['cancel·lat', 'Correu desactivat']);
+  assert.deepEqual(statusOf(firestore, 'fora'), ['error', 'Adreça de fora del centre']);
   assert.equal(summary.enviats, 2);
+  assert.equal(summary.correus, 2);
 
   await run(firestore, async (message) => sent.push(message));
   assert.equal(sent.length, 2, 'una segona revisió no torna a enviar res');
 });
 
-test('el canvi de zona de pati només surt si la zona encara és la mateixa', async () => {
+test('els avisos d\'un altre dia esperen fins a les 8:00 d\'aquell dia', async () => {
+  // Programat amb la regla antiga: per a demà, però «ja tocava».
+  const firestore = fakeFirestore(world({ dema: { date: '2026-10-22', check: { absenceId: 'E' } } }));
+  const sent = [];
+  await run(firestore, async (message) => sent.push(message));
+  await run(firestore, async (message) => sent.push(message), new Date('2026-10-22T07:59:00+02:00'));
+  assert.equal(sent.length, 0);
+  assert.deepEqual(statusOf(firestore, 'dema'), ['pendent', '']);
+  await run(firestore, async (message) => sent.push(message), new Date('2026-10-22T08:00:00+02:00'));
+  assert.equal(sent.length, 1);
+  assert.deepEqual(statusOf(firestore, 'dema'), ['enviat', '']);
+});
+
+test('amb l\'enviament al professorat aturat, els avisos no surten i les proves sí', async () => {
   const docs = world({
-    pati: { kind: 'pati', template: 'pati', teacherId: '7', check: { day: '4', zoneId: 'zona-2' }, fields: { zona: 'Porxada', data: '22/10/2026' } },
-    'pati-canviat': { kind: 'pati', template: 'pati', teacherId: '7', check: { day: '4', zoneId: 'zona-3' } },
+    avis: {},
+    prova: { kind: 'prova', template: 'pati', date: '', email: 'jaerustes@iessureda.com', fields: { nom: 'Marina', zona: 'Porxada', data: '20/10/2026' } },
   });
-  docs['cursos/2026-2027/config/guardies-correus'].pati.enabled = true;
+  docs['cursos/2026-2027/config/guardies-correus'].active = false;
   const firestore = fakeFirestore(docs);
   const sent = [];
   await run(firestore, async (message) => sent.push(message));
-  assert.deepEqual(sent.map((message) => message.subject), ['Pati 22/10/2026']);
-  assert.equal(firestore.store.get('guardiesCorreus/pati-canviat').data.status, 'cancel·lat');
+  assert.deepEqual(sent.map((message) => [message.to, message.subject, message.text]), [
+    ['jaerustes@iessureda.com', '[Prova] Pati 20/10/2026', 'Benvolgut Marina,\n\nZona Porxada.'],
+  ]);
+  assert.deepEqual(statusOf(firestore, 'avis'), ['cancel·lat', 'Enviament al professorat aturat']);
 });
 
-test('sense configuració desada fa servir els textos per defecte', async () => {
+test('sense configuració desada no s\'envia res al professorat', async () => {
   const docs = world({ envia: {} });
   delete docs['cursos/2026-2027/config/guardies-correus'];
+  const firestore = fakeFirestore(docs);
   const sent = [];
-  await run(fakeFirestore(docs), async (message) => sent.push(message));
-  assert.equal(sent[0].text, 'Benvolgut/da Sergio,\n\nSe us ha assignat una guàrdia amb el grup 3ESO-B, com a alliberat/da, el 22/10/2026 a 4a hora.\n\nGràcies.');
-  assert.equal(sent[0].replyTo, '');
+  await run(firestore, async (message) => sent.push(message));
+  assert.equal(sent.length, 0);
+  assert.deepEqual(statusOf(firestore, 'envia'), ['cancel·lat', 'Enviament al professorat aturat']);
 });
 
-test('cada correu s\'envia com a molt una vegada encara que alguna cosa falli', async () => {
+test('els avisos d\'un professor per al mateix dia van en un sol correu', async () => {
+  const firestore = fakeFirestore(enablePatio(world({
+    sisena: { check: { absenceId: 'D' }, fields: { ...base.fields, hora: '6a hora', horari: '13:05', grup: '4ESO-A' } },
+    quarta: {},
+    pati: { kind: 'pati', template: 'pati', check: { day: '3', zoneId: 'zona-2' }, fields: { ...base.fields, zona: 'Porxada' } },
+    altre: { kind: 'pati', template: 'pati', teacherId: '7', email: 'gabriel@iesjosepsuredaiblanes.com', check: { day: '3', zoneId: 'zona-2' }, fields: { nom: 'Gabriel', zona: 'Porxada', data: '21/10/2026' } },
+  })));
+  const sent = [];
+  const summary = await run(firestore, async (message) => sent.push(message));
+  assert.deepEqual(sent.map((message) => message.to), ['sergio.lopez@iesjosepsuredaiblanes.com', 'gabriel@iesjosepsuredaiblanes.com']);
+  assert.equal(sent[0].subject, 'Avisos del 21/10/2026');
+  assert.equal(sent[0].text, 'Benvolgut Sergio,\n\nZona Porxada.\n\nGrup 3ESO-B a 4a hora.\n\nGrup 4ESO-A a 6a hora.');
+  assert.equal(sent[1].subject, 'Pati 21/10/2026');
+  for (const id of ['sisena', 'quarta', 'pati', 'altre']) assert.deepEqual(statusOf(firestore, id), ['enviat', '']);
+  assert.equal(summary.enviats, 4);
+  assert.equal(summary.correus, 2);
+});
+
+test('la prova amb dos avisos mostra com queda un correu combinat', async () => {
+  const firestore = fakeFirestore(enablePatio(world({
+    prova: { kind: 'prova', template: 'combinat', date: '', email: 'jaerustes@iessureda.com' },
+  })));
+  const sent = [];
+  await run(firestore, async (message) => sent.push(message));
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].subject, '[Prova] Avisos del 20/10/2026');
+  assert.match(sent[0].text, /^Benvolgut Marina,\n\nZona Porxada\.\n\nGrup 3ESO-B a 4a hora\.$/);
+});
+
+test('cada avís s\'envia com a molt una vegada encara que alguna cosa falli', async () => {
   const firestore = fakeFirestore(world({
     'gmail-falla': {},
     'marca-falla': { email: 'marca.falla@iesjosepsuredaiblanes.com' },
-    'sense-firestore': { date: '2026-10-23' },
+    'sense-firestore': { courseId: 'altre' },
   }));
-  firestore.fails.read.add('cursos/2026-2027/guardiesDays/2026-10-23');
+  firestore.fails.read.add('cursos/altre/config/guardies-correus');
   firestore.fails.status.add('marca-falla:enviat');
   const sent = [];
   const send = async (message) => {

@@ -1,6 +1,16 @@
-export const GUARDIES_VERSION = '1.9.0';
+export const GUARDIES_VERSION = '1.9.1';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.9.1',
+    date: '28 d’octubre de 2026',
+    changes: [
+      'Correus al professorat: el correu surt el mateix dia de l’avís. Els canvis per a avui, al cap de 2 minuts (dies feiners de 8:00 a 15:00); els d’un altre dia, a les 8:00 d’aquell dia.',
+      'Si un professor té més d’un avís per al mateix dia, rep un sol correu amb tots, per ordre d’hora.',
+      'Interruptor general «Enviament al professorat»: mentre està aturat no s’envia res al professorat (les proves sí) i els avisos surten a «Darrers correus» com a no enviats.',
+      'Panell nou: una columna per a cada tipus d’avís, amb la previsualització com un correu; la salutació i el comiat són comuns. Les proves poden anar a una altra adreça del centre.',
+    ],
+  },
   {
     version: '1.9.0',
     date: '28 d’octubre de 2026',

@@ -4945,44 +4945,220 @@ button.ghost {
   }
 }
 
-/* Correus al professorat: plantilles, previsualització i darrers enviaments */
+/* Correus al professorat: estat de l'enviament, una columna per tipus d'avís, el que és
+   comú a tots els correus i els darrers enviaments */
 @media screen {
-  .mail-block { display: grid; gap: 14px; }
+  .mail-block { display: grid; gap: 16px; }
 
-  .mail-intro,
+  .mail-form {
+    display: contents;
+    min-width: 0;
+    margin: 0;
+    border: 0;
+    padding: 0;
+  }
+
+  .mail-block h3 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: var(--text-md);
+  }
+
+  .mail-overview {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .mail-master {
+    display: grid;
+    align-content: space-between;
+    gap: 10px;
+    border: 1px solid var(--amber-border);
+    border-left-width: 4px;
+    border-radius: var(--radius-small);
+    background: var(--amber-soft);
+    padding: 12px 14px;
+  }
+
+  .mail-master.is-on {
+    border-color: var(--green-border);
+    background: var(--green-soft);
+  }
+
+  .mail-master strong { display: block; font-size: var(--text-md); }
+  .mail-master small { display: block; margin-top: 2px; color: var(--text-soft); font-size: var(--text-sm); }
+
   .mail-service {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin: 0;
     color: var(--muted);
     font-size: var(--text-sm);
   }
 
-  .mail-service.is-missing { color: var(--amber); font-weight: 700; }
-
-  .mail-form {
-  display: contents;
-  min-width: 0;
-  margin: 0;
-  border: 0;
-  padding: 0;
-}
-
-.mail-sender {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 10px;
+  .mail-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green-dot);
   }
 
-  .mail-sender label,
-  .mail-template > label {
+  .mail-service.is-missing { color: var(--amber); font-weight: 700; }
+  .mail-service.is-missing .mail-dot { background: var(--amber-dot); }
+
+  .mail-rules {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    background: var(--surface-subtle);
+    padding: 12px 14px;
+    font-size: var(--text-sm);
+  }
+
+  .mail-rules ul {
+    display: grid;
+    gap: 4px;
+    margin: 6px 0 0;
+    padding-left: 18px;
+    color: var(--text-soft);
+  }
+
+  /* Interruptors (casella amb aspecte d'interruptor) */
+  .mail-switch {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: var(--text-sm);
+    font-weight: 700;
+  }
+
+  /* La casilla, invisible, cobreix tot l'interruptor: es pot prémer a qualsevol punt. */
+  .mail-switch input {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .mail-switch-track {
+    position: relative;
+    flex: none;
+    width: 36px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--border-strong);
+    transition: background var(--dur-fast) var(--ease-out);
+  }
+
+  .mail-switch-track::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--surface);
+    box-shadow: var(--shadow-small);
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+
+  .mail-switch input:checked + .mail-switch-track { background: var(--green-dot); }
+  .mail-switch input:checked + .mail-switch-track::after { transform: translateX(16px); }
+
+  .mail-switch input:focus-visible + .mail-switch-track {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  .mail-switch-large { align-items: flex-start; gap: 12px; font-weight: 400; }
+  .mail-switch-large .mail-switch-track { margin-top: 1px; width: 44px; height: 24px; }
+  .mail-switch-large .mail-switch-track::after { width: 20px; height: 20px; }
+  .mail-switch-large input:checked + .mail-switch-track::after { transform: translateX(20px); }
+
+  /* Una columna per tipus d'avís */
+  .mail-kinds {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .mail-template {
+    --kind: var(--primary);
+    --kind-soft: var(--primary-soft);
+    --kind-border: var(--primary-border);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    overflow: hidden;
+    border: 1px solid var(--kind-border);
+    border-top: 4px solid var(--kind);
+    border-radius: var(--radius-small);
+    background: var(--surface);
+    box-shadow: var(--shadow-small);
+  }
+
+  .mail-template.is-pati {
+    --kind: var(--green-dot);
+    --kind-soft: var(--green-soft);
+    --kind-border: var(--green-border);
+  }
+
+  .mail-template-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--kind-soft);
+    padding: 12px 14px;
+  }
+
+  .mail-template-head p {
+    margin: 2px 0 0;
+    color: var(--text-soft);
+    font-size: var(--text-sm);
+  }
+
+  .mail-template-body {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .mail-template.is-off .mail-template-body { opacity: 0.55; }
+
+  .mail-template-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 0 14px 14px;
+  }
+
+  .mail-common-preview .mail-template-foot { padding: 0; }
+
+  .mail-template-foot small { color: var(--muted); font-size: var(--text-xs); }
+
+  .mail-template-body > label,
+  .mail-common label {
     display: grid;
     gap: 4px;
     font-size: var(--text-sm);
     font-weight: 700;
   }
 
-  .mail-sender input,
   .mail-template input[type="text"],
-  .mail-template textarea {
+  .mail-template textarea,
+  .mail-common input {
     width: 100%;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -4992,44 +5168,27 @@ button.ghost {
     font-weight: 400;
   }
 
-  .mail-sender input,
-  .mail-template input[type="text"] {
+  .mail-template input[type="text"],
+  .mail-common input {
     min-height: 36px;
     padding: 0 10px;
   }
 
   .mail-template textarea {
-    min-height: 120px;
+    min-height: 76px;
     padding: 8px 10px;
     resize: vertical;
   }
 
-  .mail-sender input:focus-visible,
   .mail-template input[type="text"]:focus-visible,
-  .mail-template textarea:focus-visible {
+  .mail-template textarea:focus-visible,
+  .mail-common input:focus-visible {
     border-color: var(--primary-border);
     outline: 2px solid color-mix(in srgb, var(--primary) 25%, transparent);
     outline-offset: 0;
   }
 
-  .mail-template {
-    display: grid;
-    justify-items: stretch;
-    gap: 10px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-small);
-    padding: 12px;
-  }
-
-  .mail-template > button { justify-self: start; }
-  .mail-template header { display: grid; gap: 2px; }
-  .mail-template header small { color: var(--muted); font-size: var(--text-xs); }
-
-  .mail-toggle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
+  .mail-common input[aria-invalid="true"] { border-color: var(--coral-border); }
 
   .mail-fields {
     display: flex;
@@ -5053,28 +5212,79 @@ button.ghost {
 
   .mail-fields button:hover { border-color: var(--border-strong); }
 
+  /* Previsualització com un correu */
   .mail-preview {
-    border-left: 3px solid var(--primary-border);
-    border-radius: 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
     background: var(--surface-subtle);
-    padding: 8px 12px;
     font-size: var(--text-sm);
   }
 
-  .mail-preview p { margin: 4px 0 0; white-space: pre-line; }
+  .mail-preview dl {
+    display: grid;
+    gap: 2px;
+    margin: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+  }
+
+  .mail-preview dl div { display: flex; gap: 8px; }
+  .mail-preview dt { flex: none; width: 64px; color: var(--muted); font-size: var(--text-xs); line-height: 1.6; }
+  .mail-preview dd { margin: 0; }
+  .mail-preview-subject { font-weight: 700; }
+  .mail-preview p { margin: 0; padding: 10px 12px; white-space: pre-line; }
+
+  /* Comú a tots els correus */
+  .mail-common {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    background: var(--surface-subtle);
+    padding: 14px;
+  }
+
+  .mail-common-settings,
+  .mail-common-preview {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+  }
+
+  .mail-common-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .mail-common-grid .is-wide { grid-column: 1 / -1; }
+  .mail-common .mail-preview { background: var(--surface); }
+
+  .mail-test-address small { color: var(--muted); font-size: var(--text-xs); font-weight: 400; }
+  .mail-test-address small.is-error { color: var(--coral); font-weight: 700; }
 
   .mail-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 10px;
+    border-top: 1px solid transparent;
+    background: var(--surface);
+    padding: 10px 0;
   }
+
+  .mail-actions.is-dirty { border-top-color: var(--border); }
+  .mail-unsaved { color: var(--amber); font-size: var(--text-sm); font-weight: 700; }
 
   .mail-feedback { font-size: var(--text-sm); font-weight: 700; }
   .mail-feedback.is-success { color: var(--green); }
   .mail-feedback.is-error { color: var(--coral); }
 
-  .mail-recent h3 { margin: 0 0 6px; font-size: var(--text-md); }
+  .mail-recent h3 { margin: 0 0 6px; }
 
   .mail-recent ul {
     display: grid;
@@ -5107,6 +5317,17 @@ button.ghost {
   .mail-recent li.is-pendent small { color: var(--amber); }
   .mail-recent li.is-error small { color: var(--coral); }
   .mail-recent li.is-cancelled small { color: var(--muted); }
+}
+
+@media screen and (max-width: 900px) {
+  .mail-overview,
+  .mail-kinds,
+  .mail-common { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media screen and (max-width: 560px) {
+  .mail-common-grid { grid-template-columns: minmax(0, 1fr); }
+  .mail-template-head { flex-direction: column; }
 }
 
 /* Vista del professorat (només lectura): la regla antiga de 4 columnes amb

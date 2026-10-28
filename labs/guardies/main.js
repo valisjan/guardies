@@ -1803,8 +1803,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
 
   function queueTeacherMails(courseId, mails) {
     if (!mails.length) return;
-    const sendAfter = mailSendAfter(new Date());
-    queueGuardiesMails(courseId, mails.map((mail) => ({ ...mail, sendAfter })))
+    const now = new Date();
+    queueGuardiesMails(courseId, mails.map((mail) => ({ ...mail, sendAfter: mailSendAfter(now, mail.date) })))
       .catch((error) => showError(`No s'ha pogut programar el correu al professorat. ${friendlyError(error)}`));
     const withoutEmail = mails.filter((mail) => !mail.email).map((mail) => mail.fields.nom_complet || labelProfessor(mail.teacherId));
     if (withoutEmail.length) showError(`No es pot avisar per correu ${withoutEmail.join(', ')}: no hi ha cap correu a Professorat.`);

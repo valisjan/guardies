@@ -2343,11 +2343,11 @@ test.describe('Guàrdies: correus al professorat', () => {
     expect(await mails(page)).toHaveLength(1);
   });
 
-  test('fora de l\'horari, el correu queda per a les 8:00 del següent dia feiner', async ({ page }) => {
-    // Divendres a les 17:00: dilluns a les 8:00.
-    await startClockAt(page, '2026-09-11T17:00:00+02:00');
+  test('un canvi per a un altre dia queda per a les 8:00 d\'aquell dia', async ({ page }) => {
+    // Divendres a les 10:00, per a dilluns: dilluns a les 8:00 (no al cap de 2 minuts).
+    await startClockAt(page, '2026-09-04T10:00:00+02:00');
     await releasedAssignment(page);
-    await expect.poll(async () => (await mails(page)).map((mail) => mail.sendAfter)).toEqual(['2026-09-14T06:00:00.000Z']);
+    await expect.poll(async () => (await mails(page)).map((mail) => [mail.date, mail.sendAfter])).toEqual([['2026-09-07', '2026-09-07T06:00:00.000Z']]);
   });
 
   test('canviar a mà la zona de pati d\'algú li programa un correu; tornar a la rotació, no', async ({ page }) => {
@@ -2389,27 +2389,48 @@ test.describe('Guàrdies: correus al professorat', () => {
     await uploadConfiguration(page);
     await page.getByRole('tab', { name: 'Configuració' }).click();
     await page.locator('#mail-panel summary').click();
+    const panel = page.locator('#mail-panel');
+    // Fins que algú l'activa, no s'envia res al professorat.
+    await expect(panel.getByRole('switch', { name: 'Enviament al professorat' })).not.toBeChecked();
+    await expect(panel.locator('.mail-master')).toContainText('Enviament al professorat: aturat');
+
     const template = page.locator('[data-mail-template="alliberat"]');
     await expect(template.locator('.mail-preview')).toContainText('Se us ha assignat una guàrdia amb el grup 3ESO-B, com a alliberat/da, el 20/10/2026 a 4a hora.');
 
-    await template.getByLabel('Text: Guàrdia com a alliberat/da').fill('Hola ');
+    await template.getByLabel('Avís: Guàrdia com a alliberat/da').fill('Hola ');
     await template.getByRole('button', { name: '{nom}' }).click();
-    await expect(template.getByLabel('Text: Guàrdia com a alliberat/da')).toHaveValue('Hola {nom}');
-    await expect(template.locator('.mail-preview p')).toHaveText('Hola Marina');
-    await page.locator('[data-mail-template="pati"] .mail-toggle input').uncheck();
-    await page.locator('#mail-panel').getByRole('button', { name: 'Desa', exact: true }).click();
+    await expect(template.getByLabel('Avís: Guàrdia com a alliberat/da')).toHaveValue('Hola {nom}');
+    await expect(template.locator('.mail-preview p')).toHaveText('Benvolgut/da Marina, Hola Marina Gràcies.');
+    await panel.getByRole('switch', { name: 'Correu actiu: Canvi de zona de pati' }).uncheck();
+    await expect(page.locator('[data-mail-template="pati"]')).toHaveClass(/is-off/);
+    await expect(panel.locator('.mail-unsaved')).toHaveText('Hi ha canvis sense desar.');
+    await panel.getByRole('button', { name: 'Desa', exact: true }).click();
     await expect(page.locator('.mail-feedback')).toHaveText('Desat.');
 
     await page.reload();
     await page.getByRole('tab', { name: 'Configuració' }).click();
     await page.locator('#mail-panel summary').click();
-    await expect(page.locator('[data-mail-template="alliberat"]').getByLabel('Text: Guàrdia com a alliberat/da')).toHaveValue('Hola {nom}');
-    await expect(page.locator('[data-mail-template="pati"] .mail-toggle input')).not.toBeChecked();
+    await expect(page.locator('[data-mail-template="alliberat"]').getByLabel('Avís: Guàrdia com a alliberat/da')).toHaveValue('Hola {nom}');
+    await expect(panel.getByRole('switch', { name: 'Correu actiu: Canvi de zona de pati' })).not.toBeChecked();
 
-    await page.locator('[data-mail-template="alliberat"]').getByRole('button', { name: 'Envia’m una prova' }).click();
+    await page.locator('[data-mail-template="alliberat"]').getByRole('button', { name: 'Envia una prova' }).click();
     await expect(page.locator('.mail-feedback')).toContainText('Prova a la cua per a e2e.admin@iesjosepsuredaiblanes.com');
     await expect(page.locator('.mail-recent li').first()).toContainText('Prova');
-    expect((await mails(page)).map((mail) => [mail.kind, mail.template, mail.email])).toEqual([['prova', 'alliberat', 'e2e.admin@iesjosepsuredaiblanes.com']]);
+
+    // Les proves poden anar a una altra adreça del centre; la prova combinada, amb els dos avisos.
+    await panel.getByLabel('Adreça per a les proves').fill('algu@gmail.com');
+    await expect(panel.locator('.mail-test-address small')).toContainText('Ha de ser una adreça del centre');
+    await panel.getByLabel('Adreça per a les proves').fill('jaerustes@iessureda.com');
+    await expect(page.locator('[data-mail-template="pati"] .mail-template-foot small')).toHaveText('a jaerustes@iessureda.com');
+    await expect(panel.locator('.mail-common-preview .mail-preview-subject')).toHaveText('Avisos de guàrdies per al dimarts 20/10/2026');
+    await panel.locator('.mail-common-preview').getByRole('button', { name: 'Envia una prova' }).click();
+    await expect(page.locator('.mail-feedback')).toContainText('Prova a la cua per a jaerustes@iessureda.com');
+    await expect(page.locator('.mail-recent li').first()).toContainText('dos avisos');
+    expect((await mails(page)).map((mail) => [mail.kind, mail.template, mail.email]).sort()).toEqual([
+      ['prova', 'alliberat', 'e2e.admin@iesjosepsuredaiblanes.com'],
+      ['prova', 'combinat', 'jaerustes@iessureda.com'],
+    ]);
+    expect((await e2eData(page)).mailConfig.testEmail).toBe('jaerustes@iessureda.com');
   });
 });
 
