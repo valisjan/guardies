@@ -82,9 +82,26 @@ function statusLabel(mail) {
 }
 
 function mailDetail(mail) {
-  if (mail.kind === 'prova') return `Prova · ${KIND_LABELS[mail.template] || mail.template}`;
+  if (mail.kind === 'prova') return `Exemple de «${KINDS.find((item) => item.kind === mail.template)?.title || mail.template}»`;
   const fields = mail.fields || {};
-  return [KIND_LABELS[mail.kind] || mail.kind, fields.data, fields.hora, fields.zona].filter(Boolean).join(' · ');
+  return [fields.data, fields.hora, fields.zona].filter(Boolean).join(' · ');
+}
+
+// El correu d'una fila del registre: el que va sortir (el desa el servei en enviar-lo) o,
+// si encara no ha sortit, com sortiria ara (amb els altres avisos previstos del mateix
+// professor i dia, que aniran junts).
+function mailMessage(mail) {
+  if (mail.subject || mail.text) return { subject: mail.subject, text: mail.text, note: '' };
+  const test = mail.kind === 'prova';
+  const together = test || mail.status === 'enviat'
+    ? [mail]
+    : scheduledMails.value.filter((other) => other.kind !== 'prova' && other.email === mail.email && other.date === mail.date);
+  const composed = composeMail(config, together.map((item) => ({ kind: test ? item.template : item.kind, fields: item.fields })));
+  return {
+    subject: `${test ? '[Prova] ' : ''}${composed?.subject || ''}`,
+    text: composed?.text || '',
+    note: mail.status === 'enviat' ? 'Text refet amb la plantilla actual: aquest correu es va enviar abans que se’n desés el text.' : 'Així sortirà si no canvia res abans.',
+  };
 }
 
 async function load() {
@@ -273,6 +290,7 @@ async function sendTest(kind) {
                   >{{ token(field) }}</button>
                 </div>
                 <div class="mail-preview" aria-label="Previsualització">
+                  <span class="mail-preview-label">Previsualització · així el rebrà el professorat</span>
                   <dl>
                     <div><dt>Per a</dt><dd>{{ EXAMPLE_NAME }}</dd></div>
                     <div><dt>Assumpte</dt><dd class="mail-preview-subject">{{ preview(item.kind)?.subject }}</dd></div>
@@ -281,10 +299,11 @@ async function sendTest(kind) {
                 </div>
               </div>
               <footer class="mail-template-foot">
+                <span class="mail-badge is-prova">Prova</span>
+                <small>{{ testRecipient ? `Envia aquest exemple a ${testRecipient}` : 'Indica on van les proves' }}</small>
                 <button type="button" class="ghost" :disabled="!testRecipient || !!testing || saving" @click="sendTest(item.kind)">
                   {{ testing === item.kind ? 'Enviant…' : 'Envia’m una prova' }}
                 </button>
-                <small v-if="testRecipient">a {{ testRecipient }}</small>
               </footer>
             </article>
           </div>
@@ -301,10 +320,25 @@ async function sendTest(kind) {
           <template v-for="list in mailLists" :key="list.key">
             <h4>{{ list.title }}</h4>
             <ul :data-mail-list="list.key">
-              <li v-for="mail in list.mails" :key="mail.id" :class="`is-${mail.status}`">
-                <strong>{{ mail.kind === 'prova' ? mail.email : mail.fields?.nom_complet || mail.email }}</strong>
-                <span>{{ mailDetail(mail) }}</span>
-                <small>{{ statusLabel(mail) }}</small>
+              <li v-for="mail in list.mails" :key="mail.id" :class="[`is-${mail.status}`, { 'is-test': mail.kind === 'prova' }]">
+                <details class="mail-log">
+                  <summary>
+                    <span class="mail-badge" :class="`is-${mail.kind}`">{{ KIND_LABELS[mail.kind] || mail.kind }}</span>
+                    <span class="mail-log-who">
+                      <strong>{{ mail.kind === 'prova' ? mail.email : mail.fields?.nom_complet || mail.email }}</strong>
+                      <span>{{ mailDetail(mail) }}</span>
+                    </span>
+                    <small>{{ statusLabel(mail) }}</small>
+                  </summary>
+                  <div class="mail-preview mail-log-message">
+                    <dl>
+                      <div><dt>Per a</dt><dd>{{ mail.email }}</dd></div>
+                      <div><dt>Assumpte</dt><dd class="mail-preview-subject">{{ mailMessage(mail).subject }}</dd></div>
+                    </dl>
+                    <p>{{ mailMessage(mail).text }}</p>
+                    <small v-if="mailMessage(mail).note" class="mail-log-note">{{ mailMessage(mail).note }}</small>
+                  </div>
+                </details>
               </li>
             </ul>
           </template>

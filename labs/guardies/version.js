@@ -1,6 +1,14 @@
-export const GUARDIES_VERSION = '1.9.4';
+export const GUARDIES_VERSION = '1.9.5';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.9.5',
+    date: '28 d’octubre de 2026',
+    changes: [
+      'Correus al professorat: a «Darrers correus», en fer clic a una fila es veu el correu que ha sortit (assumpte i text). Si encara no ha sortit, com sortirà, junt amb els altres avisos del mateix professor i dia.',
+      'Els camps del formulari es distingeixen millor de la previsualització, i les proves tenen la seva franja i l’etiqueta «Prova», també al registre.',
+    ],
+  },
   {
     version: '1.9.4',
     date: '28 d’octubre de 2026',

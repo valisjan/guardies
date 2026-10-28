@@ -25,9 +25,9 @@ export async function processMailQueue({ firestore, send, account = '', now = ne
   const today = mailToday(now);
   const cache = { configs: new Map(), days: new Map(), patio: new Map() };
   const summary = { pendents: pending.length, enviats: 0, correus: 0, cancellats: 0, errors: 0, reintents: 0 };
-  const setStatus = async (mail, status, reason = '') => {
+  const setStatus = async (mail, status, reason = '', extra = {}) => {
     try {
-      return await firestore.setStatus(mail, status, reason, now);
+      return await firestore.setStatus(mail, status, reason, now, extra);
     } catch (error) {
       log(`No s'ha pogut marcar ${mail.id} com a ${status}: ${error.message}`);
       return false;
@@ -71,14 +71,16 @@ export async function processMailQueue({ firestore, send, account = '', now = ne
       else summary.reintents += 1;
     }
     if (!reserved.length) continue;
+    const sending = message(reserved, cache.configs.get(reserved[0].courseId));
     try {
-      await send(message(reserved, cache.configs.get(reserved[0].courseId)));
+      await send(sending);
     } catch (error) {
       for (const mail of reserved) await setStatus(mail, 'error', String(error?.message || error).slice(0, 300));
       summary.errors += reserved.length;
       continue;
     }
-    for (const mail of reserved) await setStatus(mail, 'enviat');
+    // Cada avís guarda el correu tal com ha sortit (el registre de Guàrdies el mostra).
+    for (const mail of reserved) await setStatus(mail, 'enviat', '', { subject: sending.subject, text: sending.text });
     summary.enviats += reserved.length;
     summary.correus += 1;
   }

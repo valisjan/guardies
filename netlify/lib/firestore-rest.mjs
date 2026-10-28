@@ -81,10 +81,12 @@ export function firestoreRest({ base = FIRESTORE_BASE, token }) {
     },
 
     // Canvia l'estat només si el correu no ha canviat des que s'ha llegit (precondició
-    // dins del cos d'un commit). Retorna false si ha canviat.
-    async setStatus(mail, status, reason = '', now = new Date()) {
+    // dins del cos d'un commit). Retorna false si ha canviat. extra: camps de text que es
+    // desen alhora (l'assumpte i el text del correu enviat).
+    async setStatus(mail, status, reason = '', now = new Date(), extra = {}) {
       const fields = { status: { stringValue: status }, reason: { stringValue: reason } };
       if (status === 'enviat') fields.sentAt = { timestampValue: now.toISOString() };
+      for (const [key, value] of Object.entries(extra)) fields[key] = { stringValue: String(value ?? '') };
       try {
         const result = await request('POST', `${base}:commit`, {
           writes: [{

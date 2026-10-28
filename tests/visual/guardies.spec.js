@@ -2421,10 +2421,10 @@ test.describe('Guàrdies: correus al professorat', () => {
     await panel.getByLabel('Adreça per a les proves').fill('algu@gmail.com');
     await expect(panel.locator('.mail-sender small.is-error')).toHaveText('Ha de ser una adreça del centre.');
     await panel.getByLabel('Adreça per a les proves').fill('jaerustes@iessureda.com');
-    await expect(page.locator('[data-mail-template="pati"] .mail-template-foot small')).toHaveText('a jaerustes@iessureda.com');
+    await expect(page.locator('[data-mail-template="pati"] .mail-template-foot small')).toHaveText('Envia aquest exemple a jaerustes@iessureda.com');
     await page.locator('[data-mail-template="pati"]').getByRole('button', { name: 'Envia’m una prova' }).click();
     await expect(page.locator('.mail-feedback')).toContainText('Prova a la cua per a jaerustes@iessureda.com');
-    await expect(page.locator('[data-mail-list="previstos"] li').filter({ hasText: 'Prova · Pati' })).toHaveCount(1);
+    await expect(page.locator('[data-mail-list="previstos"] li').filter({ hasText: 'Exemple de «Canvi de zona de pati»' })).toHaveCount(1);
     expect((await mails(page)).map((mail) => [mail.kind, mail.template, mail.email]).sort()).toEqual([
       ['prova', 'alliberat', 'e2e.admin@iesjosepsuredaiblanes.com'],
       ['prova', 'pati', 'jaerustes@iessureda.com'],
@@ -2438,14 +2438,21 @@ test.describe('Guàrdies: correus al professorat', () => {
     await page.evaluate(() => {
       const key = 'quota-e2e-guardies:e2e-2026';
       const data = JSON.parse(localStorage.getItem(key));
-      const mail = (id, status, extra) => ({
+      const mail = (id, status, extra, fields = {}) => ({
         id, kind: 'alliberat', template: 'alliberat', date: '2026-09-08', status, reason: '', createdAt: `2026-09-07T0${id.length}:00:00.000Z`,
-        fields: { nom_complet: `Professor ${id}`, data: '08/09/2026', hora: '1a hora' }, ...extra,
+        email: `${id}@iesjosepsuredaiblanes.com`,
+        fields: { nom: 'Pere', nom_complet: `Professor ${id}`, data: '08/09/2026', dia: 'dimarts', hora: '1a hora', horari: '8:00', grup: '1ESO-A', ...fields },
+        ...extra,
       });
+      // «aviat» i «tard»: dos avisos previstos del mateix professor per al mateix dia.
       data.mails = Object.fromEntries([
-        mail('tard', 'pendent', { sendAfter: '2026-09-09T06:00:00.000Z' }),
-        mail('aviat', 'pendent', { sendAfter: '2026-09-08T06:00:00.000Z' }),
-        mail('enviat', 'enviat', { sendAfter: '2026-09-07T06:00:00.000Z', sentAt: '2026-09-07T06:01:00.000Z' }),
+        mail('tard', 'pendent', { email: 'pere@iesjosepsuredaiblanes.com', sendAfter: '2026-09-09T06:00:00.000Z' }, { hora: '3a hora', horari: '9:50', grup: '2ESO-B' }),
+        mail('aviat', 'pendent', { email: 'pere@iesjosepsuredaiblanes.com', sendAfter: '2026-09-08T06:00:00.000Z' }),
+        mail('enviat', 'enviat', {
+          sendAfter: '2026-09-07T06:00:00.000Z', sentAt: '2026-09-07T06:01:00.000Z',
+          subject: 'Avisos de guàrdies per al dimarts 08/09/2026', text: 'Benvolgut/da Professor,\n\nAvís enviat de veritat.',
+        }),
+        mail('antic', 'enviat', { sendAfter: '2026-09-07T05:00:00.000Z', sentAt: '2026-09-07T05:01:00.000Z' }),
         mail('descartat', 'cancel·lat', { reason: 'Enviament al professorat aturat' }),
         mail('fallat', 'error', { reason: 'Daily user sending limit exceeded' }),
       ].map((item) => [item.id, item]));
@@ -2454,9 +2461,28 @@ test.describe('Guàrdies: correus al professorat', () => {
     await page.getByRole('tab', { name: 'Configuració' }).click();
     await page.locator('#mail-panel summary').click();
     await expect(page.locator('[data-mail-list="previstos"] li strong')).toHaveText(['Professor aviat', 'Professor tard']);
-    await expect(page.locator('[data-mail-list="enviats"] li strong')).toHaveText(['Professor enviat']);
+    await expect(page.locator('[data-mail-list="enviats"] li strong')).toHaveText(['Professor enviat', 'Professor antic']);
     await expect(page.locator('.mail-recent')).not.toContainText('descartat');
     await expect(page.locator('.mail-recent')).not.toContainText('fallat');
+
+    // En fer-hi clic, cada fila mostra el correu: el que va sortir o com sortirà.
+    const sent = page.locator('[data-mail-list="enviats"] li').first();
+    await expect(sent.locator('.mail-log-message')).toBeHidden();
+    await sent.locator('summary').click();
+    await expect(sent.locator('.mail-log-message .mail-preview-subject')).toHaveText('Avisos de guàrdies per al dimarts 08/09/2026');
+    await expect(sent.locator('.mail-log-message p')).toHaveText('Benvolgut/da Professor, Avís enviat de veritat.');
+    await expect(sent.locator('.mail-log-note')).toHaveCount(0);
+    const old = page.locator('[data-mail-list="enviats"] li').nth(1);
+    await old.locator('summary').click();
+    await expect(old.locator('.mail-log-note')).toContainText('Text refet amb la plantilla actual');
+    const scheduled = page.locator('[data-mail-list="previstos"] li').first();
+    await scheduled.locator('summary').click();
+    await expect(scheduled.locator('.mail-log-message .mail-preview-subject')).toHaveText('Avisos de guàrdies per al dimarts 08/09/2026');
+    await expect(scheduled.locator('.mail-log-note')).toHaveText('Així sortirà si no canvia res abans.');
+    await expect(scheduled.locator('.mail-log-message p')).toHaveText(
+      'Benvolgut/da Pere, Se us ha assignat una guàrdia amb el grup 1ESO-A, com a alliberat/da, el 08/09/2026 a 1a hora. '
+      + 'Se us ha assignat una guàrdia amb el grup 2ESO-B, com a alliberat/da, el 08/09/2026 a 3a hora. Gràcies.',
+    );
   });
 });
 

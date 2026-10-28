@@ -19,11 +19,11 @@ function fakeFirestore(docs) {
       return [...store].filter(([path, doc]) => path.startsWith('guardiesCorreus/') && doc.data.status === 'pendent')
         .map(([path, doc]) => ({ ...structuredClone(doc.data), id: path.split('/')[1], documentName: path, updateTime: doc.version }));
     },
-    async setStatus(mail, status, reason = '') {
+    async setStatus(mail, status, reason = '', now = new Date(), extra = {}) {
       if (fails.status.has(`${mail.id}:${status}`)) throw new Error('Firestore 503');
       const doc = store.get(mail.documentName);
       if (doc.version !== mail.updateTime) return false;
-      doc.data = { ...doc.data, status, reason };
+      doc.data = { ...doc.data, status, reason, ...extra };
       doc.version += 1;
       mail.updateTime = doc.version;
       statuses.push(`${mail.id}:${status}`);
@@ -192,6 +192,11 @@ test('els avisos d\'un professor per al mateix dia van en un sol correu', async 
   assert.equal(sent[0].text, 'Benvolgut Sergio,\n\nZona Porxada.\n\nGrup 3ESO-B a 4a hora.\n\nGrup 4ESO-A a 6a hora.');
   assert.equal(sent[1].subject, 'Pati 21/10/2026');
   for (const id of ['sisena', 'quarta', 'pati', 'altre']) assert.deepEqual(statusOf(firestore, id), ['enviat', '']);
+  // Cada avís guarda el correu tal com ha sortit, per veure'l al registre.
+  for (const id of ['sisena', 'quarta', 'pati']) {
+    const { subject, text } = firestore.store.get(`guardiesCorreus/${id}`).data;
+    assert.deepEqual({ subject, text }, { subject: sent[0].subject, text: sent[0].text });
+  }
   assert.equal(summary.enviats, 4);
   assert.equal(summary.correus, 2);
 });
