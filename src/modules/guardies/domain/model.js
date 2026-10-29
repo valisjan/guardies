@@ -18,13 +18,6 @@ export const COVERAGE_SOURCE = Object.freeze({
   MANUAL: 'manual',
 });
 
-export const FILE_KIND = Object.freeze({
-  REFERENCE: 'reference',
-  TEACHERS: 'teachers',
-  SCHEDULE: 'schedule',
-  DUTIES: 'duties',
-});
-
 const DAY_STATUSES = new Set(Object.values(DAY_STATUS));
 const ABSENCE_STATUSES = new Set(Object.values(ABSENCE_STATUS));
 const COVERAGE_SOURCES = new Set(Object.values(COVERAGE_SOURCE));

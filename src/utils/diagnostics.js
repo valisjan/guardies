@@ -107,5 +107,3 @@ if (active) {
 export function trackReads(category, reads, note = '', fromCache = false) {
   record(category, reads, note, fromCache);
 }
-
-export const isDiagnosticActive = active;

@@ -143,7 +143,3 @@ export function getE2ECollection(name) {
     sdAssignacions: item.sdAssignacions ? [...item.sdAssignacions] : item.sdAssignacions,
   }));
 }
-
-export function getE2ECursos() {
-  return [{ id: E2E_CURS_ID, nom: 'E2E 2026-27', bloqueig: false }];
-}

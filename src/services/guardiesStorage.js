@@ -683,14 +683,20 @@ export async function loadGuardiesTeacherDirectory(cursId) {
     return cached.data;
   }
 
-  const [courseSnapshot, profileSnapshots, versionSnapshot] = await Promise.all([
+  const [courseSnapshot, versionSnapshot] = await Promise.all([
     withNetworkRetry(() => readCollection(collection(db, 'cursos', cursId, 'professors'))),
-    Promise.all([
-      collection(db, 'usuaris'),
-      collection(db, 'preautoritzats'),
-    ].map((reference) => withNetworkRetry(() => readCollection(reference)).catch(() => null))),
     readDoc(directoryVersionRef(cursId)).catch(() => null),
   ]);
+  // Les fitxes de baixa conserven el codi Untis de la plaça que ocupa el substitut.
+  const activeDocs = courseSnapshot.docs.filter((item) => isActiveTeacherRecord(item.data()));
+  // Els perfils (usuaris, preautoritzats) només fan falta si a algú li falta el correu a
+  // Professorat: són dues col·leccions senceres que, si no, es llegirien per res.
+  const profileSnapshots = activeDocs.some((item) => !String(item.data().email || '').trim())
+    ? await Promise.all([
+      collection(db, 'usuaris'),
+      collection(db, 'preautoritzats'),
+    ].map((reference) => withNetworkRetry(() => readCollection(reference)).catch(() => null)))
+    : [];
   const directoryReadCount = courseSnapshot.docs.length
     + profileSnapshots.reduce((sum, s) => sum + (s?.docs?.length || 0), 0)
     + 1;
@@ -711,8 +717,7 @@ export async function loadGuardiesTeacherDirectory(cursId) {
     if (code) emailByCode.set(code.toLowerCase(), email);
     if (nameKey) emailByName.set(nameKey, email);
   });
-  // Les fitxes de baixa conserven el codi Untis de la plaça que ocupa el substitut.
-  const directory = courseSnapshot.docs.filter((item) => isActiveTeacherRecord(item.data())).map((item) => {
+  const directory = activeDocs.map((item) => {
     const data = item.data();
     const codiUntis = String(data.codiUntis || item.id).trim();
     const name = String(data.nom || '').trim();
@@ -891,10 +896,6 @@ export async function setGuardiesTeacherCount(cursId, teacherId, source, value, 
     });
     return { counts };
   });
-}
-
-export function setGuardiesTeacherGuardCount(cursId, teacherId, value, slot) {
-  return setGuardiesTeacherCount(cursId, teacherId, 'guard', value, slot);
 }
 
 export async function resetGuardiesCourseData(cursId) {
