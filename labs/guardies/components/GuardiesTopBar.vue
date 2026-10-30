@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useGuardiesStore } from '../stores/guardies.js';
 import GuardiesDateNav from './GuardiesDateNav.vue';
+import AppsMenu from '../../../src/shared/AppsMenu.vue';
 
 const dark = ref(document.documentElement.classList.contains('dark'));
 const {
@@ -10,16 +11,8 @@ const {
   adminSection, teacherSection, persistenceStatus, dayPersistenceStatus, updatedAt,
 } = storeToRefs(useGuardiesStore());
 const netlifyMode = window.location.hostname.endsWith('.netlify.app');
-const allAppLinks = [
-  { name: 'Quota', description: 'Assignació de classes', href: netlifyMode ? 'https://chic-tartufo-68ee9c.netlify.app/' : 'https://quota.iessureda.com/' },
-  { name: 'Pantalles', description: 'Pantalles del centre', admin: true, href: netlifyMode ? 'https://pantalles.netlify.app/?gestio=1&pantalla=sala-professorat' : 'https://pantalles.iessureda.com/?gestio=1&pantalla=sala-professorat' },
-  { name: 'Retards', description: "Retards de l'alumnat", retards: true, href: netlifyMode ? 'https://spontaneous-gecko-a2703a.netlify.app/' : 'https://retards.iessureda.com/' },
-];
-// Pantalles només per a l'administració; Retards, també per a la PSC. Sense sessió, cap enllaç.
+// Sense sessió no hi ha menú d'aplicacions (ni dades).
 const signedIn = computed(() => contextReady.value && !authRequired.value);
-const appLinks = computed(() => (signedIn.value
-  ? allAppLinks.filter((app) => (!app.admin || isAdmin.value) && (!app.retards || canRetards.value))
-  : []));
 const guardiesHref = computed(() => {
   const query = new URLSearchParams();
   if (courseId.value) query.set('curs', courseId.value);
@@ -79,19 +72,6 @@ function openView(event, href, toTeacherView) {
 }
 
 // Menú d'aplicacions: es tanca en triar, en clicar fora o amb Escape.
-const appsOpen = ref(false);
-const appsMenu = ref(null);
-function closeAppsOnOutside(event) {
-  if (appsMenu.value && !appsMenu.value.contains(event.target)) appsOpen.value = false;
-}
-function closeAppsOnEscape(event) {
-  if (event.key === 'Escape') appsOpen.value = false;
-}
-function toggleApps() {
-  appsOpen.value = !appsOpen.value;
-}
-document.addEventListener('click', closeAppsOnOutside);
-document.addEventListener('keydown', closeAppsOnEscape);
 
 // L'alçada de la barra (en mòbil ocupa dues files) permet fixar-hi elements a sota.
 const navElement = ref(null);
@@ -106,8 +86,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('guardies:view-settled', settleNavigation);
-  document.removeEventListener('click', closeAppsOnOutside);
-  document.removeEventListener('keydown', closeAppsOnEscape);
   navObserver?.disconnect();
 });
 
@@ -127,18 +105,7 @@ function toggleTheme() {
         <span class="brand-title">Guàrdies</span>
       </a>
 
-      <div v-if="appLinks.length" ref="appsMenu" class="apps-menu">
-        <button type="button" class="nav-chip-button" aria-haspopup="true" :aria-expanded="appsOpen" aria-controls="apps-menu-list" @click="toggleApps">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1.5" /><rect x="14" y="4" width="6" height="6" rx="1.5" /><rect x="4" y="14" width="6" height="6" rx="1.5" /><rect x="14" y="14" width="6" height="6" rx="1.5" /></svg>
-          <span class="nav-chip-label">Apps</span>
-        </button>
-        <div v-if="appsOpen" id="apps-menu-list" class="apps-popover">
-          <a v-for="app in appLinks" :key="app.name" :href="app.href" class="apps-link">
-            <strong>{{ app.name }}</strong>
-            <small>{{ app.description }}</small>
-          </a>
-        </div>
-      </div>
+      <AppsMenu current="guardies" :signed-in="signedIn" :is-admin="isAdmin" :can-retards="canRetards" :course-id="courseId" />
 
       <div v-if="isAdmin" class="view-switch" role="group" aria-label="Vista">
         <a :class="{ active: !activeTeacherView }" :href="guardiesHref" :aria-current="!activeTeacherView ? 'page' : undefined" @click="openView($event, guardiesHref, false)">Guàrdies</a>

@@ -3665,48 +3665,6 @@ button.ghost {
   color: var(--text);
 }
 
-.apps-menu {
-  position: relative;
-}
-
-.apps-popover {
-  position: absolute;
-  z-index: 60;
-  top: calc(100% + 8px);
-  left: 0;
-  display: grid;
-  width: 250px;
-  gap: 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  padding: 6px;
-  box-shadow: 0 16px 40px rgb(20 24 32 / 0.16);
-}
-
-.apps-link {
-  display: grid;
-  gap: 2px;
-  border-radius: var(--radius-small);
-  padding: 9px 12px;
-  color: var(--text);
-  text-decoration: none;
-}
-
-.apps-link:hover,
-.apps-link:focus-visible {
-  background: var(--surface-strong);
-}
-
-.apps-link strong {
-  font-size: var(--text-base);
-}
-
-.apps-link small {
-  color: var(--muted);
-  font-size: var(--text-xs);
-}
-
 .view-switch {
   display: inline-flex;
   flex-shrink: 0;
