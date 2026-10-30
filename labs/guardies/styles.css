@@ -1418,6 +1418,125 @@ h3 {
   border-color: var(--coral);
 }
 
+/* «Les meves guàrdies» (vista del professorat) */
+.my-guards-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  margin-bottom: 10px;
+  padding: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.my-guards-head h2,
+.my-guards-head p,
+.my-guards-section h3 { margin: 0; }
+
+.my-guards-head h2 { font-size: 1.05rem; }
+.my-guards-section { display: grid; gap: 6px; }
+.my-guards-section h3 { font-size: 0.9rem; }
+
+.my-guards-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm, 0.8rem);
+}
+
+.my-guards-note.is-error { color: var(--coral); }
+
+.my-guards-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.my-guards-totals article {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  padding: 8px 10px;
+}
+
+.my-guards-totals strong { font-size: 1.4rem; line-height: 1; }
+.my-guards-totals span { color: var(--muted); font-size: 0.78rem; font-weight: 700; }
+
+.my-upcoming,
+.my-upcoming ul,
+.my-mails,
+.my-history {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.my-upcoming > li {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 9px;
+}
+
+.my-upcoming > li.is-today { border-color: var(--primary-border); background: var(--primary-soft); }
+.my-upcoming-day { display: block; margin-bottom: 4px; text-transform: capitalize; }
+.my-upcoming ul li { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 0.82rem; }
+.my-upcoming-hour { min-width: 7.5rem; color: var(--muted); font-weight: 800; }
+.my-upcoming-comment { flex-basis: 100%; color: var(--muted); }
+
+.my-mails li,
+.my-history li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  border-bottom: 1px solid var(--border);
+  padding: 4px 0;
+  font-size: 0.82rem;
+}
+
+.my-mails li span,
+.my-mails li small { color: var(--muted); }
+.my-mails li small { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-weight: 700; }
+.my-mails li.is-pendent small { color: var(--amber-strong); }
+
+.my-history li { grid-template-columns: 7.5rem 4rem minmax(0, 1fr); }
+.my-history li span { color: var(--muted); }
+
+.my-timetable-scroll { overflow-x: auto; }
+
+.my-timetable {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 0.74rem;
+}
+
+.my-timetable th,
+.my-timetable td {
+  border: 1px solid var(--border);
+  padding: 4px 5px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.my-timetable thead th { background: var(--surface-subtle); }
+.my-timetable tbody th { width: 3.5rem; color: var(--muted); white-space: nowrap; }
+.my-timetable td.is-class { background: var(--surface-subtle); }
+.my-timetable td.is-guard { background: var(--primary-soft); }
+.my-timetable td.is-patio { background: var(--amber-soft); }
+.my-timetable-item { display: grid; }
+.my-timetable-item small { color: var(--muted); }
+
+.my-guards-legend { display: flex; gap: 10px; margin: 0; font-size: 0.72rem; }
+.my-guards-legend span { border-radius: 4px; padding: 1px 6px; }
+.my-guards-legend .is-guard { background: var(--primary-soft); }
+.my-guards-legend .is-patio { background: var(--amber-soft); }
+.my-guards-legend .is-class { background: var(--surface-subtle); border: 1px solid var(--border); }
+
 .guard-statistics-panel {
   display: grid;
   gap: 12px;

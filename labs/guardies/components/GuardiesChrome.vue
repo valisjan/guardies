@@ -10,6 +10,7 @@ const GuardiesConvivenciaPanel = defineAsyncComponent(() => import('./GuardiesCo
 import GuardiesWorkspace from './GuardiesWorkspace.vue';
 import GuardiesUndoToast from './GuardiesUndoToast.vue';
 const GuardiesTeacherStats = defineAsyncComponent(() => import('./GuardiesTeacherStats.vue'));
+const GuardiesMyGuards = defineAsyncComponent(() => import('./GuardiesMyGuards.vue'));
 const GuardiesGuardCountPanel = defineAsyncComponent(() => import('./GuardiesGuardCountPanel.vue'));
 const GuardiesTeacherExclusionsPanel = defineAsyncComponent(() => import('./GuardiesTeacherExclusionsPanel.vue'));
 const GuardiesObservationPresetsPanel = defineAsyncComponent(() => import('./GuardiesObservationPresetsPanel.vue'));
@@ -89,8 +90,10 @@ window.addEventListener('guardies:auth-ready', () => {
     </section>
     <nav v-if="!authRequired" class="teacher-view-tabs no-print" aria-label="Vista del professorat" role="tablist">
       <button type="button" role="tab" :aria-selected="teacherSection === 'daily'" :class="{ active: teacherSection === 'daily' }" @click="store.teacherSection = 'daily'">Guàrdies del dia</button>
+      <button type="button" role="tab" :aria-selected="teacherSection === 'mine'" :class="{ active: teacherSection === 'mine' }" @click="store.teacherSection = 'mine'">Les meves guàrdies</button>
       <button type="button" role="tab" :aria-selected="teacherSection === 'stats'" :class="{ active: teacherSection === 'stats' }" @click="openTeacherStats">Recompte de guàrdies</button>
     </nav>
+    <GuardiesMyGuards v-if="!authRequired && teacherSection === 'mine'" />
     <GuardiesTeacherStats v-if="!authRequired && teacherSection === 'stats'" />
   </Teleport>
   <Teleport to="#guardies-workspace-root">

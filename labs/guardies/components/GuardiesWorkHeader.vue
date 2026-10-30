@@ -11,7 +11,7 @@ const {
   date, absencies, dayStatus, dayPersistenceStatus,
   persistenceStatus, canWrite, teacherView, unclosedDays,
   dayConflict, conflictRemoteClosed, coverageSummary, autoSavePaused, closingDays,
-  unmatchedAbsences,
+  unmatchedAbsences, authRequired,
 } = storeToRefs(store);
 
 // Absències desades que l'horari carregat no conté: es conserven i s'avisa.
@@ -149,7 +149,7 @@ function changeStatus(action) {
 </script>
 
 <template>
-  <div class="work-header-stack no-print">
+  <div v-if="!authRequired" class="work-header-stack no-print">
     <div v-if="canWrite && dayConflict" class="day-conflict" role="alert">
       <span>Canvis pendents de resoldre</span>
       <button type="button" :disabled="conflictRemoteClosed" @click="resolveConflict('local')">Conserva la meva versió</button>

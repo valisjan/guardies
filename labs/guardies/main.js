@@ -501,6 +501,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.courseName = context.course.name;
       state.canWrite = context.canWrite;
       state.isAdmin = context.isAdmin;
+      state.canRetards = Boolean(context.canRetards);
       state.teacherView = context.teacherView;
       state.viewerName = context.user?.displayName || '';
       state.viewerEmail = context.user?.email || '';
@@ -517,7 +518,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
         bootstrapRetryAttempt = 0;
         render();
         window.dispatchEvent(new CustomEvent('guardies:auth-ready'));
-        if (state.teacherSection === 'stats') ensureTeacherStatistics();
+        if (['stats', 'mine'].includes(state.teacherSection)) ensureTeacherStatistics();
         return;
       }
       let remoteData;
@@ -903,6 +904,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           state.dutiesText = schedule.files.duties?.text || '';
           state.dutiesName = schedule.files.duties?.name || '';
           state.excludedTeacherIds = new Set(schedule.excludedTeacherIds || []);
+          // El torn de pati entra a l'horari (sessions PATI) i a «Les meves guàrdies».
+          if (schedule.pati) state.patiConfig = schedule.pati;
           scheduleTextsCourseId = courseId;
         }
         parseStoredData({ resetSelection: false, renderAfter: false });
@@ -923,7 +926,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   // Resol amb la primera lectura de recomptes perquè la pantalla no mostri
   // zeros provisionals. Si l'escolta ja és activa, no en crea cap altra.
   function watchTeacherStats() {
-    if (state.canWrite || !state.courseId || state.teacherSection !== 'stats' || unsubscribeTeacherStats) {
+    if (state.canWrite || !state.courseId || !['stats', 'mine'].includes(state.teacherSection) || unsubscribeTeacherStats) {
       return Promise.resolve();
     }
     const courseId = state.courseId;

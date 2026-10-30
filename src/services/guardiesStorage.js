@@ -466,6 +466,7 @@ export async function getGuardiesContext(requestedCourseId = '', { teacherView =
       course: await resolveCourse(requestedCourseId),
       role: 'admin',
       isAdmin: true,
+      canRetards: true,
       teacherView,
       canWrite: !teacherView,
     };
@@ -475,8 +476,14 @@ export async function getGuardiesContext(requestedCourseId = '', { teacherView =
   if (!user) throw new Error('Inicia sessió per accedir a les dades de guàrdies.');
   let profile = cachedProfile?.uid === user.uid ? cachedProfile.data : null;
   if (!profile) {
-    const userSnapshot = await withNetworkRetry(() => readDoc(doc(db, 'usuaris', user.uid)));
+    // Els rols extra (p. ex. «psc» per a Retards) són a «preautoritzats», que cadascú pot llegir del seu correu.
+    const [userSnapshot, permitSnapshot] = await Promise.all([
+      withNetworkRetry(() => readDoc(doc(db, 'usuaris', user.uid))),
+      user.email ? readDoc(doc(db, 'preautoritzats', user.email)).catch(() => null) : null,
+    ]);
     profile = userSnapshot.exists() ? userSnapshot.data() : {};
+    const permit = permitSnapshot?.exists?.() ? permitSnapshot.data() : {};
+    profile = { ...profile, extraRoles: Array.isArray(permit.rols) ? permit.rols : [] };
     cachedProfile = { uid: user.uid, data: profile };
   }
   const role = profile.rol || '';
@@ -490,6 +497,7 @@ export async function getGuardiesContext(requestedCourseId = '', { teacherView =
     course: await cachedResolveCourse(requestedCourseId),
     role,
     isAdmin,
+    canRetards: isAdmin || profile.extraRoles.includes('psc'),
     teacherView: !isAdmin || teacherView,
     canWrite: isAdmin && !teacherView,
   };
@@ -803,15 +811,17 @@ export async function loadGuardiesTeacherSchedule(cursId) {
         duties: data.files?.duties || null,
       },
       excludedTeacherIds: normalizeExcludedTeacherIds({ teacherIds: data.excludedTeacherIds }),
+      pati: normalizePati(data.pati),
     };
   }
-  const [reference, untis, duties, exclusions] = await withNetworkRetry(() => Promise.all([
+  const [reference, untis, duties, exclusions, pati] = await withNetworkRetry(() => Promise.all([
     readDoc(guardiesRef(cursId, 'reference')),
     readDoc(guardiesRef(cursId, 'untis')),
     readDoc(guardiesRef(cursId, 'duties')),
     readDoc(guardiesExclusionsRef(cursId)),
+    readDoc(guardiesRef(cursId, 'pati')),
   ]));
-  trackReads('teacherScheduleLoad', 4);
+  trackReads('teacherScheduleLoad', 5);
   return {
     files: {
       reference: reference.exists() ? await loadStoredFile(reference.data()) : null,
@@ -819,7 +829,42 @@ export async function loadGuardiesTeacherSchedule(cursId) {
       duties: duties.exists() ? await loadStoredFile(duties.data()) : null,
     },
     excludedTeacherIds: exclusions.exists() ? normalizeExcludedTeacherIds({ teacherIds: exclusions.data().excludedTeacherIds }) : [],
+    pati: pati.exists() ? normalizePati(pati.data()) : null,
   };
+}
+
+// Fulls publicats a partir d'un dia (per a «Les meves guàrdies»): la projecció pública.
+export async function loadUpcomingPublicDays(cursId, fromDate, count = 10) {
+  if (E2E_AUTH_BYPASS) {
+    return Object.values(getE2EData(cursId).publicDays || {})
+      .filter((day) => day?.date >= fromDate)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, count);
+  }
+  const snapshot = await withNetworkRetry(() => getDocs(query(
+    collection(db, 'cursos', cursId, 'guardiesPublicDays'),
+    where('date', '>=', fromDate),
+    orderBy('date'),
+    limit(count),
+  )));
+  trackReads('myGuardsDays', Math.max(1, snapshot.docs.length));
+  return snapshot.docs.map((item) => item.data());
+}
+
+// Correus de Guàrdies adreçats a qui ha entrat (les regles només li deixen llegir els seus).
+export async function loadMyGuardiesMails(email) {
+  const clean = String(email || '').trim().toLowerCase();
+  if (!clean) return [];
+  if (E2E_AUTH_BYPASS) {
+    return Object.values(getE2EData(E2E_CURS_ID).mails || {}).filter((mail) => mail.email === clean);
+  }
+  const snapshot = await getDocs(query(collection(db, 'guardiesCorreus'), where('email', '==', clean)));
+  trackReads('myGuardsMails', Math.max(1, snapshot.docs.length));
+  return snapshot.docs.map((item) => {
+    const data = item.data();
+    const time = (value) => (typeof value === 'string' ? value : value?.toDate?.().toISOString() || '');
+    return { ...data, id: item.id, createdAt: time(data.createdAt), sendAfter: time(data.sendAfter), sentAt: time(data.sentAt) };
+  });
 }
 
 // Només el document de recomptes. Les confirmacions de caché/servidor sense

@@ -6,15 +6,20 @@ import GuardiesDateNav from './GuardiesDateNav.vue';
 
 const dark = ref(document.documentElement.classList.contains('dark'));
 const {
-  courseId, date, isAdmin, teacherView, contextReady, canWrite, authRequired,
+  courseId, date, isAdmin, canRetards, teacherView, contextReady, canWrite, authRequired,
   adminSection, teacherSection, persistenceStatus, dayPersistenceStatus, updatedAt,
 } = storeToRefs(useGuardiesStore());
 const netlifyMode = window.location.hostname.endsWith('.netlify.app');
-const appLinks = [
+const allAppLinks = [
   { name: 'Quota', description: 'Assignació de classes', href: netlifyMode ? 'https://chic-tartufo-68ee9c.netlify.app/' : 'https://quota.iessureda.com/' },
-  { name: 'Pantalles', description: 'Pantalles del centre', href: netlifyMode ? 'https://pantalles.netlify.app/?gestio=1&pantalla=sala-professorat' : 'https://pantalles.iessureda.com/?gestio=1&pantalla=sala-professorat' },
-  { name: 'Retards', description: "Retards de l'alumnat", href: netlifyMode ? 'https://spontaneous-gecko-a2703a.netlify.app/' : 'https://retards.iessureda.com/' },
+  { name: 'Pantalles', description: 'Pantalles del centre', admin: true, href: netlifyMode ? 'https://pantalles.netlify.app/?gestio=1&pantalla=sala-professorat' : 'https://pantalles.iessureda.com/?gestio=1&pantalla=sala-professorat' },
+  { name: 'Retards', description: "Retards de l'alumnat", retards: true, href: netlifyMode ? 'https://spontaneous-gecko-a2703a.netlify.app/' : 'https://retards.iessureda.com/' },
 ];
+// Pantalles només per a l'administració; Retards, també per a la PSC. Sense sessió, cap enllaç.
+const signedIn = computed(() => contextReady.value && !authRequired.value);
+const appLinks = computed(() => (signedIn.value
+  ? allAppLinks.filter((app) => (!app.admin || isAdmin.value) && (!app.retards || canRetards.value))
+  : []));
 const guardiesHref = computed(() => {
   const query = new URLSearchParams();
   if (courseId.value) query.set('curs', courseId.value);
@@ -122,7 +127,7 @@ function toggleTheme() {
         <span class="brand-title">Guàrdies</span>
       </a>
 
-      <div ref="appsMenu" class="apps-menu">
+      <div v-if="appLinks.length" ref="appsMenu" class="apps-menu">
         <button type="button" class="nav-chip-button" aria-haspopup="true" :aria-expanded="appsOpen" aria-controls="apps-menu-list" @click="toggleApps">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1.5" /><rect x="14" y="4" width="6" height="6" rx="1.5" /><rect x="4" y="14" width="6" height="6" rx="1.5" /><rect x="14" y="14" width="6" height="6" rx="1.5" /></svg>
           <span class="nav-chip-label">Apps</span>

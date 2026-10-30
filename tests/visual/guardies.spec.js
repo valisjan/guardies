@@ -2489,6 +2489,55 @@ test.describe('Guàrdies: correus al professorat', () => {
     expect((await e2eData(page)).mailConfig.testEmail).toBe('jaerustes@iessureda.com');
   });
 
+  test('el professorat veu «Les meves guàrdies»: pròximes, avisos, horari, totals i historial', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-09-07T09:00:00+02:00') });
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.evaluate(() => {
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const data = JSON.parse(localStorage.getItem(key));
+      data.publicDays = {
+        '2026-09-07': { date: '2026-09-07', status: 'published', hours: [
+          { key: '8:00', label: '1a hora · 8:00', rows: [{ id: 'a', absent: 'Sanz Vidal, Clara', assigned: 'Adell Domènech, Marina', group: '1ESO-A', subject: 'MAT', room: 'Aula 14' }] },
+        ], groupsOut: [] },
+        '2026-09-01': { date: '2026-09-01', status: 'closed', hours: [
+          { key: '8:00', label: '1a hora · 8:00', rows: [{ id: 'b', absent: 'X', assigned: 'Adell Domènech, Marina', group: 'VELL' }] },
+        ], groupsOut: [] },
+      };
+      data.mails = { m1: {
+        id: 'm1', kind: 'alliberat', template: 'alliberat', date: '2026-09-07', status: 'pendent', reason: '',
+        email: 'marina.adell@iesjosepsuredaiblanes.com', sendAfter: '2026-09-07T07:05:00.000Z', createdAt: '2026-09-07T07:00:00.000Z',
+        fields: { data: '07/09/2026', hora: '1a hora', grup: '1ESO-A' },
+      } };
+      data.stats = { counts: { 1: { guard: 3, released: 1 } }, guardHistory: { 1: { '2026-09-02': { '1|9:50': ['1ESO-B'] } } }, guardHistoryVersion: 2 };
+      localStorage.setItem(key, JSON.stringify(data));
+    });
+    await page.goto('/?data=2026-09-07&vista=professor');
+    await expect.poll(() => page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      return useGuardiesStore().contextReady;
+    })).toBe(true);
+    await page.evaluate(async () => {
+      const { useGuardiesStore } = await import('/labs/guardies/stores/guardies.js');
+      const store = useGuardiesStore();
+      store.viewerName = 'Marina Adell';
+      store.viewerEmail = 'marina.adell@iesjosepsuredaiblanes.com';
+    });
+    await page.getByRole('tab', { name: 'Les meves guàrdies' }).click();
+
+    const panel = page.locator('.my-guards-panel');
+    await expect(panel.locator('.my-guards-totals article').first()).toContainText('3');
+    const upcoming = panel.locator('[data-my-upcoming]');
+    await expect(upcoming).toContainText('Avui');
+    await expect(upcoming.locator('[data-my-guard="guard"]')).toContainText('1ESO-A');
+    await expect(upcoming).not.toContainText('VELL');
+    await expect(panel.locator('[data-my-mails] li')).toContainText('Previst');
+    await expect(panel.locator('[data-my-timetable] td.is-guard')).not.toHaveCount(0);
+    await expect(panel.locator('[data-my-timetable] td.is-class')).not.toHaveCount(0);
+    await expect(panel.locator('[data-my-history]')).toContainText('1ESO-B');
+    if (process.env.SHOT) await panel.screenshot({ path: process.env.SHOT });
+  });
+
   test('la cap d\'estudis pot aturar un correu previst i esborrar-ne del registre', async ({ page }) => {
     await openGuardies(page);
     await uploadConfiguration(page);

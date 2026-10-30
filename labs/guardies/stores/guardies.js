@@ -62,6 +62,7 @@ export const useGuardiesStore = defineStore('guardies', {
     courseName: '',
     canWrite: false,
     isAdmin: false,
+    canRetards: false,
     teacherView: false,
     adminSection: 'daily',
     teacherSection: 'daily',

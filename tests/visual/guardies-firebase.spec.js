@@ -197,6 +197,7 @@ test('teacher statistics read only the schedule once and listen only to the stat
   expect(result.reads).toEqual([
     'cursos/test/config/guardies-exclusions',
     'cursos/test/guardies/duties',
+    'cursos/test/guardies/pati',
     'cursos/test/guardies/reference',
     'cursos/test/guardies/untis',
   ]);
@@ -345,7 +346,8 @@ test('switching views reuses the profile and course instead of reading them agai
       readsAfterClear: f.reads.length - cachedReads,
     };
   });
-  expect(result).toEqual({ admin: [true, false], teacher: [false, true], course: 'test', cachedReads: 2, readsAfterClear: 2 });
+  // Perfil, permisos (rol PSC per a Retards) i curs: tres lectures, una sola vegada.
+  expect(result).toEqual({ admin: [true, false], teacher: [false, true], course: 'test', cachedReads: 3, readsAfterClear: 3 });
 });
 
 test('warming the day registers one listener and releases it', async ({ page }) => {
