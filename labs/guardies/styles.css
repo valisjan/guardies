@@ -4950,7 +4950,19 @@ button.ghost {
 @media screen {
   .mail-block { display: grid; gap: 16px; }
 
-  .mail-form {
+  .mail-log-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 6px 0 2px;
+}
+
+.mail-log-actions .danger {
+  color: var(--coral);
+}
+
+.mail-form {
     display: contents;
     min-width: 0;
     margin: 0;

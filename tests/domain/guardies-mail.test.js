@@ -18,11 +18,11 @@ import {
 
 const at = (iso, date = '') => mailSendAfter(new Date(iso), date).toISOString();
 
-test('un canvi per a avui, entre les 8:00 i les 15:00 d\'un dia feiner, surt al cap de 2 minuts', () => {
-  assert.equal(at('2026-10-19T10:00:00+02:00', '2026-10-19'), '2026-10-19T08:02:00.000Z');
-  assert.equal(at('2026-10-19T08:00:00+02:00', '2026-10-19'), '2026-10-19T06:02:00.000Z');
-  assert.equal(at('2026-10-19T15:00:00+02:00', '2026-10-19'), '2026-10-19T13:02:00.000Z');
-  assert.equal(at('2026-10-19T10:00:00+02:00'), '2026-10-19T08:02:00.000Z', 'una prova, sense dia, també');
+test('un canvi per a avui, entre les 8:00 i les 15:00 d\'un dia feiner, surt al cap de 5 minuts', () => {
+  assert.equal(at('2026-10-19T10:00:00+02:00', '2026-10-19'), '2026-10-19T08:05:00.000Z');
+  assert.equal(at('2026-10-19T08:00:00+02:00', '2026-10-19'), '2026-10-19T06:05:00.000Z');
+  assert.equal(at('2026-10-19T15:00:00+02:00', '2026-10-19'), '2026-10-19T13:05:00.000Z');
+  assert.equal(at('2026-10-19T10:00:00+02:00'), '2026-10-19T08:05:00.000Z', 'una prova, sense dia, també');
 });
 
 test('un canvi per a avui fet abans de les 8:00 surt a les 8:00', () => {

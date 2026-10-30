@@ -1112,6 +1112,41 @@ export async function queueGuardiesMails(cursId, mails) {
   return items.length;
 }
 
+// Atura a mà un correu que encara no ha sortit. Si el servei ja l'ha agafat, no es pot.
+export async function cancelGuardiesMail(cursId, mailId) {
+  const reason = `No enviat a mà${currentEditor() ? ` per ${currentEditor()}` : ''}`;
+  const check = (data) => {
+    if (!data) throw new Error('Aquest correu ja no hi és.');
+    if (data.status === 'enviat') throw new Error('Aquest correu ja ha sortit.');
+    if (data.status !== 'pendent') throw new Error('Aquest correu ja no està pendent.');
+  };
+  if (E2E_AUTH_BYPASS) {
+    const data = getE2EData(cursId);
+    check(data.mails?.[mailId]);
+    Object.assign(data.mails[mailId], { status: 'cancel·lat', reason });
+    setE2EData(cursId, data);
+    return;
+  }
+  const reference = doc(db, 'guardiesCorreus', mailId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(reference);
+    check(snapshot.exists() ? snapshot.data() : null);
+    transaction.update(reference, { status: 'cancel·lat', reason });
+  });
+}
+
+// Treu un correu del registre. Si encara era previst, ja no sortirà.
+export async function deleteGuardiesMail(cursId, mailId) {
+  if (E2E_AUTH_BYPASS) {
+    const data = getE2EData(cursId);
+    if (data.mails?.[mailId]?.status === 'enviant') throw new Error('Aquest correu s’està enviant ara mateix.');
+    delete data.mails?.[mailId];
+    setE2EData(cursId, data);
+    return;
+  }
+  await deleteDoc(doc(db, 'guardiesCorreus', mailId));
+}
+
 const isoTime = (value) => (typeof value === 'string' ? value : value?.toDate?.().toISOString() || '');
 
 // En llegeix més dels que es mostren: el panell només ensenya els previstos i els enviats.

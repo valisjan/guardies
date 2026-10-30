@@ -6,9 +6,9 @@
 
 export const MAIL_TIME_ZONE = 'Europe/Madrid';
 // Un correu surt el mateix dia de l'avís: els canvis per a avui, entre les 8:00 i les
-// 15:00, al cap de 2 minuts (per si el canvi es desfà); els d'un altre dia, a les 8:00
+// 15:00, al cap de 5 minuts (per si el canvi es desfà); els d'un altre dia, a les 8:00
 // d'aquell dia.
-export const MAIL_WINDOW = { start: 8 * 60, end: 15 * 60, delayMinutes: 2 };
+export const MAIL_WINDOW = { start: 8 * 60, end: 15 * 60, delayMinutes: 5 };
 
 export const MAIL_KINDS = ['alliberat', 'pati'];
 
@@ -189,7 +189,7 @@ export function mailDueAt(mail) {
 }
 
 // date: dia de l'avís. Si és un altre dia, a les 8:00 d'aquell dia. Si és avui (o és una
-// prova, sense dia): dins de l'horari, al cap de 2 minuts; abans de les 8:00, a les 8:00;
+// prova, sense dia): dins de l'horari, al cap de 5 minuts; abans de les 8:00, a les 8:00;
 // després, a les 8:00 del següent dia feiner (i el servei el descarta perquè el dia ja
 // ha passat).
 export function mailSendAfter(now = new Date(), date = '', { timeZone = MAIL_TIME_ZONE, start, end, delayMinutes } = MAIL_WINDOW) {

@@ -2379,7 +2379,7 @@ test.describe('Guàrdies: correus al professorat', () => {
   }
 
   test('assignar una guàrdia com a alliberat/da posa un correu a la cua (i només aquest)', async ({ page }) => {
-    // Dilluns a les 10:00: dins de l'horari, surt al cap de 2 minuts.
+    // Dilluns a les 10:00: dins de l'horari, surt al cap de 5 minuts.
     await startClockAt(page, '2026-09-07T10:00:00+02:00');
     await releasedAssignment(page);
     await expect.poll(async () => (await mails(page)).length).toBe(1);
@@ -2391,8 +2391,8 @@ test.describe('Guàrdies: correus al professorat', () => {
     });
     expect(mail.check.absenceId).toContain('|1|8:00|');
     const delay = minutesAfter(mail.sendAfter, '2026-09-07T10:00:00+02:00');
-    expect(delay).toBeGreaterThanOrEqual(2);
-    expect(delay).toBeLessThan(3);
+    expect(delay).toBeGreaterThanOrEqual(5);
+    expect(delay).toBeLessThan(6);
 
     // Tornar a desar la jornada no en programa cap altre.
     await page.locator('#coverage-list [data-comment]').first().fill('Material a la taula');
@@ -2401,7 +2401,7 @@ test.describe('Guàrdies: correus al professorat', () => {
   });
 
   test('un canvi per a un altre dia queda per a les 8:00 d\'aquell dia', async ({ page }) => {
-    // Divendres a les 10:00, per a dilluns: dilluns a les 8:00 (no al cap de 2 minuts).
+    // Divendres a les 10:00, per a dilluns: dilluns a les 8:00 (no al cap de 5 minuts).
     await startClockAt(page, '2026-09-04T10:00:00+02:00');
     await releasedAssignment(page);
     await expect.poll(async () => (await mails(page)).map((mail) => [mail.date, mail.sendAfter])).toEqual([['2026-09-07', '2026-09-07T06:00:00.000Z']]);
@@ -2433,7 +2433,7 @@ test.describe('Guàrdies: correus al professorat', () => {
       fields: { nom: 'Gabriel', data: '14/09/2026', dia: 'dilluns', zona: 'Porxada', zona_habitual: 'Pista' },
     });
     expect(mail.check).toEqual({ day: '1', zoneId: mail.check.zoneId });
-    expect(minutesAfter(mail.sendAfter, '2026-09-14T09:00:00+02:00')).toBeGreaterThanOrEqual(2);
+    expect(minutesAfter(mail.sendAfter, '2026-09-14T09:00:00+02:00')).toBeGreaterThanOrEqual(5);
 
     await card.locator('[data-pati-zone-override]').selectOption({ index: 0 });
     await expect(card).not.toHaveClass(/overridden/);
@@ -2487,6 +2487,43 @@ test.describe('Guàrdies: correus al professorat', () => {
       ['prova', 'pati', 'jaerustes@iessureda.com'],
     ]);
     expect((await e2eData(page)).mailConfig.testEmail).toBe('jaerustes@iessureda.com');
+  });
+
+  test('la cap d\'estudis pot aturar un correu previst i esborrar-ne del registre', async ({ page }) => {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    const key = 'quota-e2e-guardies:e2e-2026';
+    await page.evaluate((key) => {
+      const data = JSON.parse(localStorage.getItem(key));
+      const mail = (id, status, extra) => ({
+        id, kind: 'alliberat', template: 'alliberat', date: '2026-09-08', status, reason: '', createdAt: '2026-09-07T06:00:00.000Z',
+        email: `${id}@iesjosepsuredaiblanes.com`, sendAfter: '2026-09-08T06:00:00.000Z',
+        fields: { nom: 'Pere', nom_complet: `Professor ${id}`, data: '08/09/2026', hora: '1a hora' }, ...extra,
+      });
+      data.mails = Object.fromEntries([
+        mail('previst', 'pendent'),
+        mail('enviat', 'enviat', { sentAt: '2026-09-07T06:01:00.000Z' }),
+      ].map((item) => [item.id, item]));
+      localStorage.setItem(key, JSON.stringify(data));
+    }, key);
+    const stored = () => page.evaluate((key) => JSON.parse(localStorage.getItem(key)).mails, key);
+    await page.getByRole('tab', { name: 'Configuració' }).click();
+    await page.locator('#mail-panel summary').click();
+
+    const scheduled = page.locator('[data-mail-list="previstos"] li').filter({ hasText: 'Professor previst' });
+    await scheduled.locator('summary').click();
+    await scheduled.getByRole('button', { name: 'No l’enviïs' }).click();
+    await expect(page.locator('.mail-recent .mail-feedback')).toHaveText('Aquest correu no s’enviarà.');
+    await expect(page.locator('[data-mail-list="previstos"]')).toHaveCount(0);
+    expect((await stored()).previst).toMatchObject({ status: 'cancel·lat', reason: 'No enviat a mà per e2e.admin@iesjosepsuredaiblanes.com' });
+
+    const sent = page.locator('[data-mail-list="enviats"] li').filter({ hasText: 'Professor enviat' });
+    await sent.locator('summary').click();
+    await expect(sent.getByRole('button', { name: 'No l’enviïs' })).toHaveCount(0);
+    page.once('dialog', (dialog) => dialog.accept());
+    await sent.getByRole('button', { name: 'Esborra' }).click();
+    await expect(page.locator('.mail-recent .mail-feedback')).toHaveText('Correu esborrat.');
+    expect((await stored()).enviat).toBeUndefined();
   });
 
   test('a «Darrers correus» només hi ha els previstos (per ordre de sortida) i els enviats', async ({ page }) => {

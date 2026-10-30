@@ -13,6 +13,8 @@ import {
   normalizeMailConfig,
 } from '../../../src/modules/guardies/domain/mail.js';
 import {
+  cancelGuardiesMail,
+  deleteGuardiesMail,
   loadGuardiesMailConfig,
   loadGuardiesMailServiceStatus,
   loadRecentGuardiesMails,
@@ -74,6 +76,30 @@ const mailLists = computed(() => [
   { key: 'previstos', title: 'Previstos', mails: scheduledMails.value },
   { key: 'enviats', title: 'Enviats', mails: sentMails.value },
 ].filter((list) => list.mails.length));
+
+const mailAction = ref('');
+const logFeedback = ref('');
+const logFeedbackKind = ref('');
+
+async function changeMail(mail, action) {
+  if (action === 'delete' && !window.confirm(mail.status === 'pendent'
+    ? 'Vols esborrar aquest correu? Ja no s’enviarà.'
+    : 'Vols esborrar aquest correu del registre?')) return;
+  mailAction.value = mail.id;
+  logFeedback.value = '';
+  try {
+    if (action === 'cancel') await cancelGuardiesMail(courseId.value, mail.id);
+    else await deleteGuardiesMail(courseId.value, mail.id);
+    logFeedback.value = action === 'cancel' ? 'Aquest correu no s’enviarà.' : 'Correu esborrat.';
+    logFeedbackKind.value = 'success';
+  } catch (error) {
+    logFeedback.value = `No s'ha pogut ${action === 'cancel' ? 'aturar' : 'esborrar'} el correu. ${friendlyError(error)}`;
+    logFeedbackKind.value = 'error';
+  } finally {
+    recent.value = await loadRecentGuardiesMails(courseId.value).catch(() => recent.value);
+    mailAction.value = '';
+  }
+}
 
 function statusLabel(mail) {
   if (mail.status === 'pendent') return `Surt ${formatTime(mail.sendAfter)}`;
@@ -215,7 +241,7 @@ async function sendTest(kind) {
               </p>
             </div>
             <ul class="mail-rules">
-              <li><b>Canvis per a avui:</b> surten al cap de 2 minuts (dies feiners, de 8:00 a 15:00).</li>
+              <li><b>Canvis per a avui:</b> surten al cap de 5 minuts (dies feiners, de 8:00 a 15:00).</li>
               <li><b>Canvis per a un altre dia:</b> surten a les 8:00 d’aquell dia.</li>
               <li>Si la guàrdia o la zona canvien abans d’hora, el correu previst s’anul·la.</li>
               <li>Amb més d’un avís el mateix dia, el professor rep un sol correu.</li>
@@ -315,8 +341,9 @@ async function sendTest(kind) {
           <span v-if="feedback" class="mail-feedback" :class="`is-${feedbackKind}`" role="status" aria-live="polite">{{ feedback }}</span>
         </div>
 
-        <section v-if="mailLists.length" class="mail-recent" aria-labelledby="mail-recent-title">
+        <section v-if="mailLists.length || logFeedback" class="mail-recent" aria-labelledby="mail-recent-title">
           <h3 id="mail-recent-title">Darrers correus</h3>
+          <p v-if="logFeedback" class="mail-feedback" :class="`is-${logFeedbackKind}`" role="status" aria-live="polite">{{ logFeedback }}</p>
           <template v-for="list in mailLists" :key="list.key">
             <h4>{{ list.title }}</h4>
             <ul :data-mail-list="list.key">
@@ -337,6 +364,16 @@ async function sendTest(kind) {
                     </dl>
                     <p>{{ mailMessage(mail).text }}</p>
                     <small v-if="mailMessage(mail).note" class="mail-log-note">{{ mailMessage(mail).note }}</small>
+                  </div>
+                  <div v-if="mail.status !== 'enviant'" class="mail-log-actions">
+                    <button
+                      v-if="mail.status === 'pendent'"
+                      type="button"
+                      class="ghost"
+                      :disabled="mailAction === mail.id"
+                      @click="changeMail(mail, 'cancel')"
+                    >No l’enviïs</button>
+                    <button type="button" class="ghost danger" :disabled="mailAction === mail.id" @click="changeMail(mail, 'delete')">Esborra</button>
                   </div>
                 </details>
               </li>
