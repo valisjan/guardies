@@ -5605,6 +5605,23 @@ button.ghost {
     color: var(--muted);
     text-decoration: line-through;
   }
+
+  /* Com a Pantalles, cada absència és una targeta: entre dos docents hi ha aire i
+     una vora, i l'observació queda dins de la targeta del seu docent. */
+  .guard-layout.is-readonly .coverage-session:not(.pati-session):not(.is-empty) {
+    background: var(--surface-subtle);
+  }
+
+  .guard-layout.is-readonly .public-row {
+    overflow: hidden;
+    margin: 10px 10px 0;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-small);
+    background: var(--surface);
+    box-shadow: var(--shadow-small);
+  }
+
+  .guard-layout.is-readonly .public-row:last-of-type { margin-bottom: 10px; }
 }
 
 /* En mòbil i tauleta: qui falta i qui cobreix, un al costat de l'altre, i el

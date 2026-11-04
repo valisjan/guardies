@@ -1,6 +1,13 @@
-export const GUARDIES_VERSION = '1.10.0';
+export const GUARDIES_VERSION = '1.10.1';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.10.1',
+    date: '4 de novembre de 2026',
+    changes: [
+      'Vista del professorat: cada absència és una targeta separada, com a Pantalles, perquè es vegi bé on acaba un docent i on comença el següent, també quan hi ha una observació.',
+    ],
+  },
   {
     version: '1.10.0',
     date: '4 de novembre de 2026',
