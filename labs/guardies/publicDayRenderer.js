@@ -127,7 +127,7 @@ function renderMyGuards(hours, isMine, today) {
   });
   if (!items.length) return '';
   return `<section class="my-guards" aria-label="Les teves guàrdies">
-      <strong class="my-guards-title">${today ? 'Avui et toca' : 'Aquest dia et toca'}</strong>
+      <strong class="my-guards-title">${today ? 'Assignat avui' : 'Assignat aquest dia'}</strong>
       <div class="my-guards-list">${items.map((item) => `
         <a class="my-guard" href="#${publicHourAnchor(item.key)}" data-public-jump="${escape(item.key)}"><strong>${escape(item.hour)}</strong>${item.detail ? `<span>${escape(item.detail)}</span>` : ''}${item.role ? `<em>${escape(item.role)}</em>` : ''}</a>`).join('')}
       </div>

@@ -38,6 +38,10 @@ const formatDay = (date, format = longDate) => {
   const parsed = new Date(`${date}T12:00:00`);
   return Number.isNaN(parsed.getTime()) ? date : format.format(parsed);
 };
+const dayTitle = (date) => {
+  const text = formatDay(date);
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
 const formatTime = (value) => {
   const parsed = new Date(value || '');
   return Number.isNaN(parsed.getTime()) ? '' : dateTime.format(parsed);
@@ -103,7 +107,7 @@ const history = computed(() => {
 
 function sessionText(session) {
   if (session.hora === 'PATI') return { title: 'Guàrdia de pati', detail: '' };
-  if (isGuardSession(session)) return { title: session.activitatCurta || 'Guàrdia', detail: '' };
+  if (isGuardSession(session)) return { title: 'Guàrdia', detail: session.activitatCurta && session.activitatCurta !== 'G' ? session.activitatCurta : '' };
   if (session.teClasse) {
     return {
       title: session.materiaCurta || session.materiaNom || 'Classe',
@@ -137,7 +141,7 @@ const visibleMails = computed(() => mails.value
 function mailStatus(mail) {
   if (mail.status === 'enviat') return `Enviat ${formatTime(mail.sentAt)}`;
   if (mail.status === 'enviant') return 'Enviant';
-  return `Previst · surt ${formatTime(mail.sendAfter)}`;
+  return `Previst · ${formatTime(mail.sendAfter)}`;
 }
 
 function mailDetail(mail) {
@@ -151,60 +155,73 @@ const loadingSchedule = computed(() => ['idle', 'loading'].includes(teacherStats
 <template>
   <section class="my-guards-panel no-print" aria-labelledby="my-guards-title">
     <header class="my-guards-head">
-      <p class="kicker">Curs {{ courseName }}</p>
-      <h2 id="my-guards-title">Les meves guàrdies</h2>
+      <div>
+        <p class="kicker">Curs {{ courseName }}</p>
+        <h2 id="my-guards-title">Les meves guàrdies</h2>
+      </div>
+      <!-- Els totals del curs, compactes a la capçalera. -->
+      <dl v-if="totals" class="my-guards-totals">
+        <article><dt>Guàrdies de G</dt><dd><strong>{{ totals.guard }}</strong></dd></article>
+        <article><dt>Com a alliberat/da</dt><dd><strong>{{ totals.released }}</strong></dd></article>
+        <article><dt>Mitjana del claustre</dt><dd><strong>{{ totals.average }}</strong></dd></article>
+      </dl>
     </header>
 
     <p v-if="loadingSchedule" class="my-guards-note">Carregant el teu horari…</p>
     <p v-else-if="teacherStatsStatus === 'error'" class="my-guards-note is-error">No s’ha pogut carregar l’horari.</p>
     <p v-else-if="!me" class="my-guards-note">No trobem «{{ viewerName }}» a l’horari carregat. Si el nom del compte no coincideix amb el de l’horari, avisa la cap d’estudis.</p>
 
-    <div v-if="totals" class="my-guards-totals">
-      <article><strong>{{ totals.guard }}</strong><span>guàrdies de G aquest curs</span></article>
-      <article><strong>{{ totals.released }}</strong><span>com a alliberat/da</span></article>
-      <article><strong>{{ totals.average }}</strong><span>mitjana de G del claustre</span></article>
+    <div class="my-guards-columns">
+      <section class="my-guards-section my-guards-card" aria-labelledby="my-upcoming-title">
+        <h3 id="my-upcoming-title">Avui i pròxims dies</h3>
+        <p v-if="upcomingStatus === 'loading'" class="my-guards-note">Carregant els fulls publicats…</p>
+        <p v-else-if="upcomingStatus !== 'ready'" class="my-guards-note is-error">No s’han pogut carregar els fulls. {{ upcomingStatus }}</p>
+        <p v-else-if="!upcoming.length" class="my-guards-note">No tens cap guàrdia assignada als fulls publicats a partir d’avui.</p>
+        <ol v-else class="my-upcoming" data-my-upcoming>
+          <li v-for="day in upcoming" :key="day.date" :class="{ 'is-today': day.today }">
+            <h4 class="my-upcoming-day"><span v-if="day.today" class="my-today-badge">Avui</span>{{ dayTitle(day.date) }}</h4>
+            <ul>
+              <li v-for="(guard, index) in day.guards" :key="index" class="my-upcoming-guard" :data-my-guard="guard.kind">
+                <span class="my-upcoming-hour">{{ guard.hour }}</span>
+                <div v-if="guard.kind === 'patio'" class="my-upcoming-what">
+                  <strong>Pati · {{ guard.zone }}</strong>
+                </div>
+                <div v-else class="my-upcoming-what">
+                  <strong>{{ guard.group }}</strong>
+                  <span v-if="guard.subject || guard.room" class="my-upcoming-where">{{ [guard.subject, guard.room].filter(Boolean).join(' · ') }}</span>
+                  <small v-if="guard.absent">Cobreixes {{ guard.absent }}</small>
+                  <p v-if="guard.comment" class="my-upcoming-comment"><b>Observacions</b> {{ guard.comment }}</p>
+                </div>
+              </li>
+            </ul>
+          </li>
+        </ol>
+      </section>
+
+      <section class="my-guards-section my-guards-card" aria-labelledby="my-mails-title">
+        <h3 id="my-mails-title">Avisos per correu</h3>
+        <p v-if="mailsStatus === 'loading'" class="my-guards-note">Carregant…</p>
+        <p v-else-if="mailsStatus !== 'ready'" class="my-guards-note">Encara no es poden consultar els avisos per correu.</p>
+        <p v-else-if="!visibleMails.length" class="my-guards-note">No tens cap avís previst ni enviat.</p>
+        <ul v-else class="my-mails" data-my-mails>
+          <li v-for="mail in visibleMails" :key="mail.id" :class="`is-${mail.status}`">
+            <span class="my-mail-status">{{ mailStatus(mail) }}</span>
+            <strong>{{ MAIL_KINDS[mail.kind] || mail.kind }}</strong>
+            <span class="my-mail-detail">{{ mailDetail(mail) }}</span>
+          </li>
+        </ul>
+      </section>
     </div>
 
-    <section class="my-guards-section" aria-labelledby="my-upcoming-title">
-      <h3 id="my-upcoming-title">Avui i pròxims dies</h3>
-      <p v-if="upcomingStatus === 'loading'" class="my-guards-note">Carregant els fulls publicats…</p>
-      <p v-else-if="upcomingStatus !== 'ready'" class="my-guards-note is-error">No s’han pogut carregar els fulls. {{ upcomingStatus }}</p>
-      <p v-else-if="!upcoming.length" class="my-guards-note">No tens cap guàrdia assignada als fulls publicats a partir d’avui.</p>
-      <ul v-else class="my-upcoming" data-my-upcoming>
-        <li v-for="day in upcoming" :key="day.date" :class="{ 'is-today': day.today }">
-          <strong class="my-upcoming-day">{{ day.today ? 'Avui' : '' }} {{ formatDay(day.date) }}</strong>
-          <ul>
-            <li v-for="(guard, index) in day.guards" :key="index" :data-my-guard="guard.kind">
-              <span class="my-upcoming-hour">{{ guard.hour }}</span>
-              <span v-if="guard.kind === 'patio'">Pati · zona <b>{{ guard.zone }}</b></span>
-              <span v-else>Cobreixes <b>{{ guard.group }}</b><template v-if="guard.subject"> · {{ guard.subject }}</template><template v-if="guard.room"> · {{ guard.room }}</template><small v-if="guard.absent"> (per {{ guard.absent }})</small></span>
-              <small v-if="guard.comment" class="my-upcoming-comment">{{ guard.comment }}</small>
-            </li>
-          </ul>
-        </li>
-      </ul>
-    </section>
-
-    <section class="my-guards-section" aria-labelledby="my-mails-title">
-      <h3 id="my-mails-title">Avisos per correu</h3>
-      <p v-if="mailsStatus === 'loading'" class="my-guards-note">Carregant…</p>
-      <p v-else-if="mailsStatus !== 'ready'" class="my-guards-note">Encara no es poden consultar els avisos per correu.</p>
-      <p v-else-if="!visibleMails.length" class="my-guards-note">No tens cap avís previst ni enviat.</p>
-      <ul v-else class="my-mails" data-my-mails>
-        <li v-for="mail in visibleMails" :key="mail.id" :class="`is-${mail.status}`">
-          <strong>{{ MAIL_KINDS[mail.kind] || mail.kind }}</strong>
-          <span>{{ mailDetail(mail) }}</span>
-          <small>{{ mailStatus(mail) }}</small>
-        </li>
-      </ul>
-    </section>
-
-    <section v-if="timetable.length" class="my-guards-section" aria-labelledby="my-timetable-title">
-      <h3 id="my-timetable-title">El meu horari</h3>
+    <section v-if="timetable.length" class="my-guards-section my-guards-card" aria-labelledby="my-timetable-title">
+      <div class="my-guards-section-head">
+        <h3 id="my-timetable-title">El meu horari</h3>
+        <p class="my-guards-legend" aria-label="Llegenda"><span class="is-guard">Guàrdia</span><span class="is-patio">Pati</span><span class="is-class">Classe</span></p>
+      </div>
       <div class="my-timetable-scroll">
         <table class="my-timetable" data-my-timetable>
           <thead>
-            <tr><th scope="col"></th><th v-for="day in DAYS" :key="day" scope="col">{{ day }}</th></tr>
+            <tr><th scope="col"><span class="visually-hidden">Hora</span></th><th v-for="day in DAYS" :key="day" scope="col">{{ day }}</th></tr>
           </thead>
           <tbody>
             <tr v-for="row in timetable" :key="row.hour" :class="{ 'is-patio': row.hour === 'PATI' }">
@@ -222,16 +239,15 @@ const loadingSchedule = computed(() => ['idle', 'loading'].includes(teacherStats
           </tbody>
         </table>
       </div>
-      <p class="my-guards-legend"><span class="is-guard">Guàrdia</span><span class="is-patio">Pati</span><span class="is-class">Classe</span></p>
     </section>
 
-    <section v-if="me" class="my-guards-section" aria-labelledby="my-history-title">
+    <section v-if="me" class="my-guards-section my-guards-card" aria-labelledby="my-history-title">
       <h3 id="my-history-title">Historial del curs</h3>
       <p v-if="!history.length" class="my-guards-note">Encara no consta cap guàrdia feta aquest curs.</p>
       <ul v-else class="my-history" data-my-history>
         <li v-for="entry in history" :key="`${entry.date}|${entry.slot}`">
-          <span>{{ formatDay(entry.date, shortDate) }}</span>
-          <span>{{ entry.hour }}</span>
+          <span class="my-history-date">{{ formatDay(entry.date, shortDate) }}</span>
+          <span class="my-history-hour">{{ entry.hour }}</span>
           <strong>{{ entry.groups.join(' + ') }}</strong>
         </li>
       </ul>

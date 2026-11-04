@@ -133,7 +133,7 @@ test('public view marks the viewer’s own guards and sums them up at the top', 
   const html = renderPublicCoverage(day, { now: new Date('2026-10-22T08:30:00'), viewer: 'Gabriel Fuentes' });
   const summary = html.slice(0, html.indexOf('</section>'));
   assert.match(summary, /class="my-guards"/);
-  assert.match(summary, /Avui et toca/);
+  assert.match(summary, /Assignat avui/);
   assert.match(summary, /href="#hora-800" data-public-jump="8:00"><strong>1a hora · 8:00<\/strong><span>1ESO-A · Aula 14<\/span><\/a>/);
   assert.match(summary, /data-public-jump="PATI"><strong>Pati · 10:45–11:15<\/strong><span>Banys<\/span>/);
   assert.match(summary, /<span>2ESO-A<\/span><em>Alliberat\/ada<\/em>/);
@@ -146,7 +146,7 @@ test('public view marks the viewer’s own guards and sums them up at the top', 
   const anonymous = renderPublicCoverage(day, { now: new Date('2026-10-22T08:30:00'), viewer: 'Pere Mas' });
   assert.equal(anonymous.includes('my-guards'), false);
   assert.equal(anonymous.includes('mine-chip'), false);
-  assert.match(renderPublicCoverage(day, { viewer: 'Gabriel Fuentes' }), /Aquest dia et toca/);
+  assert.match(renderPublicCoverage(day, { viewer: 'Gabriel Fuentes' }), /Assignat aquest dia/);
 });
 
 test('public view supports empty days, patio absences and partial outings', () => {

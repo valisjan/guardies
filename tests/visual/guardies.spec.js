@@ -2720,7 +2720,7 @@ test.describe('Guàrdies: revisió visual', () => {
     });
 
     const summary = page.locator('.my-guards');
-    await expect(summary).toContainText('Avui et toca');
+    await expect(summary).toContainText('Assignat avui');
     await expect(summary.locator('.my-guard')).toHaveCount(1);
     await expect(summary.locator('.my-guard')).toContainText('2a hora');
     await expect(summary.locator('.my-guard')).toContainText('1ESO-A · Aula 14');
@@ -2847,6 +2847,10 @@ test.describe('Guàrdies: avís del dia i veure com a', () => {
     // El compte d'administració no té guàrdies: no hi ha resum ni «Tu».
     await expect(page.locator('.my-guards')).toHaveCount(0);
     const picker = page.getByLabel('Veure com a');
+    // En tocar el selector es carrega tot el professorat de l'horari, també qui no surt al full d'aquest dia.
+    await picker.focus();
+    await expect(picker.locator('option', { hasText: 'Fuentes Serra, Gabriel' })).toHaveCount(1);
+    await expect(picker.locator('option', { hasText: 'Adell Domènech, Marina' })).toHaveCount(1);
     await picker.selectOption('Sanz Vidal, Clara');
     await expect(page.locator('.view-as')).toContainText('Així ho veu Sanz Vidal, Clara');
     await expect(page.locator('.my-guards .my-guard')).toContainText('2a hora');

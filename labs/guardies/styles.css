@@ -6511,6 +6511,313 @@ button.ghost {
   }
 }
 
+/* «Les meves guàrdies»: cada apartat en una targeta pròpia. A dalt, les guàrdies
+   assignades (el que més importa) al costat dels avisos per correu; a sota, l'horari
+   i l'historial. Lletra de la mateixa escala que la resta de la vista. */
+@media screen {
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .my-guards-panel {
+    gap: 14px;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .my-guards-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px 24px;
+  }
+
+  .my-guards-head h2 {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    letter-spacing: -0.01em;
+  }
+
+  .my-guards-totals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0;
+  }
+
+  .my-guards-totals article {
+    display: grid;
+    min-width: 120px;
+    gap: 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    background: var(--surface);
+    padding: 8px 14px;
+  }
+
+  .my-guards-totals dt {
+    color: var(--muted);
+    font-size: var(--text-xs);
+    font-weight: 700;
+  }
+
+  .my-guards-totals dd { margin: 0; }
+
+  .my-guards-totals strong {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    line-height: 1.1;
+  }
+
+  .my-guards-note { font-size: var(--text-base); }
+
+  .my-guards-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 14px;
+  }
+
+  .my-guards-card {
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 16px 18px;
+    box-shadow: var(--shadow-small);
+  }
+
+  .my-guards-card h3 {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+  }
+
+  .my-guards-section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+  }
+
+  /* Guàrdies assignades: un bloc per dia; cada guàrdia, una fila amb l'hora a l'esquerra. */
+  .my-upcoming {
+    display: grid;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .my-upcoming > li {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    background: var(--surface);
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .my-upcoming > li.is-today { border-color: var(--primary-border); }
+
+  .my-upcoming-day {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-subtle);
+    padding: 9px 14px;
+    font-size: var(--text-md);
+    text-transform: none;
+  }
+
+  .my-upcoming > li.is-today .my-upcoming-day {
+    border-bottom-color: var(--primary-border);
+    background: var(--primary-soft);
+  }
+
+  .my-today-badge {
+    border-radius: 999px;
+    background: var(--primary);
+    padding: 2px 9px;
+    color: var(--on-primary);
+    font-size: var(--text-xs);
+    font-weight: 800;
+  }
+
+  .my-upcoming > li > ul {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .my-upcoming .my-upcoming-guard {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, auto) minmax(0, 1fr);
+    align-items: baseline;
+    gap: 4px 16px;
+    padding: 11px 14px;
+    font-size: var(--text-base);
+  }
+
+  .my-upcoming .my-upcoming-guard + .my-upcoming-guard { border-top: 1px solid var(--border); }
+
+  .my-upcoming-hour {
+    min-width: 0;
+    color: var(--text-soft);
+    font-size: var(--text-sm);
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .my-upcoming-what {
+    display: grid;
+    gap: 2px;
+  }
+
+  .my-upcoming-what strong { font-size: var(--text-md); }
+
+  .my-upcoming-where { color: var(--text-soft); }
+
+  .my-upcoming-what small {
+    color: var(--muted);
+    font-size: var(--text-sm);
+  }
+
+  .my-upcoming-comment {
+    margin: 6px 0 0;
+    border-radius: 8px;
+    background: var(--primary-soft);
+    padding: 7px 10px;
+    color: var(--text);
+    font-size: var(--text-sm);
+  }
+
+  .my-upcoming-comment b {
+    display: block;
+    color: var(--primary);
+    font-size: var(--text-xs);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* Avisos per correu: l'estat (previst o enviat) com una etiqueta a dalt. */
+  .my-mails,
+  .my-history {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .my-mails li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+    border-top: 1px solid var(--border);
+    padding: 10px 0;
+    font-size: var(--text-base);
+  }
+
+  .my-mails li,
+  .my-history li { border-bottom: 0; }
+
+  .my-mails li:first-child { border-top: 0; padding-top: 0; }
+  .my-mails li strong { font-size: var(--text-base); }
+  .my-mail-detail { color: var(--text-soft); }
+
+  .my-mails .my-mail-status {
+    justify-self: start;
+    border-radius: 999px;
+    background: var(--surface-strong);
+    padding: 2px 9px;
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+    font-weight: 800;
+  }
+
+  .my-mails li.is-pendent .my-mail-status,
+  .my-mails li.is-enviant .my-mail-status { background: var(--amber-soft); color: var(--amber); }
+  .my-mails li.is-enviat .my-mail-status { background: var(--green-soft); color: var(--green); }
+
+  /* Horari: més aire i lletra llegible; la columna de les hores queda fixa en mòbil. */
+  .my-timetable { font-size: var(--text-sm); }
+
+  .my-timetable th,
+  .my-timetable td {
+    min-width: 7.5rem;
+    padding: 8px 10px;
+    vertical-align: top;
+  }
+
+  .my-timetable thead th {
+    color: var(--text-soft);
+    font-size: var(--text-sm);
+    text-align: left;
+  }
+
+  .my-timetable tbody th {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    min-width: 0;
+    width: 4rem;
+    background: var(--surface);
+    font-size: var(--text-sm);
+  }
+
+  .my-timetable-item { gap: 1px; }
+  .my-timetable-item + .my-timetable-item { margin-top: 6px; }
+  .my-timetable-item b { font-size: var(--text-sm); }
+  .my-timetable-item small { font-size: var(--text-xs); }
+  .my-timetable td.is-guard b { color: var(--primary-strong); }
+  .my-timetable td.is-patio b { color: var(--amber); }
+
+  .my-guards-legend {
+    gap: 8px;
+    font-size: var(--text-xs);
+    font-weight: 700;
+  }
+
+  .my-guards-legend span { padding: 3px 9px; }
+
+  /* Historial: una fila per guàrdia, data, hora i grup en columnes. */
+  .my-history li {
+    display: grid;
+    grid-template-columns: 7rem 4rem minmax(0, 1fr);
+    align-items: baseline;
+    gap: 12px;
+    border-top: 1px solid var(--border);
+    padding: 9px 0;
+    font-size: var(--text-base);
+  }
+
+  .my-history li:first-child { border-top: 0; padding-top: 0; }
+  .my-history-date,
+  .my-history-hour { color: var(--muted); }
+}
+
+@media screen and (max-width: 900px) {
+  .my-guards-columns { grid-template-columns: 1fr; }
+}
+
+@media screen and (max-width: 560px) {
+  .my-guards-card { padding: 14px; }
+  .my-guards-totals { width: 100%; }
+  .my-guards-totals article { flex: 1 1 0; min-width: 0; padding: 8px 10px; }
+  .my-upcoming .my-upcoming-guard { grid-template-columns: 1fr; gap: 3px; }
+  .my-history li { grid-template-columns: 5.5rem 3.5rem minmax(0, 1fr); gap: 8px; }
+}
+
 /* La «×» per treure una absència va al final de la fila. En mòbil ja hi és,
    perquè el nom ocupa tota l'amplada. */
 @media screen and (min-width: 621px) {

@@ -1,6 +1,15 @@
-export const GUARDIES_VERSION = '1.10.1';
+export const GUARDIES_VERSION = '1.10.2';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.10.2',
+    date: '4 de novembre de 2026',
+    changes: [
+      '«Les meves guàrdies» endreçada: cada apartat en una targeta. A dalt, les guàrdies assignades per dia (hora, grup, aula, a qui cobreixes i l’observació) al costat dels avisos per correu; els totals del curs van a la capçalera, i l’horari i l’historial a sota, amb lletra més gran.',
+      'El resum de les guàrdies pròpies ara diu «Assignat avui» (o «Assignat aquest dia»).',
+      'Veure com a: la llista porta tot el professorat de l’horari, no només qui surt al full del dia. Només ho veu l’administració.',
+    ],
+  },
   {
     version: '1.10.1',
     date: '4 de novembre de 2026',
