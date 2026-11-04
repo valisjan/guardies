@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { currentPublicHourKey, renderOutingsLine, renderPublicCoverage } from '../../labs/guardies/publicDayRenderer.js';
+import {
+  coverCountLabel,
+  coverStateClass,
+  currentPublicHourKey,
+  renderDayNotice,
+  renderOutingsLine,
+  renderPublicCoverage,
+} from '../../labs/guardies/publicDayRenderer.js';
 
 test('public view escapes all user content and preserves coverage and observations', () => {
   const html = renderPublicCoverage({ hours: [{ label: '7a hora', observation: '<script>alert(1)</script>', rows: [{
@@ -77,13 +84,38 @@ test('public view highlights the current hour, counts pending guards and keeps e
     { key: 'PATI', kind: 'patio', label: 'Pati · 10:45–11:15', patio: { zones: [] } },
   ] };
   const html = renderPublicCoverage(day, { now: new Date('2026-10-22T08:30:00') });
-  assert.match(html, /class="coverage-session has-open is-current" id="hora-800" data-public-hour="8:00"/);
-  assert.match(html, /<h3>1a hora · 8:00<\/h3><strong class="now-badge">Ara<\/strong><em class="session-pending">1 sense cobrir<\/em><span>2 absències<\/span>/);
-  assert.match(html, /class="coverage-session is-empty" id="hora-855" data-public-hour="8:55"/);
+  assert.match(html, /class="coverage-session has-open needs-cover is-current" id="hora-800" data-public-hour="8:00"/);
+  assert.match(html, /<h3>1a hora · 8:00<\/h3><strong class="now-badge">Ara<\/strong><em class="session-pending">1 sense cobrir<\/em><span>2 absències<small class="cover-count no-print"> · 2 substitucions<\/small><\/span>/);
+  assert.match(html, /class="coverage-session is-empty no-cover" id="hora-855" data-public-hour="8:55"/);
   // Un pati sense zones ni observacions no deixa cap capsa buida.
   assert.equal(html.includes('pati-session'), false);
   // Si no es mira avui, no hi ha hora en curs.
   assert.equal(renderPublicCoverage(day).includes('is-current'), false);
+});
+
+test('an hour is red when someone has to substitute and green when nobody does, even with absences', () => {
+  const row = (fields) => ({ absent: 'A', group: '1ESO-A', assigned: '', ...fields });
+  const html = renderPublicCoverage({ hours: [
+    // Codocència, torna al seu grup, absència en una guàrdia i guàrdia no realitzada: res a substituir.
+    { key: '8:00', label: '1a hora', rows: [
+      row({ assigned: 'Llucia', source: 'co-teacher', coTeacher: true }),
+      row({ returnsToGroup: true }),
+      row({ group: 'Guàrdia', subject: 'Guàrdia' }),
+      row({ assigned: 'Pere', source: 'guard', cancelled: true }),
+    ] },
+    // Ja coberta: algú hi va a substituir.
+    { key: '8:55', label: '2a hora', rows: [row({ assigned: 'Pere', source: 'guard' })] },
+    { key: 'PATI', kind: 'patio', label: 'Pati', patio: { zones: [{ name: 'Banys', teacher: 'Anna' }] } },
+  ] });
+  assert.match(html, /class="coverage-session is-covered no-cover" id="hora-800"/);
+  assert.match(html, /<span>4 absències<small class="cover-count no-print"> · cap substitució<\/small><\/span>/);
+  assert.match(html, /class="coverage-session is-covered needs-cover" id="hora-855"/);
+  assert.match(html, /<span>1 absència<small class="cover-count no-print"> · 1 substitució<\/small><\/span>/);
+  // El pati no té color de substitució.
+  assert.match(html, /class="coverage-session pati-session" id="hora-PATI"/);
+  assert.equal(coverStateClass(0), 'no-cover');
+  assert.equal(coverStateClass(2), 'needs-cover');
+  assert.equal(coverCountLabel(0, 0), 'Sense absències');
 });
 
 test('public view marks the viewer’s own guards and sums them up at the top', () => {
@@ -135,4 +167,12 @@ test('public view supports empty days, patio absences and partial outings', () =
   assert.match(outings, /1ESO-B<\/strong> \(part del grup\)/);
   assert.equal(renderOutingsLine([]), '');
   assert.equal(renderOutingsLine(undefined), '');
+});
+
+test('the day notice is escaped, keeps its line breaks and is not drawn when empty', () => {
+  const html = renderDayNotice('Claustre <b>a les 14:00</b>\nBiblioteca');
+  assert.match(html, /class="day-notice no-print" role="note"><strong class="day-notice-title">Avís del dia<\/strong>/);
+  assert.ok(html.includes('Claustre &lt;b&gt;a les 14:00&lt;/b&gt;\nBiblioteca'));
+  assert.equal(renderDayNotice('   '), '');
+  assert.equal(renderDayNotice(undefined), '');
 });

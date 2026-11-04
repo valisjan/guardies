@@ -9,6 +9,7 @@ const GuardiesPatiPanel = defineAsyncComponent(() => import('./GuardiesPatiPanel
 const GuardiesConvivenciaPanel = defineAsyncComponent(() => import('./GuardiesConvivenciaPanel.vue'));
 import GuardiesWorkspace from './GuardiesWorkspace.vue';
 import GuardiesUndoToast from './GuardiesUndoToast.vue';
+import GuardiesViewAs from './GuardiesViewAs.vue';
 const GuardiesTeacherStats = defineAsyncComponent(() => import('./GuardiesTeacherStats.vue'));
 const GuardiesMyGuards = defineAsyncComponent(() => import('./GuardiesMyGuards.vue'));
 const GuardiesGuardCountPanel = defineAsyncComponent(() => import('./GuardiesGuardCountPanel.vue'));
@@ -21,7 +22,7 @@ import { signInGuardies } from '../../../src/services/guardiesStorage.js';
 import { useGuardiesStore } from '../stores/guardies.js';
 
 const store = useGuardiesStore();
-const { canWrite, contextReady, authRequired, adminSection, teacherSection, courseId, date } = storeToRefs(store);
+const { canWrite, contextReady, authRequired, adminSection, teacherSection, courseId, date, isAdmin } = storeToRefs(store);
 const signingIn = ref(false);
 const signInError = ref('');
 const diagnosticsHref = computed(() => {
@@ -88,6 +89,7 @@ window.addEventListener('guardies:auth-ready', () => {
       <button type="button" :disabled="signingIn" @click="signIn">{{ signingIn ? 'Connectant…' : 'Inicia sessió' }}</button>
       <p v-if="signInError" role="alert">{{ signInError }}</p>
     </section>
+    <GuardiesViewAs v-if="!authRequired && isAdmin" />
     <nav v-if="!authRequired" class="teacher-view-tabs no-print" aria-label="Vista del professorat" role="tablist">
       <button type="button" role="tab" :aria-selected="teacherSection === 'daily'" :class="{ active: teacherSection === 'daily' }" @click="store.teacherSection = 'daily'">Guàrdies del dia</button>
       <button type="button" role="tab" :aria-selected="teacherSection === 'mine'" :class="{ active: teacherSection === 'mine' }" @click="store.teacherSection = 'mine'">Les meves guàrdies</button>

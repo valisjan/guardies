@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { normalizeGuardCount } from '../../../src/modules/guardies/domain/workflow.js';
 import {
@@ -8,13 +8,13 @@ import {
   viewerTeacher,
   weeklyTimetable,
 } from '../../../src/modules/guardies/domain/my-guards.js';
-import { loadMyGuardiesMails, loadUpcomingPublicDays } from '../../../src/services/guardiesStorage.js';
+import { loadMyGuardiesMails, loadTeacherGuardiesMails, loadUpcomingPublicDays } from '../../../src/services/guardiesStorage.js';
 import { friendlyError } from '../../../src/utils/friendlyError.js';
 import { useGuardiesStore } from '../stores/guardies.js';
 
 const store = useGuardiesStore();
 const {
-  courseId, courseName, viewerName, viewerEmail, sessions, professorOptions,
+  courseId, courseName, viewerName, viewAsName, viewerEmail, sessions, professorOptions,
   guardCounts, guardHistory, guardiaCodes, teacherStatsStatus,
 } = storeToRefs(store);
 
@@ -43,21 +43,33 @@ const formatTime = (value) => {
   return Number.isNaN(parsed.getTime()) ? '' : dateTime.format(parsed);
 };
 
+const me = computed(() => viewerTeacher(professorOptions.value, viewerName.value));
+
+// «Veure com a»: l'administració mira la vista d'un altre docent. Els seus avisos es
+// carreguen pel codi d'Untis (de l'adreça només en sabem la del compte que ha entrat).
+const previewing = computed(() => Boolean(viewAsName.value));
+async function loadMails() {
+  mailsStatus.value = 'loading';
+  try {
+    mails.value = previewing.value
+      ? await loadTeacherGuardiesMails(me.value?.placa)
+      : await loadMyGuardiesMails(viewerEmail.value);
+    mailsStatus.value = 'ready';
+  } catch (error) {
+    mailsStatus.value = friendlyError(error);
+  }
+}
+watch(() => (previewing.value ? `com-a:${me.value?.placa || ''}` : 'propi'), loadMails);
+
 onMounted(async () => {
   window.dispatchEvent(new CustomEvent('guardies:load-teacher-stats'));
-  const [days, own] = await Promise.allSettled([
-    loadUpcomingPublicDays(courseId.value, today()),
-    loadMyGuardiesMails(viewerEmail.value),
-  ]);
+  const [days] = await Promise.allSettled([loadUpcomingPublicDays(courseId.value, today()), loadMails()]);
   if (days.status === 'fulfilled') { upcomingDays.value = days.value; upcomingStatus.value = 'ready'; } else upcomingStatus.value = friendlyError(days.reason);
-  if (own.status === 'fulfilled') { mails.value = own.value; mailsStatus.value = 'ready'; } else mailsStatus.value = friendlyError(own.reason);
 });
 
 onBeforeUnmount(() => {
   window.dispatchEvent(new CustomEvent('guardies:release-teacher-stats'));
 });
-
-const me = computed(() => viewerTeacher(professorOptions.value, viewerName.value));
 
 const upcoming = computed(() => {
   const byDate = new Map();

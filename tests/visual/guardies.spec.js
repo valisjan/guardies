@@ -1010,7 +1010,7 @@ test.describe('Guàrdies: comportament existent', () => {
 
     await page.waitForTimeout(500);
     await page.reload();
-    await expect(page.locator('[data-comment]')).toHaveValue('Feina a Classroom · Material al calaix · Indicació excepcional');
+    await expect(page.locator('#coverage-list .coverage-row [data-comment]')).toHaveValue('Feina a Classroom · Material al calaix · Indicació excepcional');
     await page.getByRole('tab', { name: 'Configuració' }).click();
     await page.locator('#observation-presets-panel summary').click();
     await expect(page.locator('#observation-presets-panel')).toContainText('Feina a Classroom');
@@ -2784,5 +2784,80 @@ test.describe('Guàrdies: revisió visual', () => {
     await page.locator('details.admin-panel').evaluateAll((panels) => panels.forEach((panel) => { panel.open = true; }));
     await page.waitForTimeout(500);
     expect(await tinyTexts(page)).toEqual([]);
+  });
+});
+
+test.describe('Guàrdies: avís del dia i veure com a', () => {
+  async function adellAllDay(page) {
+    await openGuardies(page);
+    await uploadConfiguration(page);
+    await page.locator('#professor-search').fill('ADELL');
+    await page.locator('#professor-results [data-professor]').first().click();
+    await page.locator('#add-all-hours').click();
+    await expect(page.locator('#coverage-list [data-assignacio]').first()).toBeVisible();
+  }
+
+  test('la cap d’estudis posa un avís del dia que el professorat veu fix a dalt', async ({ page }) => {
+    await adellAllDay(page);
+    const editor = page.locator('.day-notice-editor textarea');
+    await editor.fill('Claustre a les 14:00 a la biblioteca');
+    // La gestió el veu a dalt tal com el veurà el professorat.
+    await expect(page.locator('#outings-line .day-notice')).toContainText('Claustre a les 14:00 a la biblioteca');
+    await page.getByRole('button', { name: 'Publica' }).click();
+    await expect(page.locator('#day-status-action')).toHaveText('Tanca jornada');
+    await expect.poll(async () => page.evaluate(() => (
+      JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).publicDays?.['2026-09-07']?.notice
+    ))).toBe('Claustre a les 14:00 a la biblioteca');
+
+    await page.goto('/?data=2026-09-07&vista=professor');
+    const notice = page.locator('#outings-line .day-notice');
+    await expect(notice).toContainText('Avís del dia');
+    await expect(notice).toContainText('Claustre a les 14:00 a la biblioteca');
+    // Fix a dalt: continua a la vista en baixar.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(notice).toBeInViewport();
+
+    // Si es buida, deixa de sortir.
+    await page.goto('/?data=2026-09-07');
+    await page.locator('.day-notice-editor textarea').fill('');
+    await expect(page.locator('#outings-line .day-notice')).toHaveCount(0);
+    await expect.poll(async () => page.evaluate(() => (
+      JSON.parse(localStorage.getItem('quota-e2e-guardies:e2e-2026')).publicDays?.['2026-09-07']?.notice ?? ''
+    ))).toBe('');
+  });
+
+  test('l’administració veu la vista del professorat com la veu un docent concret', async ({ page }) => {
+    await adellAllDay(page);
+    await page.locator('#coverage-list .coverage-session').filter({ hasText: '2a hora' }).locator('[data-assignacio]').selectOption('3');
+    await page.getByRole('button', { name: 'Publica' }).click();
+    await expect(page.locator('#day-status-action')).toHaveText('Tanca jornada');
+    await page.evaluate(() => {
+      const key = 'quota-e2e-guardies:e2e-2026';
+      const data = JSON.parse(localStorage.getItem(key));
+      data.mails = { clara: {
+        id: 'clara', kind: 'alliberat', template: 'alliberat', date: '2026-09-07', status: 'pendent', reason: '', teacherId: '3',
+        email: 'clara.sanz@iesjosepsuredaiblanes.com', sendAfter: '2026-09-07T07:05:00.000Z', createdAt: '2026-09-07T07:00:00.000Z',
+        fields: { data: '07/09/2026', hora: '2a hora', grup: '1ESO-A' },
+      } };
+      localStorage.setItem(key, JSON.stringify(data));
+    });
+    await page.goto('/?data=2026-09-07&vista=professor');
+    await expect(page.locator('.public-row').first()).toBeVisible();
+
+    // El compte d'administració no té guàrdies: no hi ha resum ni «Tu».
+    await expect(page.locator('.my-guards')).toHaveCount(0);
+    const picker = page.getByLabel('Veure com a');
+    await picker.selectOption('Sanz Vidal, Clara');
+    await expect(page.locator('.view-as')).toContainText('Així ho veu Sanz Vidal, Clara');
+    await expect(page.locator('.my-guards .my-guard')).toContainText('2a hora');
+    await expect(page.locator('.public-row.is-mine .mine-chip')).toHaveText('Tu');
+    // «Les meves guàrdies» mostra també els seus avisos per correu.
+    await page.getByRole('tab', { name: 'Les meves guàrdies' }).click();
+    await expect(page.locator('.my-guards-panel [data-my-mails] li')).toContainText('2a hora');
+    await page.getByRole('tab', { name: 'Guàrdies del dia' }).click();
+
+    await page.getByRole('button', { name: 'Torna a la meva vista' }).click();
+    await expect(page.locator('.my-guards')).toHaveCount(0);
+    await expect(picker).toHaveValue('');
   });
 });

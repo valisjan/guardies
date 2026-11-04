@@ -20,6 +20,7 @@ export function publicProjectionsEqual(left, right) {
     schemaVersion: value.schemaVersion, courseId: value.courseId, date: value.date,
     status: value.status, revision: value.revision, publishedAt: value.publishedAt || '',
     clientUpdatedAt: value.clientUpdatedAt || '', hours: value.hours, groupsOut: value.groupsOut,
+    notice: value.notice || '',
   } : null;
   return JSON.stringify(canonical(comparable(left))) === JSON.stringify(canonical(comparable(right)));
 }

@@ -867,6 +867,23 @@ export async function loadMyGuardiesMails(email) {
   });
 }
 
+// «Veure com a» (només administració, que pot llegir tota la cua): els avisos d'un
+// docent pel seu codi d'Untis, perquè no se'n coneix l'adreça a la vista Professorat.
+export async function loadTeacherGuardiesMails(teacherId) {
+  const clean = String(teacherId || '').trim();
+  if (!clean) return [];
+  if (E2E_AUTH_BYPASS) {
+    return Object.values(getE2EData(E2E_CURS_ID).mails || {}).filter((mail) => mail.teacherId === clean);
+  }
+  const snapshot = await getDocs(query(collection(db, 'guardiesCorreus'), where('teacherId', '==', clean)));
+  trackReads('viewAsMails', Math.max(1, snapshot.docs.length));
+  return snapshot.docs.map((item) => {
+    const data = item.data();
+    const time = (value) => (typeof value === 'string' ? value : value?.toDate?.().toISOString() || '');
+    return { ...data, id: item.id, createdAt: time(data.createdAt), sendAfter: time(data.sendAfter), sentAt: time(data.sentAt) };
+  });
+}
+
 // Només el document de recomptes. Les confirmacions de caché/servidor sense
 // canvis de contingut no es notifiquen.
 export function subscribeGuardiesStats(cursId, onChange, onError = () => {}, { iosPollInterval = 5 * 60 * 1000 } = {}) {

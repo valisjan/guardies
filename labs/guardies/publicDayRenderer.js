@@ -18,6 +18,25 @@ export function publicRowStatus(row) {
   return row?.returnsToGroup ? 'returns' : 'open';
 }
 
+// Estats on algú ha de substituir: encara sense ningú o ja assignada. La resta
+// (codocència, torna al seu grup, absència en una guàrdia, grup de sortida o
+// guàrdia no realitzada) no demana cap substitució.
+export const NEEDS_COVER_STATUSES = Object.freeze(['open', 'covered']);
+
+// Color de l'hora, igual que a Pantalles: vermell si hi ha alguna substitució,
+// verd si no n'hi ha cap, encara que hi hagi absències.
+export function coverStateClass(substitutions) {
+  return substitutions ? 'needs-cover' : 'no-cover';
+}
+
+// «2 absències · 1 substitució», «3 absències · cap substitució» o «Sense absències»,
+// en HTML. El detail de les substitucions no s'imprimeix: el full A3 no canvia.
+export function coverCountLabel(absences, substitutions) {
+  if (!absences) return 'Sense absències';
+  const detail = substitutions ? `${substitutions} ${substitutions === 1 ? 'substitució' : 'substitucions'}` : 'cap substitució';
+  return `${absences} ${absences === 1 ? 'absència' : 'absències'}<small class="cover-count no-print"> · ${detail}</small>`;
+}
+
 const STATUS_LABELS = {
   open: 'Sense cobrir',
   covered: 'Cobreix',
@@ -129,10 +148,11 @@ export function renderPublicCoverage(day, { now = null, viewer = '' } = {}) {
     if (patio && !zones.length && !patioObservation && !hour.observation) return '';
     const rows = patio ? [] : (hour.rows || []);
     const open = rows.filter((row) => publicRowStatus(row) === 'open').length;
+    const substitutions = rows.filter((row) => NEEDS_COVER_STATUSES.includes(publicRowStatus(row))).length;
     const isCurrent = Boolean(current) && String(hour.key) === current;
     const progress = patio ? '' : !rows.length ? (hour.observation ? '' : 'is-empty') : open ? 'has-open' : 'is-covered';
-    const count = rows.length ? `${rows.length} ${rows.length === 1 ? 'absència' : 'absències'}` : 'Sense absències';
-    const classes = ['coverage-session', patio && 'pati-session', progress, isCurrent && 'is-current'].filter(Boolean).join(' ');
+    const count = coverCountLabel(rows.length, substitutions);
+    const classes = ['coverage-session', patio && 'pati-session', progress, !patio && coverStateClass(substitutions), isCurrent && 'is-current'].filter(Boolean).join(' ');
     const zoneCards = zones.map((zone) => {
       const mine = isMine(zone.teacher);
       return `
@@ -144,6 +164,14 @@ export function renderPublicCoverage(day, { now = null, viewer = '' } = {}) {
       ${hour.observation ? `<p class="seventh-observation-readonly">${escape(hour.observation)}</p>` : ''}
     </section>`;
   }).join('');
+}
+
+// Avís general del dia que posa la cap d'estudis: va fix a dalt del full, abans de les
+// sortides, i també surt a Pantalles. Sense avís, res.
+export function renderDayNotice(text) {
+  const notice = String(text || '').trim();
+  if (!notice) return '';
+  return `<p class="day-notice no-print" role="note"><strong class="day-notice-title">Avís del dia</strong> <span class="day-notice-text">${escape(notice)}</span></p>`;
 }
 
 // Línia de capçal: «Sortides complementàries: 3ESO-A de 8:00 a 14:00 · …». Sense sortides, res.

@@ -1,6 +1,14 @@
 import { markRaw } from 'vue';
 import * as parser from './horariXmlParser.js';
-import { currentPublicHourKey, renderOutingsLine, renderPublicCoverage } from './publicDayRenderer.js';
+import {
+  NEEDS_COVER_STATUSES,
+  coverCountLabel,
+  coverStateClass,
+  currentPublicHourKey,
+  renderDayNotice,
+  renderOutingsLine,
+  renderPublicCoverage,
+} from './publicDayRenderer.js';
 import { createScheduleIndex } from '../../src/modules/guardies/domain/schedule-index.js';
 import { guardHistoryGroups, guardSlotFromAssignment } from '../../src/modules/guardies/domain/guard-history.js';
 import { createKeyedRenderer } from '../../src/utils/keyedDom.js';
@@ -70,6 +78,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   const PATI_COMMENT_KEY = 'pati_observation';
   const PATI_START = '10:45';
   const SEVENTH_COMMENT_KEY = 'seventh_observation';
+  // Avís general del dia: el professorat i Pantalles el veuen fix a dalt del full.
+  const DAY_NOTICE_KEY = 'day_notice';
   const LEGACY_COMMENT_KEYS = { __pati_observation__: PATI_COMMENT_KEY, __seventh_observation__: SEVENTH_COMMENT_KEY };
   const LEGACY_STORAGE = {
     referenceXml: 'quota_guardies_lab_reference_xml',
@@ -504,6 +514,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       state.canRetards = Boolean(context.canRetards);
       state.teacherView = context.teacherView;
       state.viewerName = context.user?.displayName || '';
+      state.ownViewerName = state.viewerName;
+      state.viewAsName = '';
       state.viewerEmail = context.user?.email || '';
       state.authRequired = false;
       if (!state.canWrite) {
@@ -1069,6 +1081,8 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       };
     });
     const groupsOut = outingGroups();
+    // Sense avís no s'hi posa el camp: la projecció queda igual que fins ara.
+    const notice = String(state.comentaris.get(DAY_NOTICE_KEY) || '').trim();
     return {
       schemaVersion: 1,
       date: state.date,
@@ -1078,6 +1092,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       clientUpdatedAt: state.updatedAt || new Date().toISOString(),
       hours,
       groupsOut,
+      ...(notice ? { notice } : {}),
     };
   }
 
@@ -1402,7 +1417,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       const id = LEGACY_COMMENT_KEYS[savedId] || savedId;
       if (!comment) return;
       if (state.unmatchedAbsences.has(id)) state.unmatchedAbsences.get(id).comment = comment;
-      else if (state.absencies.has(shownAs(id)) || [PATI_COMMENT_KEY, SEVENTH_COMMENT_KEY].includes(id)) {
+      else if (state.absencies.has(shownAs(id)) || [PATI_COMMENT_KEY, SEVENTH_COMMENT_KEY, DAY_NOTICE_KEY].includes(id)) {
         state.comentaris.set(shownAs(id), comment);
       }
     });
@@ -3046,7 +3061,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
       );
       if (visibleDay && today) jumpToCurrentHourOnce(now);
       el.printDateLabel.textContent = formatData(state.date);
-      setOutingsLine(renderOutingsLine(state.publicDay?.groupsOut));
+      setOutingsLine(renderDayNotice(state.publicDay?.notice) + renderOutingsLine(state.publicDay?.groupsOut));
       return;
     }
     const ready = state.contextReady
@@ -3101,6 +3116,11 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (!el.outingsLine) return;
     if (el.outingsLine.innerHTML !== html) el.outingsLine.innerHTML = html;
     document.documentElement.style.setProperty('--outings-line-height', `${el.outingsLine.offsetHeight}px`);
+  }
+
+  // A la gestió, la línia fixa mostra l'avís tal com el veurà el professorat i les sortides.
+  function refreshAdminTopLine() {
+    setOutingsLine(renderDayNotice(state.comentaris.get(DAY_NOTICE_KEY)) + renderOutingsLine(outingGroups()));
   }
 
   function outingGroups() {
@@ -3329,7 +3349,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
   }
 
   function renderCoverage() {
-    if (state.canWrite) setOutingsLine(renderOutingsLine(outingGroups()));
+    if (state.canWrite) refreshAdminTopLine();
     // A metadata refresh or an unrelated UI action must not recalculate every
     // candidate list. Small mutable inputs are compared by value; parsed
     // schedule inputs are replaced/reindexed together at configuration loads.
@@ -3369,17 +3389,23 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     const dayHours = hoursForSelectedDay();
     const teachingHours = dayHours.filter((hora) => hora !== 'PATI');
     const seventhHour = teachingHours.length >= 7 ? teachingHours[6] : '';
-    const html = warning + dayHours.map((hora) => {
+    const html = warning + renderDayNoticeEditor() + dayHours.map((hora) => {
       const items = selectedByHour.get(hora) || [];
       const visibleItems = hora === 'PATI' ? [] : items;
-      const openItems = visibleItems.filter((item) => coverageStatus(item) === 'open').length;
+      const statuses = visibleItems.map(coverageStatus);
+      const openItems = statuses.filter((status) => status === 'open').length;
+      const substitutions = statuses.filter((status) => NEEDS_COVER_STATUSES.includes(status)).length;
       const progress = !visibleItems.length ? (hora === 'PATI' ? '' : 'is-empty') : openItems ? 'has-open' : 'is-covered';
+      const coverState = hora === 'PATI' ? '' : coverStateClass(substitutions);
+      const countLabel = hora === 'PATI'
+        ? (items.length ? `${items.length} ${items.length === 1 ? 'absència' : 'absències'}` : 'Sense absències')
+        : coverCountLabel(items.length, substitutions);
       return `
-      <section data-coverage-session="${escapeHtml(hora)}" class="coverage-session ${hora === 'PATI' ? 'pati-session' : ''} ${hora === seventhHour ? 'seventh-session' : ''} ${progress}">
+      <section data-coverage-session="${escapeHtml(hora)}" class="coverage-session ${hora === 'PATI' ? 'pati-session' : ''} ${hora === seventhHour ? 'seventh-session' : ''} ${progress} ${coverState}">
         <div class="coverage-session-head">
           <h3>${escapeHtml(horaLabel(hora))}</h3>
           ${openItems ? `<em class="session-pending no-print">${openItems} sense cobrir</em>` : ''}
-          <span>${items.length ? `${items.length} ${items.length === 1 ? 'absència' : 'absències'}` : 'Sense absències'}</span>
+          <span>${countLabel}</span>
         </div>
         ${hora === 'PATI' ? renderPatiForDate() : ''}
         ${visibleItems.length ? `
@@ -3548,6 +3574,7 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
           : 'Comentari';
       printComment.textContent = value ? `${prefix}: ${value}` : '';
     }
+    if (id === DAY_NOTICE_KEY) refreshAdminTopLine();
     scheduleDaySave({ delay: typing ? TEXT_SAVE_DELAY : DAY_SAVE_DELAY });
   }
 
@@ -3621,6 +3648,24 @@ import { savePublicGuardiesDay } from '../../src/services/pantallesStorage.js';
     if (assigned) offerUndo(`S'han assignat ${assigned} ${assigned === 1 ? 'guàrdia' : 'guàrdies'} automàticament.`, snapshot);
   }
 
+
+  // Avís general del dia: un sol camp a dalt del full. Surt fix a dalt de la vista del
+  // professorat i a Pantalles mentre la jornada està publicada.
+  function renderDayNoticeEditor() {
+    const notice = state.comentaris.get(DAY_NOTICE_KEY) || '';
+    return `
+      <label class="day-notice-editor no-print">
+        <span>Avís general del dia <small>El veuen el professorat i Pantalles, sempre a dalt, quan la jornada està publicada.</small></span>
+        <textarea
+          data-comment="${DAY_NOTICE_KEY}"
+          rows="1"
+          maxlength="2000"
+          placeholder="Per exemple: Claustre a les 14:00 a la biblioteca"
+          ${state.dayStatus === 'closed' ? 'disabled' : ''}
+        >${escapeHtml(notice)}</textarea>
+      </label>
+    `;
+  }
 
   function renderSeventhObservation() {
     const observation = state.comentaris.get(SEVENTH_COMMENT_KEY) || '';

@@ -12,3 +12,14 @@ test('Firestore map ordering and server timestamps do not trigger a public rewri
   assert.equal(publicProjectionsEqual(original, { ...fromServer, hours: [] }), false);
   assert.equal(publicProjectionForDay(projection, { ...day, status: 'draft' }, 'test', '2026-09-07'), null);
 });
+
+test('a change in the day notice rewrites the public day', () => {
+  const day = { status: 'published', revision: 3, clientUpdatedAt: '2026-09-07T08:00:00Z' };
+  const plain = publicProjectionForDay({ hours: [], groupsOut: [] }, day, 'test', '2026-09-07');
+  const withNotice = publicProjectionForDay({ hours: [], groupsOut: [], notice: 'Claustre a les 14:00' }, day, 'test', '2026-09-07');
+  assert.equal(withNotice.notice, 'Claustre a les 14:00');
+  assert.equal(publicProjectionsEqual(plain, withNotice), false);
+  assert.equal(publicProjectionsEqual(withNotice, { ...withNotice, notice: 'Claustre a les 13:00' }), false);
+  // Un dia sense avís i un amb l'avís buit són el mateix.
+  assert.equal(publicProjectionsEqual(plain, { ...plain, notice: '' }), true);
+});

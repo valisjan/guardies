@@ -71,6 +71,11 @@ export const useGuardiesStore = defineStore('guardies', {
     contextReady: false,
     authRequired: false,
     viewerName: '',
+    // Nom del compte que ha entrat. A la vista Professorat, l'administració pot posar a
+    // viewerName el d'un altre docent per veure què li surt («Veure com a»).
+    ownViewerName: '',
+    // Docent triat a «Veure com a» ('' si l'administració mira la seva pròpia vista).
+    viewAsName: '',
     viewerEmail: '',
     persistenceStatus: 'loading',
     dayRevision: 0,

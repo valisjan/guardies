@@ -1,6 +1,17 @@
-export const GUARDIES_VERSION = '1.9.8';
+export const GUARDIES_VERSION = '1.10.0';
 
 export const GUARDIES_RELEASES = [
+  {
+    version: '1.10.0',
+    date: '4 de novembre de 2026',
+    changes: [
+      'El color de cada hora diu si cal substituir algú, al full de guàrdies, a la vista del professorat i a Pantalles: vermell si hi ha alguna substitució (encara sense ningú o ja assignada) i verd si no cal, encara que hi hagi absències (codocència, el grup torna amb el seu docent, absència en una guàrdia, grup de sortida o guàrdia no realitzada). Les hores sense absències continuen discretes, però en verd.',
+      'Cada hora indica quantes absències i quantes substitucions té: «3 absències · 1 substitució» o «2 absències · cap substitució». El full imprès no canvia.',
+      'Les que encara no té ningú porten l’avís «sense cobrir» en vermell ple, i la franja de cada fila segueix el mateix criteri: vermella si algú substitueix, verda si no cal i grisa si la guàrdia no s’ha fet.',
+      'Avís general del dia: a dalt del full hi ha un camp per escriure un avís (per exemple, «Claustre a les 14:00»). Mentre la jornada està publicada, el professorat el veu fix a dalt del full i Pantalles, a la barra de les hores.',
+      'Veure com a: a la vista Professorat, l’administració pot triar un docent i veure el full, «Les meves guàrdies» (amb els seus correus) i el recompte tal com li surten. No canvia de compte ni de permisos.',
+    ],
+  },
   {
     version: '1.9.8',
     date: '28 d’octubre de 2026',
